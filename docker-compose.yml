@@ -1,0 +1,27 @@
+services:
+  se-notebook:
+    build: .
+    container_name: se-notebook
+    ports:
+      - "3001:3001"
+    volumes:
+      # persists your SQLite file and uploads on the host
+      - ./server/db:/app/server/db
+      - ./server/uploads:/app/server/uploads
+    env_file:
+      - .env
+    restart: always
+
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    restart: unless-stopped
+
+volumes:
+  chroma_data:

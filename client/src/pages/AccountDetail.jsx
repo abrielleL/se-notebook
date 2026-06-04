@@ -1,0 +1,842 @@
+import { useEffect, useState, useMemo, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import DatePicker from 'react-datepicker';
+import { api } from '../lib/api.js';
+import Icon from '../components/Icons.jsx';
+import Modal from '../components/Modal.jsx';
+import ExportModal from '../components/ExportModal.jsx';
+import AccountFiles from '../components/AccountFiles.jsx';
+import StageGateModal from '../components/StageGateModal.jsx';
+import FieldDrawer from '../components/FieldDrawer.jsx';
+import { useToast } from '../components/Toast.jsx';
+import { useOnline } from '../lib/offline.jsx';
+import { usePovJob } from '../lib/povJob.js';
+import { emitAccountUpdated } from '../lib/accountStore.js';
+import { runFullExtraction, generateCRMSnapshot, CRM_SNAPSHOT_MAX } from '../lib/ai.js';
+import { formatDate, initials, todayISO, parseISODate, toISODate } from '../lib/stage.js';
+import {
+  riskDot, RISK_OPTIONS, escalationStyle, ESCALATION_OPTIONS, QUAL_FIELDS,
+  ROLE_BADGES, ROLE_OPTIONS, STAGE_BAR, STAGE_GATES, nextStage, stageBarStyle,
+  NOTE_TYPES, NOTE_TEMPLATE, EMAIL_TYPES, agingColor, PRESALES_STAGES
+} from '../lib/constants.js';
+
+// Build the post-save toast, including extracted/updated contacts (STEP 5).
+function extractionMessage(prefix, r) {
+  if (!r) return `${prefix}. AI extraction failed.`;
+  const parts = [prefix];
+  if (r.fieldsUpdated.length) parts.push(`${r.fieldsUpdated.length} field${r.fieldsUpdated.length > 1 ? 's' : ''} updated`);
+  const created = (r.contacts || []).filter(c => c.created).length;
+  const updated = (r.contacts || []).filter(c => !c.created).length;
+  if (created) parts.push(`${created} contact${created > 1 ? 's' : ''} extracted`);
+  else if (updated) parts.push(`${updated} contact${updated > 1 ? 's' : ''} updated`);
+  return parts.join(' · ');
+}
+
+function splitHistory(value) {
+  if (!value) return [];
+  const segs = value.split(/\n\n(?=\[[A-Z][a-z]{2} \d)/);
+  return segs.map((s, i) => {
+    const m = s.match(/^\[([A-Z][a-z]{2} \d{1,2}, \d{4})\]\s*([\s\S]*)$/);
+    if (m) return { when: m[1], what: m[2].slice(0, 120) };
+    return { when: i === 0 ? 'original' : '', what: s.slice(0, 120) };
+  });
+}
+
+function Section({ title, right, children, icon: IconCmp }) {
+  return (
+    <div className="bg-card border border-border rounded-lg">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+        <div className="flex items-center gap-2 min-w-0">
+          {IconCmp && <IconCmp width={13} height={13} className="text-text-muted shrink-0" />}
+          <span className="text-[11px] font-medium text-text-primary truncate">{title}</span>
+        </div>
+        {right}
+      </div>
+      <div className="p-3">{children}</div>
+    </div>
+  );
+}
+
+export default function AccountDetail() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const toast = useToast();
+  const online = useOnline();
+
+  const [account, setAccount] = useState(null);
+  const [di, setDi] = useState({});
+  const [povs, setPovs] = useState([]);
+  const [snapshots, setSnapshots] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const [drawer, setDrawer] = useState(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [gateTarget, setGateTarget] = useState(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+
+  const [noteText, setNoteText] = useState(NOTE_TEMPLATE);
+  const [noteType, setNoteType] = useState('General');
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
+
+  const activePov = povs[0] || null;
+
+  // Persistent indicator for a background POV job started elsewhere — resumes
+  // from localStorage so it stays visible after navigating away and back.
+  const { generating: povGenerating } = usePovJob(id, {
+    onComplete: () => { loadAll(); toast('POV generated', 'success'); },
+    onError: (msg) => toast(`POV generation failed: ${msg}`, 'warn')
+  });
+
+  async function loadAll() {
+    const [acct, dealIntel, povList, snaps] = await Promise.all([
+      api.getAccount(id),
+      api.getDealIntelligence(id).catch(() => ({})),
+      api.listPov(id).catch(() => []),
+      api.listCrmSnapshots(id).catch(() => [])
+    ]);
+    setAccount(acct); setDi(dealIntel); setPovs(povList); setSnapshots(snaps);
+    setLoading(false);
+  }
+  useEffect(() => { setLoading(true); loadAll(); }, [id]);
+
+  // When back online, process any notes saved offline (pending_ai_extraction=1).
+  const pendingRan = useRef(false);
+  useEffect(() => {
+    if (!online || !account) return;
+    const pending = (account.notes || []).filter(n => n.pending_ai_extraction);
+    if (!pending.length || pendingRan.current) return;
+    pendingRan.current = true;
+    runFullExtraction(id, pending[pending.length - 1].id)
+      .then(() => { loadAll(); toast('Processed notes saved offline.', 'success'); })
+      .catch(() => {})
+      .finally(() => { pendingRan.current = false; });
+  }, [online, account, id]);
+
+  async function patchAccount(body) {
+    try {
+      const updated = await api.updateAccount(id, body);
+      setAccount(a => ({ ...a, ...updated }));   // detail topbar + info card update
+      emitAccountUpdated(updated);                // accounts list / dashboard update live
+      return true;
+    } catch (e) { toast(e.message, 'error'); return false; }
+  }
+
+  async function advanceStage(stage) {
+    setGateTarget(null);
+    await patchAccount({ presales_stage: stage });
+    toast(`Stage set to ${stage}`, 'success');
+  }
+
+  async function saveNote() {
+    if (!noteText.trim() || noteText.trim() === NOTE_TEMPLATE.trim()) {
+      toast('Please add some notes before saving.', 'warn');
+      return;
+    }
+    const raw = noteText;
+    try {
+      const note = await api.createNote({ account_id: id, date: todayISO(), raw_notes: raw, note_type: noteType, pending_ai_extraction: online ? 0 : 1 });
+      setNoteText(NOTE_TEMPLATE);
+      if (online) {
+        setExtracting(true);
+        const r = await runFullExtraction(id, note.id).catch(() => null);
+        setExtracting(false);
+        await loadAll();
+        toast(extractionMessage('Note saved', r), r ? 'success' : 'warn');
+      } else { await loadAll(); toast('Note saved offline. Extraction will run when reconnected.', 'warn'); }
+    } catch (e) { toast(`Save failed: ${e.message}`, 'error'); }
+  }
+
+  // Paste and file-drop both submit to the existing /api/transcripts route,
+  // then trigger the same AI extraction pipeline as a note save.
+  async function processTranscript({ text, file }) {
+    const form = new FormData();
+    form.append('account_id', id);
+    form.append('source', file ? 'file_upload' : 'paste');
+    if (file) {
+      form.append('file', file);
+    } else {
+      if (!text || !text.trim()) return;
+      form.append('content', text);
+      form.append('title', 'Pasted transcript');
+    }
+    setExtracting(true);
+    try {
+      const t = await api.uploadTranscript(form);
+      setTranscriptOpen(false);
+      if (online) {
+        const r = await runFullExtraction(id, null, t && t.id).catch(() => null);
+        await loadAll();
+        toast(extractionMessage('Transcript processed', r), r ? 'success' : 'warn');
+      } else {
+        await loadAll();
+        toast('Transcript saved offline. Run AI extract when reconnected.', 'warn');
+      }
+    } catch (e) {
+      toast(`Transcript failed: ${e.message}`, 'error');
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  function openFieldDrawer({ title, value, footNote, save }) {
+    setDrawer({ title, value, history: splitHistory(value), footNote, save });
+  }
+
+  if (loading || !account) return <div className="p-8 text-[12px] text-text-muted">Loading account…</div>;
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* TOPBAR */}
+      <div className="px-5 py-3 border-b border-border flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2.5">
+            <button onClick={() => navigate('/accounts')} className="text-text-dim hover:text-text-primary"><Icon.Back width={16} height={16} /></button>
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: riskDot(account.risk) }} />
+            <span className="text-[15px] font-semibold text-text-primary truncate">{account.account_name}</span>
+            {account.presales_stage && <span className="text-[10px] px-2 py-0.5 rounded bg-[#1a2744] text-accent-blue shrink-0">{account.presales_stage}</span>}
+            {account.escalation && account.escalation !== 'Not Needed' && (
+              <span className="text-[10px] px-2 py-0.5 rounded shrink-0" style={{ background: escalationStyle(account.escalation).bg, color: escalationStyle(account.escalation).text }}>{account.escalation}</span>
+            )}
+          </div>
+          <div className="text-[11px] text-text-muted mt-1 flex flex-wrap items-center gap-x-2">
+            <span>{account.ae_name || account.account_executive || 'No AE'}</span>
+            <span className="text-text-dim">·</span><span>{account.industry || 'No industry'}</span>
+            {account.opportunity_value != null && <><span className="text-text-dim">·</span><span>${Number(account.opportunity_value).toLocaleString()}</span></>}
+            {account.close_date && <><span className="text-text-dim">·</span><span>close {formatDate(account.close_date)}</span></>}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={() => setExportOpen(true)} className="flex items-center gap-1.5 bg-card border border-border rounded px-3 py-1.5 text-[12px] text-text-primary hover:border-accent-blue/40"><Icon.Export width={12} height={12} /> Export</button>
+          <button onClick={() => setEditOpen(true)} className="flex items-center gap-1.5 bg-card border border-border rounded px-3 py-1.5 text-[12px] text-text-primary hover:border-accent-blue/40"><Icon.Edit width={12} height={12} /> Edit</button>
+        </div>
+      </div>
+
+      {/* STAGE BAR */}
+      <div className="px-5 py-2 border-b border-border flex items-center gap-1 overflow-x-auto">
+        {STAGE_BAR.map(stage => {
+          const st = stageBarStyle(stage, account.presales_stage);
+          return (
+            <button key={stage} onClick={() => stage === account.presales_stage ? null : setGateTarget(stage)}
+              className="text-[10px] px-2.5 py-1 rounded whitespace-nowrap transition hover:opacity-80"
+              style={{ background: st.bg, color: st.text }}>
+              {stage}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* THREE COLUMNS */}
+      <div className="flex-1 overflow-auto p-3">
+        <div className="grid gap-3" style={{ gridTemplateColumns: '220px 1fr 240px' }}>
+          {/* LEFT */}
+          <div className="flex flex-col gap-3 min-w-0">
+            <Section title="Account info" icon={Icon.Folder} right={<button onClick={() => setEditOpen(true)} className="text-text-dim hover:text-accent-blue"><Icon.Edit width={12} height={12} /></button>}>
+              <div className="flex flex-col gap-1.5 text-[11px]">
+                <Row label="Industry" value={account.industry} />
+                <Row label="AE" value={account.ae_name || account.account_executive} />
+                <Row label="Close date" value={account.close_date && formatDate(account.close_date)} />
+                <Row label="Value" value={account.opportunity_value != null ? `$${Number(account.opportunity_value).toLocaleString()}` : null} />
+                <div className="flex justify-between gap-2">
+                  <span className="text-text-dim">Risk</span>
+                  <span className="flex items-center gap-1.5 text-text-secondary">
+                    <span className="w-2 h-2 rounded-full" style={{ background: riskDot(account.risk) }} />
+                    {RISK_OPTIONS.find(r => r.value === account.risk)?.label || '—'}
+                  </span>
+                </div>
+                {account.pov_success_plan_url && <a href={account.pov_success_plan_url} target="_blank" rel="noreferrer" className="text-accent-blue hover:underline truncate">POV success plan ↗</a>}
+                {account.jira_ticket_url && <a href={account.jira_ticket_url} target="_blank" rel="noreferrer" className="text-accent-blue hover:underline truncate">Jira ticket ↗</a>}
+              </div>
+            </Section>
+
+            <ContactsCard account={account} onChange={loadAll} />
+            <StageGateCard account={account} onAdvance={(s) => setGateTarget(s)} />
+
+            <CrmSnapshotCard account={account} snapshot={snapshots[0]} onChange={loadAll} />
+
+            <ActivePovCard pov={activePov} accountId={id} navigate={navigate} generating={povGenerating} />
+          </div>
+
+          {/* CENTER */}
+          <div className="flex flex-col gap-3 min-w-0">
+            <Section title="AI summary" icon={Icon.Sparkles}
+              right={account.ai_summary_updated_at && <span className="text-[10px] text-text-dim">{formatDate(account.ai_summary_updated_at)}</span>}>
+              <div className="text-[11px] text-text-secondary leading-relaxed whitespace-pre-wrap mb-3 max-h-32 overflow-hidden">
+                {account.ai_summary || <span className="text-text-dim">No summary yet.</span>}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Pane title="Technical drivers" value={account.ai_technical_drivers}
+                  onExpand={() => openFieldDrawer({ title: 'Technical drivers', value: account.ai_technical_drivers, footNote: 'AI extracted', save: (t) => patchAccount({ ai_technical_drivers: t }) })} />
+                <Pane title="Environment" value={account.ai_environment}
+                  onExpand={() => openFieldDrawer({ title: 'Environment', value: account.ai_environment, footNote: 'AI extracted', save: (t) => patchAccount({ ai_environment: t }) })} />
+              </div>
+            </Section>
+
+            <Section title="Account qualification" icon={Icon.Check}>
+              <div className="grid grid-cols-2 gap-2">
+                {QUAL_FIELDS.map(f => {
+                  const entry = di[f.key] || { value: '' };
+                  const has = !!(entry.value && entry.value.trim());
+                  return (
+                    <button key={f.key} onClick={() => openFieldDrawer({
+                      title: f.label, value: entry.value, footNote: 'AI extracted · merges on note save',
+                      save: (t) => api.updateDealIntelligence(id, f.key, { value: t, mode: 'replace' }).then(() => loadAll())
+                    })} className="text-left border border-border rounded p-2 hover:border-accent-blue/40 transition">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: has ? '#3fb950' : '#f85149' }} />
+                        <span className="text-[10px] font-medium text-text-primary">{f.label}</span>
+                      </div>
+                      <div className="text-[10px] text-text-muted leading-snug overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                        {has ? entry.value : <span className="text-text-dim">Empty</span>}
+                      </div>
+                      {has && entry.last_updated && <div className="text-[9px] text-text-dim mt-1">AI extracted · {formatDate(entry.last_updated)}</div>}
+                    </button>
+                  );
+                })}
+              </div>
+            </Section>
+
+            <Section title="New note" icon={Icon.Note}>
+              <div className="flex items-center gap-2 mb-2 text-[11px]">
+                <span className="text-text-dim">Date: {todayISO()}</span>
+                <span className="text-text-dim">·</span>
+                <span className="text-text-dim">Type:</span>
+                <select value={noteType} onChange={e => setNoteType(e.target.value)}
+                  className="bg-[#0a0d11] border border-border rounded px-1.5 py-0.5 text-[11px] text-text-primary focus:outline-none focus:border-accent-blue/50">
+                  {NOTE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <textarea
+                value={noteText}
+                onChange={e => setNoteText(e.target.value)}
+                rows={20}
+                className="w-full bg-[#0a0d11] border border-border rounded px-3 py-2 text-[11px] text-text-primary font-mono leading-relaxed focus:outline-none focus:border-accent-blue/50 resize-y"
+              />
+              <div className="flex justify-end gap-2 mt-2">
+                <button onClick={() => setTranscriptOpen(true)}
+                  className="bg-card border border-border rounded px-3 py-1.5 text-[12px] text-text-primary hover:border-accent-blue/40">
+                  Paste transcript
+                </button>
+                <button onClick={saveNote} disabled={extracting}
+                  className="bg-accent-blue/15 text-accent-blue border border-accent-blue/30 rounded px-3 py-1.5 text-[12px] font-medium hover:bg-accent-blue/25 disabled:opacity-50">
+                  {extracting ? 'Extracting deal intelligence…' : 'Save + AI extract'}
+                </button>
+              </div>
+            </Section>
+
+            <TranscriptDropZone onFile={(file) => processTranscript({ file })} busy={extracting} />
+
+            <Section title={`Note history (${(account.notes || []).length})`} icon={Icon.Note}>
+              <div className="flex flex-col gap-2">
+                {(account.notes || []).length === 0 && <div className="text-[11px] text-text-dim">No notes yet.</div>}
+                {(account.notes || []).map(n => <NoteRow key={n.id} note={n} />)}
+              </div>
+            </Section>
+
+            <AccountFiles accountId={id} />
+          </div>
+
+          {/* RIGHT */}
+          <div className="flex flex-col gap-3 min-w-0">
+            <NextStepsCard account={account} onChange={loadAll} />
+            <Section title="Email draft" icon={Icon.Note}>
+              <button onClick={() => setEmailOpen(true)} disabled={!online} title={!online ? 'AI features require internet connection' : undefined}
+                className="w-full text-[10px] py-1.5 rounded bg-accent-blue/15 text-accent-blue border border-accent-blue/30 hover:bg-accent-blue/25 disabled:opacity-40">Draft an email…</button>
+            </Section>
+            <PrereqCard pov={activePov} />
+            <SePrepCard pov={activePov}
+              onExpand={() => activePov && openFieldDrawer({ title: 'SE prep notes (Private)', value: activePov.se_prep_notes, footNote: 'Private — never exported unless selected', save: (t) => api.updatePov(id, activePov.id, { se_prep_notes: t }).then(() => loadAll()) })} />
+          </div>
+        </div>
+      </div>
+
+      {drawer && <FieldDrawer title={drawer.title} value={drawer.value} history={drawer.history} footNote={drawer.footNote}
+        onSave={async (t) => { await drawer.save(t); }} onClose={() => setDrawer(null)} />}
+      {exportOpen && <ExportModal accountId={id} accountName={account.account_name} account={account} di={di} snapshot={snapshots[0]} pov={activePov} onClose={() => setExportOpen(false)} />}
+      {gateTarget && <StageGateModal accountId={id} targetStage={gateTarget} onAdvance={advanceStage} onClose={() => setGateTarget(null)} />}
+      {editOpen && <EditAccountModal account={account} onClose={() => setEditOpen(false)} onSave={async (b) => { const ok = await patchAccount(b); if (ok) setEditOpen(false); }} />}
+      {emailOpen && <EmailDraftModal accountId={id} online={online} onClose={() => setEmailOpen(false)} />}
+      {transcriptOpen && <TranscriptModal onClose={() => setTranscriptOpen(false)} onSave={(t) => processTranscript({ text: t })} />}
+    </div>
+  );
+}
+
+function Row({ label, value }) {
+  return (
+    <div className="flex justify-between gap-2">
+      <span className="text-text-dim">{label}</span>
+      <span className="text-text-secondary text-right truncate">{value || '—'}</span>
+    </div>
+  );
+}
+
+function Pane({ title, value, onExpand }) {
+  return (
+    <div className="border border-border rounded p-2 bg-[#080e1a] group relative">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[10px] font-medium text-text-muted">{title}</span>
+        <button onClick={onExpand} className="text-text-dim hover:text-accent-blue opacity-0 group-hover:opacity-100"><Icon.Eye width={12} height={12} /></button>
+      </div>
+      <div className="text-[10px] text-text-secondary leading-snug overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
+        {value || <span className="text-text-dim">—</span>}
+      </div>
+    </div>
+  );
+}
+
+function NoteRow({ note }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border border-border rounded">
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-2 px-2.5 py-1.5 bg-[#10141b] text-left">
+        <span className="text-[11px] text-text-primary">{formatDate(note.date)}</span>
+        {note.note_type && <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#1a2744] text-accent-blue">{note.note_type}</span>}
+        <span className="ml-auto text-text-dim text-[10px]">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && <div className="px-2.5 py-2 text-[11px] text-text-secondary whitespace-pre-wrap leading-relaxed">{note.raw_notes || <span className="text-text-dim">empty</span>}</div>}
+    </div>
+  );
+}
+
+const CONTACT_INPUT = 'bg-[#0a0d11] border border-border rounded px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:border-accent-blue/50 w-full';
+const emptyContactForm = () => ({ name: '', title: '', email: '', phone: '', meddpicc_role: '' });
+
+function ContactFields({ form, setForm }) {
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+  return (
+    <>
+      <div className="flex gap-1.5">
+        <input placeholder="Name" value={form.name} onChange={set('name')} className={CONTACT_INPUT} />
+        <input placeholder="Title" value={form.title} onChange={set('title')} className={CONTACT_INPUT} />
+      </div>
+      <div className="flex gap-1.5">
+        <input placeholder="Email" value={form.email} onChange={set('email')} className={CONTACT_INPUT} />
+        <input placeholder="Phone" value={form.phone} onChange={set('phone')} className={CONTACT_INPUT} />
+      </div>
+      <select value={form.meddpicc_role} onChange={set('meddpicc_role')} className={CONTACT_INPUT}>
+        {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+      </select>
+    </>
+  );
+}
+
+function ContactsCard({ account, onChange }) {
+  const toast = useToast();
+  const [adding, setAdding] = useState(false);
+  const [addForm, setAddForm] = useState(emptyContactForm());
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState(emptyContactForm());
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [removingId, setRemovingId] = useState(null);
+
+  function openEdit(c) {
+    setAdding(false);
+    setConfirmDelete(false);
+    setEditingId(c.id);
+    setEditForm({ name: c.name || '', title: c.title || '', email: c.email || '', phone: c.phone || '', meddpicc_role: c.meddpicc_role || '' });
+  }
+  function openAdd() {
+    setEditingId(null);
+    setAddForm(emptyContactForm());
+    setAdding(true);
+  }
+
+  async function add() {
+    if (!addForm.name.trim()) return;
+    await api.createContact({ account_id: account.id, ...addForm, meddpicc_role: addForm.meddpicc_role || null });
+    setAddForm(emptyContactForm());
+    setAdding(false);
+    onChange();
+    toast('Contact added', 'success');
+  }
+  async function saveEdit() {
+    if (!editForm.name.trim()) return;
+    await api.updateContact(editingId, { ...editForm, meddpicc_role: editForm.meddpicc_role || null });
+    setEditingId(null);
+    onChange();
+    toast('Saved', 'success');
+  }
+  function doDelete(c) {
+    setRemovingId(c.id);
+    setTimeout(async () => {
+      await api.deleteContact(c.id).catch(() => {});
+      setRemovingId(null);
+      setEditingId(null);
+      onChange();
+    }, 220);
+  }
+
+  const contacts = account.contacts || [];
+  return (
+    <Section title="Contacts" icon={Icon.Folder} right={<button onClick={openAdd} className="text-text-dim hover:text-accent-blue"><Icon.Plus width={12} height={12} /></button>}>
+      <div className="flex flex-col gap-2">
+        {contacts.map(c => {
+          const badge = ROLE_BADGES[c.meddpicc_role];
+          const editing = editingId === c.id;
+          return (
+            <div key={c.id}
+              className="transition-opacity duration-200"
+              style={{ opacity: removingId === c.id ? 0 : 1 }}>
+              {editing ? (
+                <div className="flex flex-col gap-1.5 border border-accent-blue/30 rounded p-2 bg-[#0a1628]">
+                  <ContactFields form={editForm} setForm={setEditForm} />
+                  <div className="flex items-center gap-2">
+                    <button onClick={saveEdit} className="text-[10px] text-accent-green hover:underline">Save</button>
+                    <button onClick={() => setEditingId(null)} className="text-[10px] text-text-muted hover:text-text-primary">Cancel</button>
+                    <span className="ml-auto">
+                      {confirmDelete ? (
+                        <span className="text-[10px] text-accent-red">Remove {editForm.name || 'contact'}? <button onClick={() => doDelete(c)} className="underline">Yes</button> / <button onClick={() => setConfirmDelete(false)} className="underline">No</button></span>
+                      ) : (
+                        <button onClick={() => setConfirmDelete(true)} className="text-[10px] text-accent-red hover:underline">Delete</button>
+                      )}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="group flex items-start gap-2">
+                  <span className="w-6 h-6 rounded flex items-center justify-center text-[9px] font-semibold shrink-0 mt-0.5" style={{ background: '#1a2744', color: '#58a6ff' }}>{initials(c.name)}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] font-medium text-text-primary truncate flex items-center gap-1">{c.name}{c.auto_extracted ? <Icon.Sparkles width={9} height={9} className="text-accent-purple" /> : null}</div>
+                    {c.title && <div className="text-[10px] text-text-dim truncate">{c.title}</div>}
+                    {c.email && <div className="text-[10px] text-text-dim truncate">{c.email}</div>}
+                    {c.phone && <div className="text-[10px] text-text-dim truncate">{c.phone}</div>}
+                  </div>
+                  {badge && <span className="text-[9px] px-1.5 py-0.5 rounded shrink-0" style={{ background: `${badge.color}22`, color: badge.color }}>{badge.label}</span>}
+                  <button onClick={() => openEdit(c)} className="text-text-dim hover:text-accent-blue shrink-0 opacity-0 group-hover:opacity-100 transition"><Icon.Edit width={11} height={11} /></button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {contacts.length === 0 && !adding && <div className="text-[10px] text-text-dim">No contacts.</div>}
+
+        {adding && (
+          <div className="flex flex-col gap-1.5 border border-border rounded p-2">
+            <ContactFields form={addForm} setForm={setAddForm} />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setAdding(false)} className="text-[10px] text-text-muted hover:text-text-primary">Cancel</button>
+              <button onClick={add} className="text-[10px] text-accent-green hover:underline">Add</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Section>
+  );
+}
+
+function StageGateCard({ account, onAdvance }) {
+  const stage = account.presales_stage;
+  const gates = STAGE_GATES[stage] || [];
+  const [state, setState] = useState({});
+  useEffect(() => {
+    if (stage) api.getStageGates(account.id, stage).then(r => setState(r.gates || {})).catch(() => {});
+  }, [account.id, stage]);
+  async function toggle(key) {
+    const next = !(state[key] && state[key].completed);
+    setState(s => ({ ...s, [key]: { completed: next } }));
+    await api.updateStageGate(account.id, stage, key, next).catch(() => {});
+  }
+  const next = nextStage(stage);
+  return (
+    <Section title="Stage gates" icon={Icon.Check}>
+      {account.escalation && account.escalation !== 'Not Needed' && (
+        <div className="mb-2 text-[10px] px-2 py-1.5 rounded bg-[#2d2200]/50 border border-[#3d2f00] text-accent-yellow flex items-center justify-between gap-2">
+          <span>⚠ {account.escalation}</span>
+          {account.jira_ticket_url && <a href={account.jira_ticket_url} target="_blank" rel="noreferrer" className="underline shrink-0">Jira</a>}
+        </div>
+      )}
+      {gates.length === 0 ? <div className="text-[10px] text-text-dim">No gates for this stage.</div> : (
+        <div className="flex flex-col gap-1.5">
+          {gates.map(g => {
+            const done = state[g.key] && state[g.key].completed;
+            return (
+              <button key={g.key} onClick={() => toggle(g.key)} className="flex items-start gap-2 text-left">
+                <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center text-[9px] shrink-0 mt-0.5 ${done ? 'bg-accent-green border-accent-green text-black' : 'border-text-dim'}`}>{done ? '✓' : ''}</span>
+                <span className={`text-[10px] ${done ? 'text-text-secondary' : 'text-text-muted'}`}>{g.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {next && <button onClick={() => onAdvance(next)} className="w-full mt-2 text-[10px] py-1.5 rounded bg-accent-blue/15 text-accent-blue border border-accent-blue/30 hover:bg-accent-blue/25">Advance to {next}</button>}
+    </Section>
+  );
+}
+
+function CrmSnapshotCard({ account, snapshot, onChange }) {
+  const toast = useToast();
+  const online = useOnline();
+  const [generating, setGenerating] = useState(false);
+  const text = snapshot?.snapshot_text || '';
+
+  async function generate() {
+    setGenerating(true);
+    try {
+      await generateCRMSnapshot(account.id);
+      await onChange();
+      toast('Snapshot generated', 'success');
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      setGenerating(false);
+    }
+  }
+  function copy() {
+    if (!text) return;
+    navigator.clipboard?.writeText(text);
+    toast('Snapshot copied', 'success');
+  }
+
+  return (
+    <Section title="CRM snapshot" icon={Icon.Sync}
+      right={
+        <div className="flex items-center gap-2">
+          {text && <button onClick={copy} className="text-[10px] text-text-muted hover:text-accent-blue">Copy</button>}
+          <button onClick={generate} disabled={generating || !online}
+            title={!online ? 'AI features require internet connection' : 'Generate new snapshot'}
+            className="flex items-center gap-1 text-[10px] text-accent-blue hover:underline disabled:opacity-40">
+            {generating
+              ? <span className="inline-block w-2.5 h-2.5 border border-accent-blue/40 border-t-accent-blue rounded-full animate-spin" />
+              : <Icon.Refresh width={11} height={11} />}
+            {generating ? 'Generating…' : 'Generate'}
+          </button>
+        </div>
+      }>
+      <div className="text-[10px] text-text-dim mb-1.5">Stage: {account.presales_stage || '—'}</div>
+      {text
+        ? <div className="text-[11px] text-text-secondary leading-relaxed whitespace-pre-wrap">{text}</div>
+        : <div className="text-[11px] text-text-dim">No snapshot yet. Generate one or save a note.</div>}
+      {text && <div className="text-[10px] text-text-dim mt-1.5 text-right">{text.length} / {CRM_SNAPSHOT_MAX}</div>}
+    </Section>
+  );
+}
+
+function ActivePovCard({ pov, accountId, navigate, generating }) {
+  const pct = { Draft: 10, Sent: 30, 'Kicked Off': 55, 'In Progress': 80, Closed: 100 }[pov?.status] || 0;
+  const daysRemaining = pov?.end_date ? Math.round((new Date(pov.end_date) - new Date()) / 86400000) : null;
+  return (
+    <Section title="Active POV" icon={Icon.File}
+      right={<button onClick={() => navigate(`/accounts/${accountId}/pov-generator`)} className="text-[10px] text-accent-blue hover:underline">+ New</button>}>
+      {generating && (
+        <div className="flex items-center gap-2 mb-2 px-2 py-1.5 rounded bg-accent-blue/10 border border-accent-blue/30">
+          <span className="inline-block w-2.5 h-2.5 border border-accent-blue/40 border-t-accent-blue rounded-full animate-spin" />
+          <span className="text-[10px] text-accent-blue">POV generating…</span>
+        </div>
+      )}
+      {pov ? (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-text-primary flex-1">POV #{pov.id}</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#1a2744] text-accent-blue">{pov.status}</span>
+          </div>
+          <div className="h-1.5 bg-[#10141b] rounded overflow-hidden"><div className="h-full bg-accent-blue" style={{ width: `${pct}%` }} /></div>
+          <div className="text-[10px] text-text-dim">{pov.start_date ? formatDate(pov.start_date) : '—'} → {pov.end_date ? formatDate(pov.end_date) : '—'}{daysRemaining != null && daysRemaining >= 0 ? ` · ${daysRemaining}d left` : ''}</div>
+          <button onClick={() => navigate(`/accounts/${accountId}/pov-generator/${pov.id}`)} className="text-[10px] py-1.5 rounded bg-card border border-border text-text-primary hover:border-accent-blue/40">Open</button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <div className="text-[10px] text-text-dim">No POV yet.</div>
+          <button onClick={() => navigate(`/accounts/${accountId}/pov-generator`)} className="text-[10px] py-1.5 rounded bg-accent-blue/15 text-accent-blue border border-accent-blue/30 hover:bg-accent-blue/25">Generate POV</button>
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function NextStepsCard({ account, onChange }) {
+  const [text, setText] = useState('');
+  async function toggle(s) { await api.updateNextStep(s.id, { completed: !s.completed }); onChange(); }
+  async function add() {
+    if (!text.trim()) return;
+    await api.createNextStep({ account_id: account.id, text, source: 'manual' });
+    setText(''); onChange();
+  }
+  return (
+    <Section title="Next steps" icon={Icon.Check}>
+      <div className="flex flex-col gap-1.5">
+        {(account.next_steps || []).map(s => (
+          <div key={s.id} className="flex items-start gap-2">
+            <button onClick={() => toggle(s)} className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${s.completed ? 'bg-accent-green border-accent-green' : 'border-text-dim'}`}>{s.completed && <Icon.Check width={9} height={9} className="text-black" />}</button>
+            <div className={`text-[10px] flex-1 ${s.completed ? 'line-through text-text-dim' : 'text-text-secondary'}`}>{s.text} {s.source === 'ai' && <Icon.Sparkles width={8} height={8} className="inline text-accent-purple" />}</div>
+          </div>
+        ))}
+        <div className="flex gap-1 mt-1">
+          <input value={text} onChange={e => setText(e.target.value)} placeholder="Add step…" className="flex-1 bg-[#0a0d11] border border-border rounded px-2 py-1 text-[10px] text-text-primary" />
+          <button onClick={add} className="text-accent-blue px-1"><Icon.Plus width={12} height={12} /></button>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function PrereqCard({ pov }) {
+  const [checked, setChecked] = useState({});
+  const items = useMemo(() => {
+    const base = ['Network access to install host', 'Admin credentials available', 'License entitlement confirmed'];
+    const text = pov ? JSON.stringify(pov.section_texts || {}).toLowerCase() : '';
+    if (text.includes('air-gapped') || text.includes('air gapped') || text.includes('offline license')) {
+      base.push('Offline license staged (air-gapped · 5 business day lead time)');
+    }
+    return base;
+  }, [pov]);
+  if (!pov) return <Section title="POV prerequisites" icon={Icon.Check}><div className="text-[10px] text-text-dim">No active POV.</div></Section>;
+  return (
+    <Section title="POV prerequisites" icon={Icon.Check}>
+      <div className="flex flex-col gap-1.5">
+        {items.map((it, i) => {
+          const on = checked[i];
+          const airgap = /air-gapped/.test(it);
+          return (
+            <button key={i} onClick={() => setChecked(c => ({ ...c, [i]: !c[i] }))} className="flex items-start gap-2 text-left">
+              <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center text-[9px] shrink-0 mt-0.5 ${on ? 'bg-accent-green border-accent-green text-black' : airgap ? 'border-accent-red' : 'border-text-dim'}`}>{on ? '✓' : ''}</span>
+              <span className={`text-[10px] ${on ? 'text-text-secondary' : airgap ? 'text-accent-red' : 'text-text-muted'}`}>{it}</span>
+            </button>
+          );
+        })}
+        {(pov.sources || []).slice(0, 2).map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer" className="text-[9px] text-accent-blue hover:underline truncate">{u}</a>)}
+      </div>
+    </Section>
+  );
+}
+
+function SePrepCard({ pov, onExpand }) {
+  return (
+    <Section title="SE prep notes" icon={Icon.Eye}
+      right={<span className="text-[9px] px-1.5 py-0.5 rounded bg-[#2d2200] text-accent-yellow">🔒 Private</span>}>
+      {pov && pov.se_prep_notes ? (
+        <>
+          <div className="text-[10px] text-text-secondary leading-snug overflow-hidden whitespace-pre-wrap" style={{ display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical' }}>{pov.se_prep_notes}</div>
+          <button onClick={onExpand} className="text-[10px] text-accent-blue hover:underline mt-1">Edit</button>
+        </>
+      ) : <div className="text-[10px] text-text-dim">Generate a POV to get SE prep notes. Never included in customer exports.</div>}
+    </Section>
+  );
+}
+
+function buildAccountForm(account) {
+  return {
+    account_name: account.account_name || '',
+    industry: account.industry || '',
+    // Existing accounts store the AE in the legacy `account_executive` column;
+    // fall back to it (same as the detail view) so the field pre-fills.
+    ae_name: account.ae_name || account.account_executive || '',
+    close_date: account.close_date || '',
+    opportunity_value: account.opportunity_value ?? '',
+    risk: account.risk || '',
+    presales_stage: account.presales_stage || '',
+    escalation: account.escalation || '',
+    jira_ticket_url: account.jira_ticket_url || '',
+    pov_success_plan_url: account.pov_success_plan_url || ''
+  };
+}
+
+function EditAccountModal({ account, onClose, onSave }) {
+  const [form, setForm] = useState(() => buildAccountForm(account));
+  // Re-seed from the account if it changes (e.g. loads after mount or switches).
+  useEffect(() => { setForm(buildAccountForm(account)); }, [account?.id]);
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+  const inputCls = 'w-full bg-[#0a0d11] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary focus:outline-none focus:border-accent-blue/50';
+  return (
+    <Modal title="Edit account" onClose={onClose} width="max-w-lg"
+      footer={<><button onClick={onClose} className="text-[12px] text-text-muted">Cancel</button>
+        <button onClick={() => onSave({ ...form, opportunity_value: form.opportunity_value === '' ? null : Number(form.opportunity_value) })} className="bg-accent-blue/15 text-accent-blue border border-accent-blue/30 rounded px-3 py-1.5 text-[12px] font-medium">Save</button></>}>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Account name" wide><input className={inputCls} value={form.account_name} onChange={set('account_name')} /></Field>
+        <Field label="Industry"><input className={inputCls} value={form.industry} onChange={set('industry')} /></Field>
+        <Field label="AE"><input className={inputCls} value={form.ae_name} onChange={set('ae_name')} /></Field>
+        <Field label="Close date"><DatePicker selected={parseISODate(form.close_date)} onChange={(d) => setForm(f => ({ ...f, close_date: toISODate(d) }))} dateFormat="MMM d, yyyy" placeholderText="Select date" className={inputCls} popperPlacement="bottom-start" /></Field>
+        <Field label="Opportunity value"><input type="number" className={inputCls} value={form.opportunity_value} onChange={set('opportunity_value')} /></Field>
+        <Field label="Risk"><select className={inputCls} value={form.risk} onChange={set('risk')}><option value="">—</option>{RISK_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}</select></Field>
+        <Field label="Presales stage"><select className={inputCls} value={form.presales_stage} onChange={set('presales_stage')}><option value="">—</option>{PRESALES_STAGES.map(s => <option key={s} value={s}>{s}</option>)}</select></Field>
+        <Field label="Escalation"><select className={inputCls} value={form.escalation} onChange={set('escalation')}><option value="">—</option>{ESCALATION_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}</select></Field>
+        <Field label="Jira ticket URL"><input className={inputCls} value={form.jira_ticket_url} onChange={set('jira_ticket_url')} /></Field>
+        <Field label="POV success plan URL" wide><input className={inputCls} value={form.pov_success_plan_url} onChange={set('pov_success_plan_url')} /></Field>
+      </div>
+      {(form.escalation === 'Tech Blocked' || form.escalation === 'Tech Challenged') && !form.jira_ticket_url.trim() &&
+        <div className="text-[11px] text-accent-yellow mt-3">Jira ticket URL is required for this escalation.</div>}
+    </Modal>
+  );
+}
+
+function Field({ label, children, wide }) {
+  return <div className={wide ? 'col-span-2' : ''}><label className="text-[10px] text-text-muted block mb-1">{label}</label>{children}</div>;
+}
+
+function EmailDraftModal({ accountId, online, onClose }) {
+  const [type, setType] = useState('pov-followup');
+  const [custom, setCustom] = useState('');
+  const [result, setResult] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+  async function generate() {
+    setBusy(true);
+    try { setResult(await api.emailDraft(accountId, { email_type: type, custom_prompt: custom })); }
+    catch (e) { toast(e.message, 'error'); }
+    finally { setBusy(false); }
+  }
+  return (
+    <Modal title="Draft email" onClose={onClose} width="max-w-xl"
+      footer={<><button onClick={onClose} className="text-[12px] text-text-muted">Close</button>
+        <button onClick={generate} disabled={busy || !online} title={!online ? 'AI features require internet connection' : undefined} className="bg-accent-blue/15 text-accent-blue border border-accent-blue/30 rounded px-3 py-1.5 text-[12px] font-medium disabled:opacity-40">{busy ? 'Generating…' : 'Generate draft'}</button></>}>
+      <div className="flex flex-col gap-2">
+        <select value={type} onChange={e => setType(e.target.value)} className="bg-[#0a0d11] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary">
+          {EMAIL_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
+        {type === 'custom' && <input value={custom} onChange={e => setCustom(e.target.value)} placeholder="Custom instructions…" className="bg-[#0a0d11] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary" />}
+        {result && (
+          <div className="border border-border rounded p-3 flex flex-col gap-2">
+            <div className="text-[12px] text-text-primary font-medium">{result.subject}</div>
+            <div className="text-[11px] text-text-secondary whitespace-pre-wrap leading-relaxed">{result.body}</div>
+            <button onClick={() => { navigator.clipboard?.writeText(`${result.subject}\n\n${result.body}`); toast('Copied', 'success'); }} className="self-end text-[11px] text-accent-blue hover:underline">Copy</button>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function TranscriptModal({ onClose, onSave }) {
+  const [text, setText] = useState('');
+  return (
+    <Modal title="Paste transcript" onClose={onClose} width="max-w-2xl"
+      footer={<><button onClick={onClose} className="text-[12px] text-text-muted">Cancel</button>
+        <button onClick={() => onSave(text)} disabled={!text.trim()} className="bg-accent-blue/15 text-accent-blue border border-accent-blue/30 rounded px-3 py-1.5 text-[12px] font-medium disabled:opacity-40">Submit</button></>}>
+      <label className="text-[12px] text-text-muted block mb-1.5">Paste raw transcript text below</label>
+      <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Paste call transcript…" rows={14} className="w-full bg-[#0a0d11] border border-border rounded px-3 py-2 text-[12px] text-text-primary focus:outline-none focus:border-accent-blue/50 resize-none" autoFocus />
+    </Modal>
+  );
+}
+
+function TranscriptDropZone({ onFile, busy }) {
+  const [over, setOver] = useState(false);
+  const inputRef = useRef(null);
+  const toast = useToast();
+  const ACCEPT = ['.txt', '.md', '.pdf'];
+
+  function handleFiles(files) {
+    const file = files && files[0];
+    if (!file) return;
+    if (!ACCEPT.some(ext => file.name.toLowerCase().endsWith(ext))) {
+      toast('Unsupported file — use .txt, .md or .pdf', 'warn');
+      return;
+    }
+    onFile(file);
+  }
+
+  return (
+    <div
+      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => { e.preventDefault(); setOver(false); handleFiles(e.dataTransfer.files); }}
+      onClick={() => inputRef.current?.click()}
+      className={`border-2 border-dashed rounded-lg p-5 flex flex-col items-center justify-center gap-1.5 cursor-pointer transition ${over ? 'border-accent-blue bg-accent-blue/10' : 'border-border bg-card hover:border-accent-blue/40'}`}>
+      <Icon.File width={22} height={22} className="text-text-muted" />
+      <div className="text-[12px] text-text-secondary">{busy ? 'Processing transcript…' : 'Drop transcript file here'}</div>
+      <div className="text-[10px] text-text-dim">.txt, .md, .pdf — or click to browse</div>
+      <input ref={inputRef} type="file" accept=".txt,.md,.pdf" className="hidden"
+        onChange={(e) => { handleFiles(e.target.files); e.target.value = ''; }} />
+    </div>
+  );
+}

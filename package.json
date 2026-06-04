@@ -1,0 +1,30 @@
+{
+  "name": "se-notebook",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local SE technical notebook web app",
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,magenta \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "dev:server": "npm run dev --prefix server",
+    "dev:client": "npm run dev --prefix client",
+    "build": "npm run build --prefix client",
+    "start": "node server/index.js",
+    "install:all": "npm install && npm install --prefix server && npm install --prefix client",
+    "import:onenote": "node scripts/import-onenote.js",
+    "service:install": "bash scripts/service.sh install",
+    "service:uninstall": "bash scripts/service.sh uninstall",
+    "service:start": "bash scripts/service.sh start",
+    "service:stop": "bash scripts/service.sh stop",
+    "service:restart": "bash scripts/service.sh restart",
+    "service:status": "bash scripts/service.sh status",
+    "service:logs": "bash scripts/service.sh logs"
+  },
+  "dependencies": {
+    "@xenova/transformers": "2.17.2",
+    "chromadb": "^1.9.2",
+    "docx": "^8.5.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

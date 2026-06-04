@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<t:Tasks xmlns:t="http://schemas.microsoft.com/office/tasks/2019/documenttasks" xmlns:oel="http://schemas.microsoft.com/office/2019/extlst">
+  <t:Task id="{1CF67368-0188-4B39-804C-A0EE2929433A}">
+    <t:Anchor>
+      <t:Comment id="59483142"/>
+    </t:Anchor>
+    <t:History>
+      <t:Event id="{FBE12020-0B51-4111-8CCB-9A562DC9EAC2}" time="2025-02-28T14:06:52.89Z">
+        <t:Attribution userId="S::abrielle.land@opswat.com::8f944409-14ce-4945-a23f-5459cce44003" userProvider="AD" userName="Abrielle Land"/>
+        <t:Anchor>
+          <t:Comment id="59483142"/>
+        </t:Anchor>
+        <t:Create/>
+      </t:Event>
+      <t:Event id="{7D5FB49B-246E-4CC3-AAF7-ADB13A9E9496}" time="2025-02-28T14:06:52.89Z">
+        <t:Attribution userId="S::abrielle.land@opswat.com::8f944409-14ce-4945-a23f-5459cce44003" userProvider="AD" userName="Abrielle Land"/>
+        <t:Anchor>
+          <t:Comment id="59483142"/>
+        </t:Anchor>
+        <t:Assign userId="S::brad.tolaio@opswat.com::699fc65d-58cc-4d2b-b5a2-aa6ef1d7eba3" userProvider="AD" userName="Bradley Brad Tolaio"/>
+      </t:Event>
+      <t:Event id="{19847DE7-700C-4642-AC3F-229325E498B5}" time="2025-02-28T14:06:52.89Z">
+        <t:Attribution userId="S::abrielle.land@opswat.com::8f944409-14ce-4945-a23f-5459cce44003" userProvider="AD" userName="Abrielle Land"/>
+        <t:Anchor>
+          <t:Comment id="59483142"/>
+        </t:Anchor>
+        <t:SetTitle title="@Bradley Brad Tolaio Edit with specific license details for Bluebeam"/>
+      </t:Event>
+    </t:History>
+  </t:Task>
+</t:Tasks>

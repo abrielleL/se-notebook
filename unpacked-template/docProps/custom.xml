@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="2" name="ContentTypeId">
+    <vt:lpwstr>0x0101007E182BECF9A7634FAC0A7775041AFF91</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="3" name="Order">
+    <vt:r8>8885700</vt:r8>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="4" name="xd_Signature">
+    <vt:bool>false</vt:bool>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="5" name="xd_ProgID">
+    <vt:lpwstr/>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="6" name="ComplianceAssetId">
+    <vt:lpwstr/>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="7" name="TemplateUrl">
+    <vt:lpwstr/>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="8" name="_ExtendedDescription">
+    <vt:lpwstr/>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="9" name="MediaServiceImageTags">
+    <vt:lpwstr/>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="10" name="GrammarlyDocumentId">
+    <vt:lpwstr>6d380d17d534e14badcdd80e98e82267926ac3d4fd1c951ff789d2affaa63b68</vt:lpwstr>
+  </property>
+</Properties>
