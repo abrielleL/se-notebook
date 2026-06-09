@@ -4,11 +4,13 @@ const db = require('../db/database');
 const router = express.Router();
 
 function escapeFts(q) {
-  // Wrap each whitespace-separated token in double quotes to defang FTS operators.
+  // Wrap each whitespace-separated token in double quotes to defang FTS
+  // operators, then append `*` so each token is a prefix query — this powers
+  // type-ahead in the global search bar (e.g. "metad" matches "MetaDefender").
   return q
     .split(/\s+/)
     .filter(Boolean)
-    .map(t => `"${t.replace(/"/g, '""')}"`)
+    .map(t => `"${t.replace(/"/g, '""')}"*`)
     .join(' ');
 }
 

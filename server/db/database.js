@@ -45,6 +45,8 @@ addColumn('accounts', 'opportunity_value', 'INTEGER DEFAULT NULL');
 addColumn('accounts', 'ae_name', 'TEXT DEFAULT NULL');
 addColumn('accounts', 'pov_success_plan_url', 'TEXT DEFAULT NULL');
 addColumn('accounts', 'color', 'TEXT DEFAULT NULL');
+// tags: JSON array of tag labels chosen from the managed tag_catalog.
+addColumn('accounts', 'tags', 'TEXT DEFAULT NULL');
 
 // --- contacts additions ---
 // meddpicc_role: internal qualification role; never surfaced as "MEDDPICC" in UI.
@@ -137,6 +139,23 @@ db.exec(`
     deleted_at TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS pov_meetings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pov_id INTEGER NOT NULL REFERENCES pov_drafts(id),
+    type TEXT NOT NULL,            -- 'scoping' | 'kickoff' | 'checkin' | 'wrapup'
+    meeting_date DATE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS tag_catalog (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT NOT NULL UNIQUE,
+    color TEXT DEFAULT '#58a6ff',
+    is_inactive INTEGER DEFAULT 0,   -- accounts with an inactive tag drop out of dashboard active views
+    sort_order INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS pov_jobs (
     id TEXT PRIMARY KEY,
     account_id TEXT NOT NULL REFERENCES accounts(id),
@@ -168,6 +187,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_pov_config_category ON pov_config(category);
   CREATE INDEX IF NOT EXISTS idx_pov_jobs_account ON pov_jobs(account_id);
   CREATE INDEX IF NOT EXISTS idx_account_files_account ON account_files(account_id);
+  CREATE INDEX IF NOT EXISTS idx_pov_meetings_pov ON pov_meetings(pov_id);
 `);
 
 // ---------------------------------------------------------------------------
@@ -359,5 +379,143 @@ const seedManaged = db.transaction((rows) => {
   }
 });
 seedManaged([...POV_DEPLOYMENTS, ...POV_PRODUCTS, ...POV_TECHNOLOGIES, ...POV_FILE_TYPES, ...POV_COMPLIANCE]);
+
+// ---------------------------------------------------------------------------
+// Global search: extend the FTS index beyond notes/transcripts.
+//
+// schema.sql already maintains 'note' and 'transcript' rows via triggers. Here
+// we add triggers for the remaining account-scoped content so a term anywhere
+// — account name/AE/industry, AI summary, a contact's name, a deal field, a
+// file name — resolves back to its account. These tables either gain columns
+// via migrations above (accounts, contacts) or are created in this file
+// (deal_intelligence, account_files), so their triggers must live here, after
+// the columns/tables exist, rather than in schema.sql.
+//
+// `body` repeats the title text so a title-only match still produces a snippet.
+// ---------------------------------------------------------------------------
+db.exec(`
+  -- accounts -> 'account'
+  CREATE TRIGGER IF NOT EXISTS accounts_search_ai AFTER INSERT ON accounts BEGIN
+    INSERT INTO search_index(source_type, source_id, account_id, title, body)
+    VALUES ('account', NEW.id, NEW.id, COALESCE(NEW.account_name, ''),
+      COALESCE(NEW.account_name,'')||' '||COALESCE(NEW.account_executive,'')||' '||COALESCE(NEW.ae_name,'')||' '||
+      COALESCE(NEW.industry,'')||' '||COALESCE(NEW.opportunity_stage,'')||' '||COALESCE(NEW.presales_stage,'')||' '||
+      COALESCE(NEW.ai_summary,'')||' '||COALESCE(NEW.ai_technical_drivers,'')||' '||COALESCE(NEW.ai_environment,'')||' '||
+      COALESCE(NEW.tags,''));
+  END;
+  CREATE TRIGGER IF NOT EXISTS accounts_search_au AFTER UPDATE ON accounts BEGIN
+    DELETE FROM search_index WHERE source_type = 'account' AND source_id = OLD.id;
+    INSERT INTO search_index(source_type, source_id, account_id, title, body)
+    VALUES ('account', NEW.id, NEW.id, COALESCE(NEW.account_name, ''),
+      COALESCE(NEW.account_name,'')||' '||COALESCE(NEW.account_executive,'')||' '||COALESCE(NEW.ae_name,'')||' '||
+      COALESCE(NEW.industry,'')||' '||COALESCE(NEW.opportunity_stage,'')||' '||COALESCE(NEW.presales_stage,'')||' '||
+      COALESCE(NEW.ai_summary,'')||' '||COALESCE(NEW.ai_technical_drivers,'')||' '||COALESCE(NEW.ai_environment,'')||' '||
+      COALESCE(NEW.tags,''));
+  END;
+  CREATE TRIGGER IF NOT EXISTS accounts_search_ad AFTER DELETE ON accounts BEGIN
+    DELETE FROM search_index WHERE source_type = 'account' AND source_id = OLD.id;
+  END;
+
+  -- contacts -> 'contact'
+  CREATE TRIGGER IF NOT EXISTS contacts_search_ai AFTER INSERT ON contacts BEGIN
+    INSERT INTO search_index(source_type, source_id, account_id, title, body)
+    VALUES ('contact', NEW.id, NEW.account_id, COALESCE(NEW.name, ''),
+      COALESCE(NEW.name,'')||' '||COALESCE(NEW.title,'')||' '||COALESCE(NEW.email,'')||' '||COALESCE(NEW.phone,''));
+  END;
+  CREATE TRIGGER IF NOT EXISTS contacts_search_au AFTER UPDATE ON contacts BEGIN
+    DELETE FROM search_index WHERE source_type = 'contact' AND source_id = OLD.id;
+    INSERT INTO search_index(source_type, source_id, account_id, title, body)
+    VALUES ('contact', NEW.id, NEW.account_id, COALESCE(NEW.name, ''),
+      COALESCE(NEW.name,'')||' '||COALESCE(NEW.title,'')||' '||COALESCE(NEW.email,'')||' '||COALESCE(NEW.phone,''));
+  END;
+  CREATE TRIGGER IF NOT EXISTS contacts_search_ad AFTER DELETE ON contacts BEGIN
+    DELETE FROM search_index WHERE source_type = 'contact' AND source_id = OLD.id;
+  END;
+
+  -- deal_intelligence -> 'deal'
+  CREATE TRIGGER IF NOT EXISTS deal_intel_search_ai AFTER INSERT ON deal_intelligence BEGIN
+    INSERT INTO search_index(source_type, source_id, account_id, title, body)
+    VALUES ('deal', NEW.id, NEW.account_id, COALESCE(NEW.field, ''),
+      COALESCE(NEW.field,'')||' '||COALESCE(NEW.value,''));
+  END;
+  CREATE TRIGGER IF NOT EXISTS deal_intel_search_au AFTER UPDATE ON deal_intelligence BEGIN
+    DELETE FROM search_index WHERE source_type = 'deal' AND source_id = OLD.id;
+    INSERT INTO search_index(source_type, source_id, account_id, title, body)
+    VALUES ('deal', NEW.id, NEW.account_id, COALESCE(NEW.field, ''),
+      COALESCE(NEW.field,'')||' '||COALESCE(NEW.value,''));
+  END;
+  CREATE TRIGGER IF NOT EXISTS deal_intel_search_ad AFTER DELETE ON deal_intelligence BEGIN
+    DELETE FROM search_index WHERE source_type = 'deal' AND source_id = OLD.id;
+  END;
+
+  -- account_files -> 'file' (soft-deleted: only index rows with deleted_at IS NULL)
+  CREATE TRIGGER IF NOT EXISTS account_files_search_ai AFTER INSERT ON account_files BEGIN
+    INSERT INTO search_index(source_type, source_id, account_id, title, body)
+    SELECT 'file', NEW.id, NEW.account_id, COALESCE(NEW.original_name, ''),
+      COALESCE(NEW.original_name,'')||' '||COALESCE(NEW.description,'')||' '||COALESCE(NEW.category,'')
+    WHERE NEW.deleted_at IS NULL;
+  END;
+  CREATE TRIGGER IF NOT EXISTS account_files_search_au AFTER UPDATE ON account_files BEGIN
+    DELETE FROM search_index WHERE source_type = 'file' AND source_id = OLD.id;
+    INSERT INTO search_index(source_type, source_id, account_id, title, body)
+    SELECT 'file', NEW.id, NEW.account_id, COALESCE(NEW.original_name, ''),
+      COALESCE(NEW.original_name,'')||' '||COALESCE(NEW.description,'')||' '||COALESCE(NEW.category,'')
+    WHERE NEW.deleted_at IS NULL;
+  END;
+  CREATE TRIGGER IF NOT EXISTS account_files_search_ad AFTER DELETE ON account_files BEGIN
+    DELETE FROM search_index WHERE source_type = 'file' AND source_id = OLD.id;
+  END;
+
+  -- attachments -> 'attachment' (hard delete; original_name is the human name)
+  CREATE TRIGGER IF NOT EXISTS attachments_search_ai AFTER INSERT ON attachments BEGIN
+    INSERT INTO search_index(source_type, source_id, account_id, title, body)
+    VALUES ('attachment', NEW.id, NEW.account_id, COALESCE(NEW.original_name, ''), COALESCE(NEW.original_name, ''));
+  END;
+  CREATE TRIGGER IF NOT EXISTS attachments_search_au AFTER UPDATE ON attachments BEGIN
+    DELETE FROM search_index WHERE source_type = 'attachment' AND source_id = OLD.id;
+    INSERT INTO search_index(source_type, source_id, account_id, title, body)
+    VALUES ('attachment', NEW.id, NEW.account_id, COALESCE(NEW.original_name, ''), COALESCE(NEW.original_name, ''));
+  END;
+  CREATE TRIGGER IF NOT EXISTS attachments_search_ad AFTER DELETE ON attachments BEGIN
+    DELETE FROM search_index WHERE source_type = 'attachment' AND source_id = OLD.id;
+  END;
+`);
+
+// Backfill the newly-indexed source types from existing rows. Triggers only
+// fire on future writes, so without this, accounts/contacts/etc. created before
+// this code shipped would be invisible to search. Rebuilding these five types
+// on every startup is cheap at this scale and self-heals any drift; the
+// trigger-maintained 'note'/'transcript' rows are left untouched.
+const rebuildSearchIndex = db.transaction(() => {
+  db.exec("DELETE FROM search_index WHERE source_type IN ('account','contact','deal','file','attachment')");
+  db.exec(`
+    INSERT INTO search_index(source_type, source_id, account_id, title, body)
+    SELECT 'account', id, id, COALESCE(account_name,''),
+      COALESCE(account_name,'')||' '||COALESCE(account_executive,'')||' '||COALESCE(ae_name,'')||' '||
+      COALESCE(industry,'')||' '||COALESCE(opportunity_stage,'')||' '||COALESCE(presales_stage,'')||' '||
+      COALESCE(ai_summary,'')||' '||COALESCE(ai_technical_drivers,'')||' '||COALESCE(ai_environment,'')||' '||
+      COALESCE(tags,'')
+    FROM accounts;
+
+    INSERT INTO search_index(source_type, source_id, account_id, title, body)
+    SELECT 'contact', id, account_id, COALESCE(name,''),
+      COALESCE(name,'')||' '||COALESCE(title,'')||' '||COALESCE(email,'')||' '||COALESCE(phone,'')
+    FROM contacts;
+
+    INSERT INTO search_index(source_type, source_id, account_id, title, body)
+    SELECT 'deal', id, account_id, COALESCE(field,''), COALESCE(field,'')||' '||COALESCE(value,'')
+    FROM deal_intelligence;
+
+    INSERT INTO search_index(source_type, source_id, account_id, title, body)
+    SELECT 'file', id, account_id, COALESCE(original_name,''),
+      COALESCE(original_name,'')||' '||COALESCE(description,'')||' '||COALESCE(category,'')
+    FROM account_files WHERE deleted_at IS NULL;
+
+    INSERT INTO search_index(source_type, source_id, account_id, title, body)
+    SELECT 'attachment', id, account_id, COALESCE(original_name,''), COALESCE(original_name,'')
+    FROM attachments;
+  `);
+});
+rebuildSearchIndex();
 
 module.exports = db;

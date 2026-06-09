@@ -4,10 +4,11 @@ import DatePicker from 'react-datepicker';
 import { api } from '../lib/api.js';
 import Icon from '../components/Icons.jsx';
 import Modal from '../components/Modal.jsx';
-import ExportModal from '../components/ExportModal.jsx';
+import AccountExportModal from '../components/AccountExportModal.jsx';
 import AccountFiles from '../components/AccountFiles.jsx';
 import StageGateModal from '../components/StageGateModal.jsx';
 import FieldDrawer from '../components/FieldDrawer.jsx';
+import AccountTagEditor from '../components/AccountTagEditor.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { useOnline } from '../lib/offline.jsx';
 import { usePovJob } from '../lib/povJob.js';
@@ -16,9 +17,12 @@ import { runFullExtraction, generateCRMSnapshot, CRM_SNAPSHOT_MAX } from '../lib
 import { formatDate, initials, todayISO, parseISODate, toISODate } from '../lib/stage.js';
 import {
   riskDot, RISK_OPTIONS, escalationStyle, ESCALATION_OPTIONS, QUAL_FIELDS,
-  ROLE_BADGES, ROLE_OPTIONS, STAGE_BAR, STAGE_GATES, nextStage, stageBarStyle,
-  NOTE_TYPES, NOTE_TEMPLATE, EMAIL_TYPES, agingColor, PRESALES_STAGES
+  ROLE_BADGES, ROLE_OPTIONS, STAGE_BAR, EXTRA_STAGES, STAGE_GATES, nextStage, stageBarStyle,
+  EMAIL_TYPES, agingColor, PRESALES_STAGES
 } from '../lib/constants.js';
+
+// Accent color for a terminal stage when it is the account's current stage.
+const EXTRA_STAGE_COLOR = { 'Not Required': '#8b949e', 'Stalled': '#e3b341', 'Canceled': '#f85149' };
 
 // Build the post-save toast, including extracted/updated contacts (STEP 5).
 function extractionMessage(prefix, r) {
@@ -75,9 +79,10 @@ export default function AccountDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
   const [extracting, setExtracting] = useState(false);
+  const [tagCatalog, setTagCatalog] = useState([]);
+  useEffect(() => { api.listTags().then(setTagCatalog).catch(() => {}); }, []);
 
-  const [noteText, setNoteText] = useState(NOTE_TEMPLATE);
-  const [noteType, setNoteType] = useState('General');
+  const [noteText, setNoteText] = useState('');
   const [transcriptOpen, setTranscriptOpen] = useState(false);
 
   const activePov = povs[0] || null;
@@ -130,14 +135,14 @@ export default function AccountDetail() {
   }
 
   async function saveNote() {
-    if (!noteText.trim() || noteText.trim() === NOTE_TEMPLATE.trim()) {
+    if (!noteText.trim()) {
       toast('Please add some notes before saving.', 'warn');
       return;
     }
     const raw = noteText;
     try {
-      const note = await api.createNote({ account_id: id, date: todayISO(), raw_notes: raw, note_type: noteType, pending_ai_extraction: online ? 0 : 1 });
-      setNoteText(NOTE_TEMPLATE);
+      const note = await api.createNote({ account_id: id, date: todayISO(), raw_notes: raw, pending_ai_extraction: online ? 0 : 1 });
+      setNoteText('');
       if (online) {
         setExtracting(true);
         const r = await runFullExtraction(id, note.id).catch(() => null);
@@ -206,6 +211,9 @@ export default function AccountDetail() {
             {account.opportunity_value != null && <><span className="text-text-dim">·</span><span>${Number(account.opportunity_value).toLocaleString()}</span></>}
             {account.close_date && <><span className="text-text-dim">·</span><span>close {formatDate(account.close_date)}</span></>}
           </div>
+          <div className="mt-2">
+            <AccountTagEditor tags={account.tags || []} catalog={tagCatalog} onChange={(tags) => patchAccount({ tags })} />
+          </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button onClick={() => setExportOpen(true)} className="flex items-center gap-1.5 bg-card border border-border rounded px-3 py-1.5 text-[12px] text-text-primary hover:border-accent-blue/40"><Icon.Export width={12} height={12} /> Export</button>
@@ -221,6 +229,20 @@ export default function AccountDetail() {
             <button key={stage} onClick={() => stage === account.presales_stage ? null : setGateTarget(stage)}
               className="text-[10px] px-2.5 py-1 rounded whitespace-nowrap transition hover:opacity-80"
               style={{ background: st.bg, color: st.text }}>
+              {stage}
+            </button>
+          );
+        })}
+        <span className="w-px h-5 bg-border mx-1 shrink-0" />
+        {EXTRA_STAGES.map(stage => {
+          const isCurrent = account.presales_stage === stage;
+          const color = EXTRA_STAGE_COLOR[stage] || '#8b949e';
+          return (
+            <button key={stage} onClick={() => isCurrent ? null : setGateTarget(stage)}
+              className="text-[10px] px-2.5 py-1 rounded whitespace-nowrap border transition hover:opacity-80"
+              style={isCurrent
+                ? { background: `${color}26`, color: color, borderColor: `${color}88` }
+                : { background: 'transparent', color: '#8b949e', borderColor: '#1e2530' }}>
               {stage}
             </button>
           );
@@ -255,7 +277,7 @@ export default function AccountDetail() {
 
             <CrmSnapshotCard account={account} snapshot={snapshots[0]} onChange={loadAll} />
 
-            <ActivePovCard pov={activePov} accountId={id} navigate={navigate} generating={povGenerating} />
+            <ActivePovCard povs={povs} accountId={id} navigate={navigate} generating={povGenerating} onChange={loadAll} />
           </div>
 
           {/* CENTER */}
@@ -300,18 +322,13 @@ export default function AccountDetail() {
             <Section title="New note" icon={Icon.Note}>
               <div className="flex items-center gap-2 mb-2 text-[11px]">
                 <span className="text-text-dim">Date: {todayISO()}</span>
-                <span className="text-text-dim">·</span>
-                <span className="text-text-dim">Type:</span>
-                <select value={noteType} onChange={e => setNoteType(e.target.value)}
-                  className="bg-[#0a0d11] border border-border rounded px-1.5 py-0.5 text-[11px] text-text-primary focus:outline-none focus:border-accent-blue/50">
-                  {NOTE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
               </div>
               <textarea
                 value={noteText}
                 onChange={e => setNoteText(e.target.value)}
                 rows={20}
-                className="w-full bg-[#0a0d11] border border-border rounded px-3 py-2 text-[11px] text-text-primary font-mono leading-relaxed focus:outline-none focus:border-accent-blue/50 resize-y"
+                placeholder="Type or paste your notes…"
+                className="w-full bg-[#0a0d11] border border-border rounded px-3 py-2 text-[11px] text-text-primary placeholder-text-dim font-mono leading-relaxed focus:outline-none focus:border-accent-blue/50 resize-y"
               />
               <div className="flex justify-end gap-2 mt-2">
                 <button onClick={() => setTranscriptOpen(true)}
@@ -353,7 +370,7 @@ export default function AccountDetail() {
 
       {drawer && <FieldDrawer title={drawer.title} value={drawer.value} history={drawer.history} footNote={drawer.footNote}
         onSave={async (t) => { await drawer.save(t); }} onClose={() => setDrawer(null)} />}
-      {exportOpen && <ExportModal accountId={id} accountName={account.account_name} account={account} di={di} snapshot={snapshots[0]} pov={activePov} onClose={() => setExportOpen(false)} />}
+      {exportOpen && <AccountExportModal accountId={id} accountName={account.account_name} account={account} di={di} snapshot={snapshots[0]} pov={activePov} onClose={() => setExportOpen(false)} />}
       {gateTarget && <StageGateModal accountId={id} targetStage={gateTarget} onAdvance={advanceStage} onClose={() => setGateTarget(null)} />}
       {editOpen && <EditAccountModal account={account} onClose={() => setEditOpen(false)} onSave={async (b) => { const ok = await patchAccount(b); if (ok) setEditOpen(false); }} />}
       {emailOpen && <EmailDraftModal accountId={id} online={online} onClose={() => setEmailOpen(false)} />}
@@ -569,6 +586,7 @@ function CrmSnapshotCard({ account, snapshot, onChange }) {
   const toast = useToast();
   const online = useOnline();
   const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
   const text = snapshot?.snapshot_text || '';
 
   async function generate() {
@@ -583,41 +601,77 @@ function CrmSnapshotCard({ account, snapshot, onChange }) {
       setGenerating(false);
     }
   }
-  function copy() {
+  async function copy() {
     if (!text) return;
-    navigator.clipboard?.writeText(text);
-    toast('Snapshot copied', 'success');
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      toast('Copy failed — select and copy manually.', 'error');
+    }
   }
 
   return (
     <Section title="CRM snapshot" icon={Icon.Sync}
       right={
-        <div className="flex items-center gap-2">
-          {text && <button onClick={copy} className="text-[10px] text-text-muted hover:text-accent-blue">Copy</button>}
-          <button onClick={generate} disabled={generating || !online}
-            title={!online ? 'AI features require internet connection' : 'Generate new snapshot'}
-            className="flex items-center gap-1 text-[10px] text-accent-blue hover:underline disabled:opacity-40">
-            {generating
-              ? <span className="inline-block w-2.5 h-2.5 border border-accent-blue/40 border-t-accent-blue rounded-full animate-spin" />
-              : <Icon.Refresh width={11} height={11} />}
-            {generating ? 'Generating…' : 'Generate'}
-          </button>
-        </div>
+        <button onClick={generate} disabled={generating || !online}
+          title={!online ? 'AI features require internet connection' : 'Generate new snapshot'}
+          className="flex items-center gap-1 text-[10px] text-accent-blue hover:underline disabled:opacity-40">
+          {generating
+            ? <span className="inline-block w-2.5 h-2.5 border border-accent-blue/40 border-t-accent-blue rounded-full animate-spin" />
+            : <Icon.Refresh width={11} height={11} />}
+          {generating ? 'Generating…' : 'Generate'}
+        </button>
       }>
       <div className="text-[10px] text-text-dim mb-1.5">Stage: {account.presales_stage || '—'}</div>
       {text
         ? <div className="text-[11px] text-text-secondary leading-relaxed whitespace-pre-wrap">{text}</div>
         : <div className="text-[11px] text-text-dim">No snapshot yet. Generate one or save a note.</div>}
-      {text && <div className="text-[10px] text-text-dim mt-1.5 text-right">{text.length} / {CRM_SNAPSHOT_MAX}</div>}
+      {text && (
+        <div className="flex items-center justify-between mt-2">
+          <button onClick={copy}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded border text-[11px] font-medium transition ${
+              copied
+                ? 'bg-accent-green/15 text-accent-green border-accent-green/30'
+                : 'bg-card text-text-primary border-border hover:border-accent-blue/40 hover:text-accent-blue'
+            }`}>
+            {copied ? <Icon.Check width={12} height={12} /> : <Icon.Copy width={12} height={12} />}
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+          <span className="text-[10px] text-text-dim">{text.length} / {CRM_SNAPSHOT_MAX}</span>
+        </div>
+      )}
     </Section>
   );
 }
 
-function ActivePovCard({ pov, accountId, navigate, generating }) {
-  const pct = { Draft: 10, Sent: 30, 'Kicked Off': 55, 'In Progress': 80, Closed: 100 }[pov?.status] || 0;
-  const daysRemaining = pov?.end_date ? Math.round((new Date(pov.end_date) - new Date()) / 86400000) : null;
+function ActivePovCard({ povs = [], accountId, navigate, generating, onChange }) {
+  const toast = useToast();
+  const [confirmId, setConfirmId] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+
+  // Version numbers by creation order (oldest = v1); display newest first.
+  const versionOf = useMemo(() => {
+    const m = {};
+    [...povs].sort((a, b) => a.id - b.id).forEach((p, i) => { m[p.id] = i + 1; });
+    return m;
+  }, [povs]);
+  const ordered = useMemo(() => [...povs].sort((a, b) => b.id - a.id), [povs]);
+
+  async function del(pov) {
+    setBusyId(pov.id);
+    try {
+      await api.deletePovDraft(pov.id);
+      toast(`POV v${versionOf[pov.id]} deleted`, 'success');
+      setConfirmId(null);
+      await onChange();
+    } catch (e) { toast(e.message || 'Delete failed', 'error'); }
+    finally { setBusyId(null); }
+  }
+
   return (
-    <Section title="Active POV" icon={Icon.File}
+    <Section title={`POVs${povs.length ? ` (${povs.length})` : ''}`} icon={Icon.File}
       right={<button onClick={() => navigate(`/accounts/${accountId}/pov-generator`)} className="text-[10px] text-accent-blue hover:underline">+ New</button>}>
       {generating && (
         <div className="flex items-center gap-2 mb-2 px-2 py-1.5 rounded bg-accent-blue/10 border border-accent-blue/30">
@@ -625,15 +679,33 @@ function ActivePovCard({ pov, accountId, navigate, generating }) {
           <span className="text-[10px] text-accent-blue">POV generating…</span>
         </div>
       )}
-      {pov ? (
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-text-primary flex-1">POV #{pov.id}</span>
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#1a2744] text-accent-blue">{pov.status}</span>
-          </div>
-          <div className="h-1.5 bg-[#10141b] rounded overflow-hidden"><div className="h-full bg-accent-blue" style={{ width: `${pct}%` }} /></div>
-          <div className="text-[10px] text-text-dim">{pov.start_date ? formatDate(pov.start_date) : '—'} → {pov.end_date ? formatDate(pov.end_date) : '—'}{daysRemaining != null && daysRemaining >= 0 ? ` · ${daysRemaining}d left` : ''}</div>
-          <button onClick={() => navigate(`/accounts/${accountId}/pov-generator/${pov.id}`)} className="text-[10px] py-1.5 rounded bg-card border border-border text-text-primary hover:border-accent-blue/40">Open</button>
+      {ordered.length ? (
+        <div className="flex flex-col gap-1.5">
+          {ordered.map(p => (
+            <div key={p.id} className="border border-border rounded px-2.5 py-2 flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-medium text-text-primary flex-1 truncate">
+                  POV v{versionOf[p.id]}{p.label ? ` · ${p.label}` : ''}
+                </span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#1a2744] text-accent-blue shrink-0">{p.status || 'Draft'}</span>
+              </div>
+              <div className="text-[10px] text-text-dim">
+                {p.start_date ? formatDate(p.start_date) : '—'} → {p.end_date ? formatDate(p.end_date) : '—'}
+              </div>
+              {confirmId === p.id ? (
+                <div className="flex items-center gap-2 pt-0.5">
+                  <span className="text-[10px] text-accent-red flex-1">Delete POV v{versionOf[p.id]}?</span>
+                  <button onClick={() => del(p)} disabled={busyId === p.id} className="text-[10px] text-accent-red hover:underline disabled:opacity-40">{busyId === p.id ? 'Deleting…' : 'Yes'}</button>
+                  <button onClick={() => setConfirmId(null)} className="text-[10px] text-text-muted hover:underline">No</button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button onClick={() => navigate(`/accounts/${accountId}/pov-generator/${p.id}`)} className="flex-1 text-[10px] py-1 rounded bg-card border border-border text-text-primary hover:border-accent-blue/40">Open</button>
+                  <button onClick={() => setConfirmId(p.id)} title="Delete POV" className="text-text-dim hover:text-accent-red px-1.5"><Icon.Trash width={12} height={12} /></button>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       ) : (
         <div className="flex flex-col gap-2">

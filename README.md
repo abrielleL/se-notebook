@@ -10,9 +10,8 @@ A local-first technical fieldbook for solutions engineers. Drop in notes, transc
 
 ## Prerequisites
 
-**Docker path (no Node required):** [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-
-**Local path:** Node.js 18+ (20+ recommended) and npm 9+
+- Node.js 18+ (20+ recommended)
+- npm 9+
 
 ## Installation
 
@@ -27,35 +26,9 @@ The first `npm run dev` will create `server/db/se-notebook.db` automatically.
 
 ## Running
 
-### Docker (recommended for sharing / no Node.js required)
+Two ways to run the app, depending on what you're doing:
 
-Works on Mac, Windows, and Linux. Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/).
-
-```bash
-git clone <this repo>
-cd se-notebook
-cp .env.example .env          # fill in Microsoft values if you want calendar sync
-docker compose up --build -d
-```
-
-Open **http://localhost:3001**, go to Settings, and paste your Anthropic API key. That's it.
-
-Data is persisted in `./server/db` and `./server/uploads` on your host — it survives container restarts and rebuilds.
-
-Useful commands:
-
-| Command | What it does |
-|---|---|
-| `docker compose up -d` | Start (detached) |
-| `docker compose down` | Stop |
-| `docker compose logs -f se-notebook` | Tail logs |
-| `docker compose up --build -d` | Rebuild after code changes |
-
----
-
-### Local (for development / hacking on the app)
-
-#### Always-on (recommended for daily use)
+### Always-on (recommended for daily use)
 
 Installs a macOS LaunchAgent that starts the app at login, restarts it if it crashes, and serves the prebuilt React app from a single Express process on port **3001**:
 
@@ -80,7 +53,7 @@ Service commands:
 
 After editing code, `npm run build && npm run service:restart` picks up the new client; for server changes, just restart.
 
-#### Dev mode (for hacking on the app)
+### Dev mode (for hacking on the app)
 
 ```bash
 npm run dev

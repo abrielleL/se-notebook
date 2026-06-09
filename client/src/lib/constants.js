@@ -9,6 +9,8 @@ export { PRESALES_STAGES, STAGE_COLORS, stageColor };
 
 // The 8 clickable steps in the stage bar.
 export const STAGE_BAR = PRESALES_STAGES.slice(0, 8);
+// Non-progression / terminal stages shown after the numbered steps.
+export const EXTRA_STAGES = PRESALES_STAGES.slice(8); // Not Required, Stalled, Canceled
 
 export function nextStage(stage) {
   const i = STAGE_BAR.indexOf(stage);
@@ -109,37 +111,6 @@ export const EMAIL_TYPES = [
   { value: 'custom', label: 'Custom prompt…' }
 ];
 
-// Default raw-notes scaffold pre-filled into the note entry textarea. The
-// labels are plain text (not fields); users type after each one. Kept as a
-// single source of truth so the "unchanged → don't save" check is exact.
-export const NOTE_TEMPLATE = `Overview:
-
-
-Attendees:
-
-OPSWAT Attendees:
-
-
-Additional Information:
-
-
-POC Contact:
-
-
-Current Products Used:
-
-
-Use Case:
-
-
-Additional Thoughts:
-
-
-Follow-up:
-
-
-Timeline for implementation:
-`;
 
 export const NOTE_TYPES = [
   'Discovery', 'Demo', 'Workshop', 'Technical call', 'Check-in',

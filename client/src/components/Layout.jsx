@@ -1,15 +1,17 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import Icon from './Icons.jsx';
+import GlobalSearch from './GlobalSearch.jsx';
 import { hasApiKey } from '../lib/ai.js';
 import { useOnline } from '../lib/offline.jsx';
+import { useDrafts } from '../lib/drafts.js';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: Icon.Home, end: true },
   { to: '/accounts', label: 'Accounts', icon: Icon.Folder },
   { to: '/calendar', label: 'POV Calendar', icon: Icon.Calendar },
-  { to: '/next-steps', label: 'Next Steps Inbox', icon: Icon.Check },
   { to: '/pov-library', label: 'POV Library', icon: Icon.File },
+  { to: '/files', label: 'Attachment Library', icon: Icon.Paperclip },
   { to: '/stats', label: 'Stats', icon: Icon.Eye }
 ];
 
@@ -19,6 +21,7 @@ export default function Layout({ children }) {
   const searchRef = useRef(null);
   const [showBanner, setShowBanner] = useState(false);
   const online = useOnline();
+  const drafts = useDrafts();
 
   useEffect(() => {
     setShowBanner(!hasApiKey() && location.pathname !== '/settings');
@@ -36,15 +39,6 @@ export default function Layout({ children }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [navigate]);
-
-  function onSearchKey(e) {
-    if (e.key === 'Enter') {
-      const q = e.currentTarget.value.trim();
-      if (q) navigate(`/accounts?q=${encodeURIComponent(q)}`);
-    } else if (e.key === 'Escape') {
-      e.currentTarget.blur();
-    }
-  }
 
   const navClass = ({ isActive }) =>
     `flex items-center gap-2.5 px-3 py-2 rounded text-[12px] transition ${
@@ -67,6 +61,13 @@ export default function Layout({ children }) {
               {item.label}
             </NavLink>
           ))}
+          <NavLink to="/drafts" className={navClass}>
+            <Icon.Note width={14} height={14} />
+            Drafts
+            {drafts.length > 0 && (
+              <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-accent-blue/20 text-accent-blue font-medium">{drafts.length}</span>
+            )}
+          </NavLink>
           <button
             onClick={() => window.dispatchEvent(new Event('open-quick-capture'))}
             className="flex items-center gap-2.5 px-3 py-2 rounded text-[12px] text-text-muted hover:text-text-primary hover:bg-[#14181f] transition text-left"
@@ -96,16 +97,7 @@ export default function Layout({ children }) {
 
       <main className="flex-1 flex flex-col min-w-0">
         <div className="h-12 shrink-0 flex items-center gap-3 px-5 border-b border-border bg-app/80 backdrop-blur">
-          <div className="flex-1 max-w-xl relative">
-            <Icon.Search width={13} height={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
-            <input
-              ref={searchRef}
-              type="text"
-              placeholder='Search accounts, notes, people…   press  /'
-              onKeyDown={onSearchKey}
-              className="w-full bg-[#0a0d11] border border-border rounded pl-8 pr-3 py-1.5 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50"
-            />
-          </div>
+          <GlobalSearch ref={searchRef} />
           {!online && <span className="text-[11px] text-accent-yellow">Offline</span>}
           <button
             onClick={() => navigate('/new')}

@@ -14,6 +14,15 @@ function accountFiles(accountId) {
   ).all(accountId);
 }
 
+// Resolve the POV to export: a specific draft when pov_id is given, else the
+// account's most recent one (back-compat with account-level export).
+function getPov(accountId, povId) {
+  if (povId) {
+    return db.prepare('SELECT * FROM pov_drafts WHERE id = ? AND account_id = ? AND deleted_at IS NULL').get(povId, accountId);
+  }
+  return db.prepare('SELECT * FROM pov_drafts WHERE account_id = ? AND deleted_at IS NULL ORDER BY generated_at DESC LIMIT 1').get(accountId);
+}
+
 // Lightweight PNG/JPEG dimension reader so embedded images keep aspect ratio.
 function imageDims(buf) {
   try {
@@ -64,12 +73,13 @@ const INTERNAL_LABEL = 'INTERNAL - NOT FOR DISTRIBUTION';
 
 function escapeHtml(s) {
   return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 // Build a normalized model for the requested sections.
 // Each item: { key, title, internal, paragraphs?, table?, subsections?, sources? }
-function assemble(account, sectionKeys) {
+function assemble(account, sectionKeys, povId) {
   const id = account.id;
   const items = [];
 
@@ -113,7 +123,7 @@ function assemble(account, sectionKeys) {
       const snap = db.prepare('SELECT snapshot_text FROM crm_snapshots WHERE account_id = ? AND deleted_at IS NULL ORDER BY generated_at DESC LIMIT 1').get(id);
       items.push({ key, title, paragraphs: [snap ? snap.snapshot_text : '(none)'] });
     } else if (key === 'active_pov') {
-      const pov = db.prepare('SELECT * FROM pov_drafts WHERE account_id = ? AND deleted_at IS NULL ORDER BY generated_at DESC LIMIT 1').get(id);
+      const pov = getPov(id, povId);
       let sections = {};
       let sources = [];
       if (pov) {
@@ -126,7 +136,7 @@ function assemble(account, sectionKeys) {
         sources
       });
     } else if (key === 'se_prep_notes') {
-      const pov = db.prepare('SELECT se_prep_notes FROM pov_drafts WHERE account_id = ? AND deleted_at IS NULL ORDER BY generated_at DESC LIMIT 1').get(id);
+      const pov = getPov(id, povId);
       items.push({ key, title: `${title} — ${INTERNAL_LABEL}`, internal: true, paragraphs: [pov && pov.se_prep_notes ? pov.se_prep_notes : '(none)'] });
     } else if (key === 'attachments') {
       const files = accountFiles(id);
@@ -534,21 +544,19 @@ router.post('/accounts/:id/export', async (req, res, next) => {
     const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.id);
     if (!account) return res.status(404).json({ error: 'Account not found' });
 
-    const { format, sections } = req.body || {};
+    const { format, sections, pov_id } = req.body || {};
     const sectionKeys = Array.isArray(sections) && sections.length ? sections : Object.keys(SECTION_TITLES);
 
     if (format === 'docx') {
-      // Branded POV document sourced from the account's most recent POV draft.
-      const pov = db.prepare(
-        'SELECT * FROM pov_drafts WHERE account_id = ? AND deleted_at IS NULL ORDER BY generated_at DESC LIMIT 1'
-      ).get(account.id);
+      // Branded POV document. pov_id targets a specific draft; else most recent.
+      const pov = getPov(account.id, pov_id);
       const buffer = await renderDocx(account, pov, sectionKeys);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
       res.setHeader('Content-Disposition', `attachment; filename="${povFilename(account)}"`);
       return res.send(buffer);
     }
     // default: pdf -> HTML for client-side print (account-section summary)
-    const items = assemble(account, sectionKeys);
+    const items = assemble(account, sectionKeys, pov_id);
     return res.json({ html: renderHtml(account, items) });
   } catch (err) {
     next(err);

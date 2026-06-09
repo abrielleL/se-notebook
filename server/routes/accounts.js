@@ -8,13 +8,29 @@ const router = express.Router();
 // Account card colors, cycled on creation.
 const ACCOUNT_COLORS = ['#378ADD', '#BA7517', '#639922', '#534AB7', '#1D9E75', '#D85A30'];
 
-// Fields accepted on PUT (existing + new).
+// Fields accepted on PUT (existing + new). `tags` is handled separately (JSON).
 const EDITABLE_FIELDS = [
   'account_name', 'account_executive', 'industry', 'opportunity_stage',
   'ai_summary', 'ai_technical_drivers', 'ai_environment', 'ai_summary_updated_at',
   'risk', 'presales_stage', 'escalation', 'jira_ticket_url', 'close_date',
   'opportunity_value', 'ae_name', 'pov_success_plan_url', 'color'
 ];
+
+// tags is stored as a JSON-array TEXT column; expose it to clients as an array.
+function withTags(account) {
+  if (!account) return account;
+  let tags = [];
+  try { const a = JSON.parse(account.tags || '[]'); if (Array.isArray(a)) tags = a.filter(t => typeof t === 'string'); }
+  catch { tags = []; }
+  return { ...account, tags };
+}
+// Keep only labels that exist in the managed catalog, de-duped, preserving order.
+function sanitizeTags(input) {
+  if (!Array.isArray(input)) return [];
+  const valid = new Set(db.prepare('SELECT label FROM tag_catalog').all().map(r => r.label));
+  const seen = new Set();
+  return input.filter(t => typeof t === 'string' && valid.has(t) && !seen.has(t) && seen.add(t));
+}
 
 router.get('/', (_req, res) => {
   const accounts = db.prepare(`
@@ -28,7 +44,7 @@ router.get('/', (_req, res) => {
     FROM accounts a
     ORDER BY a.created_at DESC
   `).all();
-  res.json(accounts);
+  res.json(accounts.map(withTags));
 });
 
 router.post('/', (req, res) => {
@@ -48,7 +64,7 @@ router.post('/', (req, res) => {
   `).run(id, account_name, account_executive || null, industry || null, opportunity_stage || null, presales_stage || null, color);
 
   const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(id);
-  res.status(201).json(account);
+  res.status(201).json(withTags(account));
 });
 
 router.get('/:id', (req, res) => {
@@ -75,7 +91,7 @@ router.get('/:id', (req, res) => {
   account.last_note_date = agg.last_note_date || null;
   account.last_note_days_ago = agg.last_note_date ? agg.last_note_days_ago : null;
 
-  res.json(account);
+  res.json(withTags(account));
 });
 
 router.put('/:id', (req, res) => {
@@ -108,11 +124,17 @@ router.put('/:id', (req, res) => {
       values.push(req.body[f]);
     }
   }
-  if (!updates.length) return res.json(existing);
+  // tags: validate against the managed catalog, store as JSON (or NULL if empty).
+  if ('tags' in req.body) {
+    const tags = sanitizeTags(req.body.tags);
+    updates.push('tags = ?');
+    values.push(tags.length ? JSON.stringify(tags) : null);
+  }
+  if (!updates.length) return res.json(withTags(existing));
   values.push(req.params.id);
   db.prepare(`UPDATE accounts SET ${updates.join(', ')} WHERE id = ?`).run(...values);
   const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.id);
-  res.json(account);
+  res.json(withTags(account));
 });
 
 router.delete('/:id', (req, res) => {

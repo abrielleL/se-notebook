@@ -14,42 +14,79 @@ export function hasApiKey() {
 
 // Stage-aware CRM snapshot guidance. Keyed to Sugar CRM presales stages.
 // Natural language only — no field-label prefixes anywhere.
+// Stage-aware emphasis. Every stage still leads with the current technical-
+// validation status and ends with the next step — the stage only shifts what
+// "validation status" means at that point in the evaluation.
 function snapshotInstruction(stage) {
   switch (stage) {
     case '1-Discovery':
-      return 'Focus on business drivers and use cases uncovered, key stakeholders identified, and the agreed next step to advance to demo.';
+      return 'Validation status: which technical drivers/use cases are confirmed and any environment constraints uncovered. Next step: what advances this to a demo.';
     case '2-Demo':
-      return 'Cover what was demoed, stakeholder reactions, technical gaps or questions raised, and the next step to advance toward planning.';
+      return 'Validation status: what the demo proved out and the technical gaps or open questions still open. Next step: what advances toward a POV plan.';
     case '3-Workshop':
     case '4-Planning':
-      return 'Cover POV plan status, the number of agreed success criteria, prerequisites status, and the target kickoff date.';
+      return 'Validation status: POV success-criteria and prerequisite/environment readiness. Next step: the target kickoff.';
     case '5-Deployment':
-      return 'Cover the products being deployed, install status, configuration progress, and any blockers found.';
+      return 'Validation status: install/config progress and any blockers standing up the evaluation. Next step: what starts testing.';
     case '6-In Progress':
-      return 'Cover success criteria status (X of Y met), active technical risks or blockers, competitive status, and the immediate next action.';
+      return 'Validation status: success criteria met (X of Y) and active technical risks or blockers. Next step: the immediate next action.';
     case '7-Technical Win':
-      return 'Cover the win summary, the key technical differentiator that closed it, and the commercial next step.';
+      return 'Validation status: the technical validation that was achieved and the differentiator that proved it. Next step: the commercial next step.';
     case '8-Technical Loss':
-      return 'Cover the loss reason and the technical gap or competitor that won.';
+      return 'Validation status: what failed validation and the technical gap or competitor that won. Next step: any remaining action.';
     case 'Stalled':
-      return 'Cover what caused the stall, the last meaningful activity, and what would re-engage the customer.';
+      return 'Validation status: where technical validation stood when activity paused and what caused the stall. Next step: what would re-engage.';
     default:
-      return 'Cover the health and progress of the evaluation, risk to technical fit or timing, and the next step.';
+      return 'Validation status: current state of technical validation and any risk to technical fit or timing. Next step: the immediate next action.';
   }
 }
 
 function buildSnapshotSystemPrompt(stage) {
-  return `You are a solutions engineering assistant. Based on the following account notes and transcripts, generate a CRM status snapshot for the SE notes field on the opportunity record.
+  return `You are a solutions engineering assistant. From the account notes and transcripts below, write a CRM status update for the SE notes field on the opportunity. It must read as a concise technical-validation status followed by the next step — nothing else.
 
 ${snapshotInstruction(stage)}
 
 Rules:
-- Maximum 255 characters total — count carefully and stay under the limit
-- Plain text only, no bullet points, no markdown, no line breaks
-- Natural language only. Do NOT use field labels or prefixes such as "Risk:", "Tech:", "Env:", or "Next:" anywhere.
-- Always end with the next step to push to the next stage or maintain momentum.
-- Be ruthlessly concise — every character counts
-- Return only the snapshot text, nothing else`;
+- 255 characters is a HARD CEILING. Aim for roughly 200–245 so you have room to finish cleanly.
+- Always end with a complete sentence and a period. Never trail off mid-thought — if you are running long, tighten earlier wording rather than getting cut off.
+- Cover only (a) the current status of technical validation and (b) the next step(s). Cut business background, recaps, and filler.
+- Do NOT include the account/company name or the word "MetaDefender" — the CRM record already carries that context. Specific product or module names (e.g. Core, ICAP, Kiosk, Sandbox) are fine when they matter.
+- Plain prose. No bullet points, no markdown, no line breaks, and no field labels or prefixes (no "Status:", "Next:", "Risk:", etc.).
+- End with the concrete next step.
+- Return only the snapshot text, nothing else.`;
+}
+
+// Defensive cleanup: strip the account name and "MetaDefender" if the model
+// slips them in, and normalize whitespace. Does NOT truncate.
+function tidySnapshot(text, accountName) {
+  let t = String(text || '').replace(/\s*\n+\s*/g, ' ').trim();
+  t = t.replace(/\bMetaDefender\s*/gi, '');
+  if (accountName) {
+    const esc = accountName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (esc) t = t.replace(new RegExp(`\\b${esc}\\b('?s)?`, 'gi'), '');
+  }
+  return t.replace(/\s{2,}/g, ' ').replace(/^[\s,;:.\-–]+/, '').trim();
+}
+
+// True when the text reads as a finished thought (ends on sentence punctuation).
+const endsComplete = (t) => /[.!?]["')\]]?$/.test((t || '').trim());
+
+// Last-resort trim that keeps a COMPLETE sentence: cut at the last sentence
+// terminator that fits; only fall back to a word boundary if there is none.
+function trimToSentence(text, max) {
+  let t = String(text || '').trim();
+  if (t.length <= max && endsComplete(t)) return t;
+  const slice = t.slice(0, max);
+  const cut = Math.max(slice.lastIndexOf('.'), slice.lastIndexOf('!'), slice.lastIndexOf('?'));
+  if (cut >= 60) return slice.slice(0, cut + 1).trim();
+  const sp = slice.lastIndexOf(' ');
+  return (sp > 0 ? slice.slice(0, sp) : slice).replace(/[\s,;:–-]+$/, '').trim();
+}
+
+// Ask the model to rewrite an over-long/cut-off note into a complete, in-budget one.
+async function compressSnapshot(text) {
+  const system = `Rewrite this CRM note to AT MOST 240 characters. Keep the technical-validation status and the next step. It MUST end with a complete sentence and a period — never trail off. Plain prose, no labels, and do not include any account name or the word "MetaDefender". Return only the rewritten note.`;
+  return generateText({ system, user: text, maxTokens: 256 });
 }
 
 const SYSTEM_PROMPT = `You are a solutions engineering assistant. Analyze the following account notes and call transcripts. Extract and return a JSON object with exactly these fields:
@@ -218,9 +255,21 @@ export async function generateCRMSnapshot(accountId) {
     throw new Error(`Anthropic API error ${res.status}: ${text}`);
   }
   const json = await res.json();
-  let text = (json.content || []).map(b => b.text || '').join('').trim();
-  text = text.replace(/\s*\n+\s*/g, ' ').trim();
-  if (text.length > CRM_SNAPSHOT_MAX) text = text.slice(0, CRM_SNAPSHOT_MAX);
+  const raw = (json.content || []).map(b => b.text || '').join('');
+  let text = tidySnapshot(raw, account.account_name);
+
+  // Guarantee a complete, in-budget snapshot. If it exceeds the ceiling or got
+  // cut off mid-thought, ask the model to compress it into a finished sentence;
+  // sentence-aware trimming is the final safety net (never cuts mid-word).
+  if (text.length > CRM_SNAPSHOT_MAX || !endsComplete(text)) {
+    try {
+      const t2 = tidySnapshot(await compressSnapshot(text || raw), account.account_name);
+      text = (t2 && t2.length <= CRM_SNAPSHOT_MAX && endsComplete(t2)) ? t2 : trimToSentence(t2 || text, CRM_SNAPSHOT_MAX);
+    } catch {
+      text = trimToSentence(text, CRM_SNAPSHOT_MAX);
+    }
+  }
+  if (text.length > CRM_SNAPSHOT_MAX) text = trimToSentence(text, CRM_SNAPSHOT_MAX);
 
   return api.createCrmSnapshot(accountId, { snapshot_text: text });
 }

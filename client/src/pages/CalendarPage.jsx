@@ -1,9 +1,9 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { api } from '../lib/api.js';
-import Card, { CardHeader } from '../components/Card.jsx';
+import Card from '../components/Card.jsx';
 import Icon from '../components/Icons.jsx';
 import Modal from '../components/Modal.jsx';
 import TablerIcon from '../components/TablerIcon.jsx';
@@ -57,26 +57,33 @@ const MONTH_NAMES = [
 
 const DAY_HEADERS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-// ─── milestone helpers ───────────────────────────────────────────────────────
+// ─── POV meeting types ───────────────────────────────────────────────────────
+// User-scheduled meetings attached to a POV (not auto-derived from the dates).
 
-const MILESTONE_TYPES = [
-  { key: 'kickoff',   label: 'Kickoff',          color: '#58a6ff', offset: 0,  fromEnd: false },
-  { key: 'midpov',    label: 'Mid-POV',           color: '#e3b341', offset: 7,  fromEnd: false },
-  { key: 'closeout',  label: 'Close-out',         color: '#3fb950', offset: 0,  fromEnd: true  },
-  { key: 'prereq',    label: 'Prereq deadline',   color: '#f85149', offset: -1, fromEnd: false },
+const MEETING_TYPES = [
+  { key: 'scoping',  label: 'Scoping Call', color: '#bc8cff' },
+  { key: 'kickoff',  label: 'Kick Off',     color: '#58a6ff' },
+  { key: 'checkin',  label: 'Check In',     color: '#e3b341' },
+  { key: 'wrapup',   label: 'Wrap Up',      color: '#3fb950' },
 ];
+const MEETING_BY_KEY = Object.fromEntries(MEETING_TYPES.map(m => [m.key, m]));
 
-function getMilestonesForTimeline(tl) {
-  const start = parseLocal(tl.start_date);
-  const end   = parseLocal(tl.end_date);
-  const ms = [];
-  for (const mt of MILESTONE_TYPES) {
-    let base = mt.fromEnd ? end : start;
-    if (!base) continue;
-    const date = addDays(base, mt.offset);
-    ms.push({ ...mt, date, tl });
-  }
-  return ms;
+// POV status badge styling, keyed by lowercased status.
+const POV_STATUS_STYLE = {
+  draft: 'text-text-muted border-border',
+  sent: 'text-accent-blue border-accent-blue/30 bg-accent-blue/10',
+  'kicked off': 'text-accent-purple border-accent-purple/30 bg-accent-purple/10',
+  'in progress': 'text-accent-yellow border-accent-yellow/30 bg-accent-yellow/10',
+  closed: 'text-accent-green border-accent-green/30 bg-accent-green/10',
+};
+const statusClass = (s) => POV_STATUS_STYLE[(s || '').toLowerCase()] || 'text-text-muted border-border';
+
+// Flatten a timeline's stored meetings into calendar-ready markers.
+function getMeetingsForTimeline(tl) {
+  return (tl.meetings || []).map(m => {
+    const def = MEETING_BY_KEY[m.type] || { label: m.type, color: '#8b949e' };
+    return { id: m.id, key: m.type, label: def.label, color: def.color, date: parseLocal(m.meeting_date), tl };
+  }).filter(m => m.date);
 }
 
 // ─── input class shared across modal/popover ────────────────────────────────
@@ -290,11 +297,135 @@ function AddTimelineModal({ onClose, onSuccess }) {
   );
 }
 
-// ─── Edit Popover (for manually_created bars) ────────────────────────────────
+// ─── Add Event Modal (friendly entry point for scheduling a POV meeting) ─────
+
+function AddEventModal({ timelines, defaultDate, onClose, onSuccess }) {
+  const toast = useToast();
+  const [query, setQuery]     = useState('');
+  const [povId, setPovId]     = useState(null);
+  const [showDrop, setShowDrop] = useState(false);
+  const [type, setType]       = useState('scoping');
+  const [dateStr, setDateStr] = useState(defaultDate || '');
+  const [saving, setSaving]   = useState(false);
+  const dropRef = useRef(null);
+
+  useEffect(() => {
+    function h(e) { if (dropRef.current && !dropRef.current.contains(e.target)) setShowDrop(false); }
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  const options = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return timelines
+      .map(t => ({ id: t.id, text: `${t.account_name}${t.label ? ' — ' + t.label : ''}`, start: t.start_date, end: t.end_date }))
+      .filter(o => !q || o.text.toLowerCase().includes(q))
+      .slice(0, 12);
+  }, [timelines, query]);
+
+  function selectPov(o) { setPovId(o.id); setQuery(o.text); setShowDrop(false); }
+
+  const canSubmit = povId && type && dateStr;
+
+  async function submit() {
+    if (!canSubmit) return;
+    setSaving(true);
+    try {
+      await api.addPovMeeting({ pov_id: povId, type, meeting_date: dateStr });
+      toast('Event added to calendar', 'success');
+      onSuccess();
+    } catch (e) {
+      toast(e.message || 'Failed to add event', 'error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const footer = (
+    <>
+      <button onClick={onClose}
+        className="px-3 py-1.5 rounded text-[11px] text-[#8b949e] hover:text-[#e6edf3] border border-[#1e2530] hover:border-[#58a6ff]/40 transition">
+        Cancel
+      </button>
+      <button onClick={submit} disabled={!canSubmit || saving}
+        className="px-3 py-1.5 rounded text-[11px] bg-[#58a6ff]/15 text-[#58a6ff] border border-[#58a6ff]/30 hover:bg-[#58a6ff]/25 transition disabled:opacity-40 disabled:cursor-not-allowed">
+        {saving ? 'Adding…' : 'Add event'}
+      </button>
+    </>
+  );
+
+  return (
+    <Modal title="Add POV event" onClose={onClose} footer={footer}>
+      {timelines.length === 0 ? (
+        <div className="text-[12px] text-text-muted">
+          No POVs on the calendar yet. Use “Add timeline” first, then you can attach events to it.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {/* POV picker */}
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-medium text-[#8b949e] uppercase tracking-wider">
+              POV <span className="text-[#f85149]">*</span>
+            </label>
+            <div className="relative" ref={dropRef}>
+              <input className={inputCls} placeholder="Search POVs by account…" value={query}
+                onChange={e => { setQuery(e.target.value); setPovId(null); setShowDrop(true); }}
+                onFocus={() => setShowDrop(true)} />
+              {showDrop && options.length > 0 && (
+                <div className="absolute z-50 mt-1 w-full bg-[#0d1117] border border-[#1e2530] rounded-lg shadow-lg overflow-auto max-h-48">
+                  {options.map(o => (
+                    <button key={o.id} type="button" onClick={() => selectPov(o)}
+                      className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-[#14181f] text-left transition">
+                      <span className="text-[12px] text-[#e6edf3] truncate">{o.text}</span>
+                      <span className="text-[9px] text-[#8b949e] shrink-0">{o.start} – {o.end}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Event type chips */}
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-medium text-[#8b949e] uppercase tracking-wider">Event type</label>
+            <div className="flex flex-wrap gap-1.5">
+              {MEETING_TYPES.map(t => {
+                const active = type === t.key;
+                return (
+                  <button key={t.key} type="button" onClick={() => setType(t.key)}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] border font-medium transition"
+                    style={active
+                      ? { color: t.color, background: `${t.color}26`, borderColor: `${t.color}88` }
+                      : { color: '#8b949e', background: 'transparent', borderColor: '#1e2530' }}>
+                    <span className="w-2 h-2 rounded-full" style={{ background: t.color }} />
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Date */}
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-medium text-[#8b949e] uppercase tracking-wider">
+              Date <span className="text-[#f85149]">*</span>
+            </label>
+            <DatePicker selected={parseISODate(dateStr)} onChange={d => setDateStr(toISODate(d))}
+              dateFormat="MMM d, yyyy" placeholderText="Select date" className={inputCls} popperPlacement="bottom-start" />
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// ─── Timeline Popover (detail + meetings; editable for manual timelines) ─────
 
 function EditPopover({ tl, pos, onClose, onReload }) {
   const toast = useToast();
   const ref   = useRef(null);
+  const isManual = tl.manually_created === 1;
+
   const [label, setLabel]     = useState(tl.label || '');
   const [startStr, setStart]  = useState(tl.start_date || '');
   const [endStr, setEnd]      = useState(tl.end_date || '');
@@ -304,16 +435,22 @@ function EditPopover({ tl, pos, onClose, onReload }) {
   const [deleting, setDeleting] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
 
-  // close on outside click
+  // meetings (seeded from the loaded timeline, then maintained locally)
+  const [meetings, setMeetings] = useState(tl.meetings || []);
+  const [mType, setMType] = useState('scoping');
+  const [mDate, setMDate] = useState('');
+  const [addingMeeting, setAddingMeeting] = useState(false);
+
+  // close on outside click + Escape. Ignore clicks inside a react-datepicker
+  // portal/popup — it renders outside this popover but must not close it.
   useEffect(() => {
     function handler(e) {
+      if (e.target.closest?.('.react-datepicker, .react-datepicker__portal, .react-datepicker__tab-loop')) return;
       if (ref.current && !ref.current.contains(e.target)) onClose();
     }
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [onClose]);
-
-  // close on Escape
   useEffect(() => {
     function handler(e) { if (e.key === 'Escape') onClose(); }
     document.addEventListener('keydown', handler);
@@ -322,12 +459,9 @@ function EditPopover({ tl, pos, onClose, onReload }) {
 
   // clamp position to viewport
   const style = useMemo(() => {
-    const W = window.innerWidth;
-    const H = window.innerHeight;
-    const popW = 280;
-    const popH = 340;
-    let x = pos.x + 8;
-    let y = pos.y + 8;
+    const W = window.innerWidth, H = window.innerHeight;
+    const popW = 300, popH = 460;
+    let x = pos.x + 8, y = pos.y + 8;
     if (x + popW > W - 8) x = W - popW - 8;
     if (y + popH > H - 8) y = H - popH - 8;
     if (x < 8) x = 8;
@@ -337,132 +471,121 @@ function EditPopover({ tl, pos, onClose, onReload }) {
 
   async function handleSave() {
     if (!startStr || !endStr) { setDateErr('Start and end dates are required'); return; }
-    const s = parseLocal(startStr);
-    const e = parseLocal(endStr);
+    const s = parseLocal(startStr), e = parseLocal(endStr);
     if (!s || !e || e <= s) { setDateErr('End date must be after start date'); return; }
-    setDateErr('');
-    setSaving(true);
+    setDateErr(''); setSaving(true);
     try {
       await api.updateTimeline(tl.id, { label, start_date: startStr, end_date: endStr, status });
-      onReload();
-      onClose();
-    } catch (err) {
-      toast(err.message || 'Failed to save', 'error');
-    } finally {
-      setSaving(false);
-    }
+      onReload(); onClose();
+    } catch (err) { toast(err.message || 'Failed to save', 'error'); }
+    finally { setSaving(false); }
   }
 
   async function handleDelete() {
     setDeleting(true);
+    try { await api.deleteTimeline(tl.id); onReload(); onClose(); }
+    catch (err) { toast(err.message || 'Failed to delete', 'error'); setDeleting(false); }
+  }
+
+  async function addMeeting() {
+    if (!mDate) return;
+    setAddingMeeting(true);
     try {
-      await api.deleteTimeline(tl.id);
+      const m = await api.addPovMeeting({ pov_id: tl.id, type: mType, meeting_date: mDate });
+      setMeetings(list => [...list, m].sort((a, b) => a.meeting_date.localeCompare(b.meeting_date)));
+      setMDate('');
       onReload();
-      onClose();
-    } catch (err) {
-      toast(err.message || 'Failed to delete', 'error');
-      setDeleting(false);
-    }
+    } catch (err) { toast(err.message || 'Failed to add meeting', 'error'); }
+    finally { setAddingMeeting(false); }
+  }
+
+  async function removeMeeting(id) {
+    try {
+      await api.deletePovMeeting(id);
+      setMeetings(list => list.filter(m => m.id !== id));
+      onReload();
+    } catch (err) { toast(err.message || 'Failed to remove meeting', 'error'); }
   }
 
   return (
-    <div
-      ref={ref}
-      style={style}
-      className="bg-[#0d1117] border border-[#1e2530] rounded-lg shadow-lg p-3 flex flex-col gap-2.5"
-    >
-      <div className="text-[11px] font-semibold text-[#e6edf3] mb-0.5">Edit timeline</div>
+    <div ref={ref} style={style}
+      className="bg-[#0d1117] border border-[#1e2530] rounded-lg shadow-lg p-3 flex flex-col gap-2.5 max-h-[88vh] overflow-y-auto">
 
-      {/* Label */}
-      <div className="flex flex-col gap-1">
-        <label className="text-[9px] font-medium text-[#8b949e] uppercase tracking-wider">Label</label>
-        <input
-          className={inputCls}
-          value={label}
-          onChange={e => setLabel(e.target.value)}
-          placeholder="Timeline label"
-        />
-      </div>
-
-      {/* Start date */}
-      <div className="flex flex-col gap-1">
-        <label className="text-[9px] font-medium text-[#8b949e] uppercase tracking-wider">Start date</label>
-        <DatePicker
-          selected={parseISODate(startStr)}
-          onChange={d => setStart(toISODate(d))}
-          dateFormat="MMM d, yyyy"
-          placeholderText="Select date"
-          className={inputCls}
-          popperPlacement="bottom-start"
-        />
-      </div>
-
-      {/* End date */}
-      <div className="flex flex-col gap-1">
-        <label className="text-[9px] font-medium text-[#8b949e] uppercase tracking-wider">End date</label>
-        <DatePicker
-          selected={parseISODate(endStr)}
-          onChange={d => setEnd(toISODate(d))}
-          dateFormat="MMM d, yyyy"
-          placeholderText="Select date"
-          className={inputCls}
-          popperPlacement="bottom-start"
-        />
-      </div>
-
-      {/* Status */}
-      <div className="flex flex-col gap-1">
-        <label className="text-[9px] font-medium text-[#8b949e] uppercase tracking-wider">Status</label>
-        <select
-          className={selectCls}
-          value={status}
-          onChange={e => setStatus(e.target.value)}
-        >
-          {POV_STATUSES.map(s => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-      </div>
-
-      {dateErr && (
-        <div className="text-[10px] text-[#f85149]">{dateErr}</div>
-      )}
-
-      {/* Delete confirm */}
-      {confirmDel ? (
-        <div className="flex flex-col gap-1.5 pt-1 border-t border-[#1e2530]">
-          <div className="text-[10px] text-[#f85149]">Remove from calendar?</div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className="px-2 py-1 rounded text-[10px] bg-[#f85149]/15 text-[#f85149] border border-[#f85149]/30 hover:bg-[#f85149]/25 transition disabled:opacity-40"
-            >
-              {deleting ? 'Deleting…' : 'Yes'}
-            </button>
-            <button
-              onClick={() => setConfirmDel(false)}
-              className="px-2 py-1 rounded text-[10px] text-[#8b949e] border border-[#1e2530] hover:text-[#e6edf3] transition"
-            >
-              No
-            </button>
+      {/* header */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <Link to={`/accounts/${tl.account_id}`} className="text-[12px] font-semibold text-accent-blue hover:underline truncate block">
+            {tl.account_name}
+          </Link>
+          <div className="text-[10px] text-text-dim truncate">
+            {tl.label || 'POV'} · {tl.start_date} – {tl.end_date}
           </div>
         </div>
+        <button onClick={onClose} className="text-text-dim hover:text-text-primary shrink-0"><Icon.X width={12} height={12} /></button>
+      </div>
+
+      {/* meetings manager */}
+      <div className="flex flex-col gap-1.5 pt-1 border-t border-[#1e2530]">
+        <div className="text-[9px] font-medium text-[#8b949e] uppercase tracking-wider">POV meetings</div>
+        {meetings.length === 0 && <div className="text-[10px] text-text-dim">No meetings scheduled yet.</div>}
+        {meetings.map(m => {
+          const def = MEETING_BY_KEY[m.type] || { label: m.type, color: '#8b949e' };
+          return (
+            <div key={m.id} className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: def.color }} />
+              <span className="text-[11px] text-text-secondary w-[68px] shrink-0">{def.label}</span>
+              <span className="text-[11px] text-text-muted flex-1 truncate">{formatDate(m.meeting_date)}</span>
+              <button onClick={() => removeMeeting(m.id)} className="text-text-dim hover:text-accent-red shrink-0" title="Remove meeting"><Icon.X width={10} height={10} /></button>
+            </div>
+          );
+        })}
+        {/* add meeting row */}
+        <div className="flex items-center gap-1.5 mt-1">
+          <select value={mType} onChange={e => setMType(e.target.value)}
+            className="bg-[#0d1117] border border-[#1e2530] rounded px-1.5 py-1 text-[10px] text-text-primary focus:outline-none focus:border-accent-blue/60">
+            {MEETING_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+          </select>
+          <DatePicker selected={parseISODate(mDate)} onChange={d => setMDate(toISODate(d))}
+            dateFormat="MMM d, yyyy" placeholderText="Date" withPortal
+            className="w-[96px] bg-[#0d1117] border border-[#1e2530] rounded px-1.5 py-1 text-[10px] text-text-primary focus:outline-none focus:border-accent-blue/60" />
+          <button onClick={addMeeting} disabled={!mDate || addingMeeting}
+            className="px-2 py-1 rounded text-[10px] bg-accent-blue/15 text-accent-blue border border-accent-blue/30 hover:bg-accent-blue/25 transition disabled:opacity-40 shrink-0">
+            {addingMeeting ? '…' : 'Add'}
+          </button>
+        </div>
+      </div>
+
+      {/* manual timelines: editable fields + delete; generated: link out */}
+      {isManual ? (
+        <div className="flex flex-col gap-2.5 pt-1 border-t border-[#1e2530]">
+          <div className="text-[9px] font-medium text-[#8b949e] uppercase tracking-wider">Edit timeline</div>
+          <input className={inputCls} value={label} onChange={e => setLabel(e.target.value)} placeholder="Timeline label" />
+          <div className="grid grid-cols-2 gap-2">
+            <DatePicker selected={parseISODate(startStr)} onChange={d => setStart(toISODate(d))} dateFormat="MMM d, yyyy" placeholderText="Start" className={inputCls} withPortal />
+            <DatePicker selected={parseISODate(endStr)} onChange={d => setEnd(toISODate(d))} dateFormat="MMM d, yyyy" placeholderText="End" className={inputCls} withPortal />
+          </div>
+          <select className={selectCls} value={status} onChange={e => setStatus(e.target.value)}>
+            {POV_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          {dateErr && <div className="text-[10px] text-[#f85149]">{dateErr}</div>}
+          {confirmDel ? (
+            <div className="flex flex-col gap-1.5">
+              <div className="text-[10px] text-[#f85149]">Remove from calendar?</div>
+              <div className="flex gap-2">
+                <button onClick={handleDelete} disabled={deleting} className="px-2 py-1 rounded text-[10px] bg-[#f85149]/15 text-[#f85149] border border-[#f85149]/30 hover:bg-[#f85149]/25 transition disabled:opacity-40">{deleting ? 'Deleting…' : 'Yes'}</button>
+                <button onClick={() => setConfirmDel(false)} className="px-2 py-1 rounded text-[10px] text-[#8b949e] border border-[#1e2530] hover:text-[#e6edf3] transition">No</button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <button onClick={() => setConfirmDel(true)} className="px-2 py-1 rounded text-[10px] text-[#f85149] border border-[#f85149]/20 hover:bg-[#f85149]/10 transition">Delete</button>
+              <button onClick={handleSave} disabled={saving} className="px-2.5 py-1 rounded text-[10px] bg-[#58a6ff]/15 text-[#58a6ff] border border-[#58a6ff]/30 hover:bg-[#58a6ff]/25 transition disabled:opacity-40">{saving ? 'Saving…' : 'Save'}</button>
+            </div>
+          )}
+        </div>
       ) : (
-        <div className="flex items-center justify-between pt-1 border-t border-[#1e2530]">
-          <button
-            onClick={() => setConfirmDel(true)}
-            className="px-2 py-1 rounded text-[10px] text-[#f85149] border border-[#f85149]/20 hover:bg-[#f85149]/10 transition"
-          >
-            Delete
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-2.5 py-1 rounded text-[10px] bg-[#58a6ff]/15 text-[#58a6ff] border border-[#58a6ff]/30 hover:bg-[#58a6ff]/25 transition disabled:opacity-40"
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </button>
+        <div className="pt-1 border-t border-[#1e2530]">
+          <Link to={`/accounts/${tl.account_id}`} className="text-[10px] text-accent-blue hover:underline">Open account to edit this POV →</Link>
         </div>
       )}
     </div>
@@ -481,6 +604,7 @@ export default function CalendarPage() {
   const [view, setView]           = useState('month'); // 'month' | 'quarter' | 'list'
 
   const [showAddModal, setShowAddModal]   = useState(false);
+  const [eventModal, setEventModal]       = useState(null); // { date } | null
   const [popover, setPopover]             = useState(null); // { tl, pos }
 
   const today    = useMemo(() => new Date(), []);
@@ -505,10 +629,10 @@ export default function CalendarPage() {
 
   useEffect(() => { reload(); }, [reload]);
 
-  // ── derived: all milestones ───────────────────────────────────────────────
-  const allMilestones = useMemo(() => {
+  // ── derived: all POV meetings ─────────────────────────────────────────────
+  const allMeetings = useMemo(() => {
     const ms = [];
-    timelines.forEach(tl => ms.push(...getMilestonesForTimeline(tl)));
+    timelines.forEach(tl => ms.push(...getMeetingsForTimeline(tl)));
     return ms;
   }, [timelines]);
 
@@ -527,7 +651,7 @@ export default function CalendarPage() {
     }).length;
 
     const weekEnd = addDays(today, 7);
-    const milestonesThisWeek = allMilestones.filter(ms =>
+    const meetingsThisWeek = allMeetings.filter(ms =>
       ms.date >= today && ms.date <= weekEnd
     ).length;
 
@@ -536,8 +660,8 @@ export default function CalendarPage() {
       return parseLocal(t.start_date) > today;
     }).length;
 
-    return { activePovs, closingThisMonth, milestonesThisWeek, upcomingStarts };
-  }, [timelines, allMilestones, curYear, curMonth, today]);
+    return { activePovs, closingThisMonth, meetingsThisWeek, upcomingStarts };
+  }, [timelines, allMeetings, curYear, curMonth, today]);
 
   // ── calendar grid ─────────────────────────────────────────────────────────
   const days = useMemo(() => calendarDays(curYear, curMonth), [curYear, curMonth]);
@@ -578,23 +702,15 @@ export default function CalendarPage() {
       }
     });
 
-    // milestone dots
-    allMilestones.forEach(ms => {
+    // meeting dots
+    allMeetings.forEach(ms => {
       const key = ymd(ms.date);
       ensure(key);
       map[key].dots.push(ms);
     });
 
     return map;
-  }, [timelines, allMilestones]);
-
-  // ── "this week" panel ─────────────────────────────────────────────────────
-  const weekMilestones = useMemo(() => {
-    const weekEnd = addDays(today, 7);
-    return allMilestones
-      .filter(ms => ms.date <= weekEnd)
-      .sort((a, b) => a.date - b.date);
-  }, [allMilestones, today]);
+  }, [timelines, allMeetings]);
 
   // ── navigation ────────────────────────────────────────────────────────────
   function prevMonth() {
@@ -610,14 +726,15 @@ export default function CalendarPage() {
     setCurMonth(today.getMonth());
   }
 
-  // ── bar click handler ─────────────────────────────────────────────────────
+  // ── click handlers ────────────────────────────────────────────────────────
+  // Any bar or meeting opens the detail/meetings popover for its timeline.
   function handleBarClick(e, bar) {
     e.stopPropagation();
-    if (bar.isManual) {
-      setPopover({ tl: bar.tl, pos: { x: e.clientX, y: e.clientY } });
-    } else {
-      navigate('/accounts/' + bar.tl.account_id);
-    }
+    setPopover({ tl: bar.tl, pos: { x: e.clientX, y: e.clientY } });
+  }
+  function handleMeetingClick(e, ms) {
+    e.stopPropagation();
+    setPopover({ tl: ms.tl, pos: { x: e.clientX, y: e.clientY } });
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -639,7 +756,7 @@ export default function CalendarPage() {
         <div className="flex items-center gap-2">
           {/* view toggle */}
           <div className="flex items-center gap-1 bg-[#10141b] border border-border rounded p-0.5">
-            {(['month','quarter','list']).map(v => (
+            {(['month','list']).map(v => (
               <button
                 key={v}
                 onClick={() => setView(v)}
@@ -663,6 +780,15 @@ export default function CalendarPage() {
             New POV
           </button>
 
+          {/* Add event button */}
+          <button
+            onClick={() => setEventModal({ date: '' })}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] bg-[#bc8cff]/10 text-[#bc8cff] border border-[#bc8cff]/25 hover:bg-[#bc8cff]/20 transition"
+          >
+            <TablerIcon name="ti-calendar-event" className="text-[12px]" />
+            Add event
+          </button>
+
           {/* Add timeline button */}
           <button
             onClick={() => setShowAddModal(true)}
@@ -684,27 +810,12 @@ export default function CalendarPage() {
       <div className="grid grid-cols-4 gap-3 mb-5">
         <StatCard label="Active POVs"         value={stats.activePovs}         color="text-accent-blue" />
         <StatCard label="Closing this month"  value={stats.closingThisMonth}   color="text-accent-green" />
-        <StatCard label="Milestones this week" value={stats.milestonesThisWeek} color="text-accent-yellow" />
+        <StatCard label="Meetings this week" value={stats.meetingsThisWeek} color="text-accent-yellow" />
         <StatCard label="Upcoming starts"     value={stats.upcomingStarts}     color="text-accent-orange" />
       </div>
 
-      {/* ── non-month views stub ── */}
-      {view !== 'month' && (
-        <Card>
-          <div className="flex flex-col items-center justify-center py-16 gap-2">
-            <Icon.Calendar width={24} height={24} className="text-text-dim" />
-            <div className="text-[12px] text-text-muted">
-              {view.charAt(0).toUpperCase() + view.slice(1)} view — coming soon
-            </div>
-            <button
-              onClick={() => setView('month')}
-              className="mt-2 px-3 py-1.5 rounded text-[11px] bg-accent-blue/10 text-accent-blue border border-accent-blue/25 hover:bg-accent-blue/20 transition"
-            >
-              Back to Month
-            </button>
-          </div>
-        </Card>
-      )}
+      {/* ── list view ── */}
+      {view === 'list' && <ListView timelines={timelines} />}
 
       {/* ── month calendar ── */}
       {view === 'month' && (
@@ -768,9 +879,12 @@ export default function CalendarPage() {
                 return (
                   <div
                     key={key}
+                    onClick={day ? () => setEventModal({ date: ymd(day) }) : undefined}
+                    title={day ? 'Click to add an event on this day' : undefined}
                     className={[
                       'min-h-[90px] border-b border-r border-border px-1.5 pt-1 pb-1.5 relative flex flex-col gap-0.5',
                       isWeekend ? 'bg-app' : 'bg-card',
+                      day ? 'cursor-pointer hover:bg-[#11161e]' : '',
                       isLastRow ? 'border-b-0' : '',
                       idx % 7 === 6 ? 'border-r-0' : '',
                     ].join(' ')}
@@ -788,19 +902,6 @@ export default function CalendarPage() {
                         >
                           {day.getDate()}
                         </span>
-                        {/* dots row */}
-                        {info.dots.length > 0 && (
-                          <div className="flex gap-0.5 flex-wrap justify-end mt-0.5">
-                            {info.dots.map((ms, di) => (
-                              <span
-                                key={di}
-                                className="w-[5px] h-[5px] rounded-full shrink-0"
-                                style={{ background: ms.color }}
-                                title={`${ms.label}: ${ms.tl.account_name || ''}`}
-                              />
-                            ))}
-                          </div>
-                        )}
                       </div>
                     )}
 
@@ -823,23 +924,36 @@ export default function CalendarPage() {
                           title={tlTitle}
                           onClick={e => handleBarClick(e, bar)}
                         >
-                          {bar.isStart && (
-                            <span
-                              className="flex items-center gap-0.5 truncate pl-1 leading-none"
-                              style={{ color: bar.barColor }}
-                            >
-                              {bar.isManual && (
-                                <TablerIcon name="ti-pencil" className="text-[10px] shrink-0" />
-                              )}
-                              {bar.label}
-                            </span>
-                          )}
+                          <span
+                            className="flex items-center gap-0.5 truncate pl-1 leading-none"
+                            style={{ color: bar.barColor }}
+                          >
+                            {bar.isStart && bar.isManual && (
+                              <TablerIcon name="ti-pencil" className="text-[10px] shrink-0" />
+                            )}
+                            {bar.label}
+                          </span>
                         </div>
                       );
                     })}
                     {day && info.bars.length > 3 && (
                       <span className="text-[9px] text-text-dim pl-0.5">+{info.bars.length - 3} more</span>
                     )}
+
+                    {/* Meeting markers — account name + meeting type, e.g. "BLG · Kick Off" */}
+                    {day && info.dots.map((ms, mi) => (
+                      <div
+                        key={`m-${mi}`}
+                        className="flex items-center gap-1 h-[13px] text-[9px] font-medium leading-none overflow-hidden cursor-pointer"
+                        title={`${ms.tl.account_name || ''} · ${ms.label}`}
+                        onClick={e => handleMeetingClick(e, ms)}
+                      >
+                        <span className="w-[6px] h-[6px] rounded-full shrink-0" style={{ background: ms.color }} />
+                        <span className="truncate" style={{ color: ms.color }}>
+                          {ms.tl.account_name} · {ms.label}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 );
               })}
@@ -847,76 +961,15 @@ export default function CalendarPage() {
           </Card>
 
           {/* ── legend ── */}
-          <div className="mt-3 flex flex-wrap gap-4 px-1">
-            {MILESTONE_TYPES.map(mt => (
+          <div className="mt-3 flex flex-wrap items-center gap-4 px-1">
+            <span className="text-[10px] text-text-dim uppercase tracking-wider">Meetings:</span>
+            {MEETING_TYPES.map(mt => (
               <div key={mt.key} className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full" style={{ background: mt.color }} />
                 <span className="text-[10px] text-text-dim">{mt.label}</span>
               </div>
             ))}
-          </div>
-
-          {/* ── this week panel ── */}
-          <div className="mt-5">
-            <Card>
-              <CardHeader
-                title="This Week"
-                subtitle="Milestones in the next 7 days"
-                icon={Icon.Calendar}
-              />
-              {weekMilestones.length === 0 ? (
-                <div className="px-4 py-8 text-center text-[12px] text-text-dim">
-                  No milestones in the next 7 days.
-                </div>
-              ) : (
-                <div className="divide-y divide-border">
-                  {weekMilestones.map((ms, i) => {
-                    const msDate    = ymd(ms.date);
-                    const isOverdue = ms.date < today && msDate !== todayStr;
-                    return (
-                      <div
-                        key={i}
-                        onClick={() => navigate(`/accounts/${ms.tl.account_id}`)}
-                        className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#14181f] cursor-pointer transition"
-                      >
-                        {/* colored dot */}
-                        <span
-                          className="w-2 h-2 rounded-full shrink-0"
-                          style={{ background: ms.color }}
-                        />
-
-                        {/* milestone label */}
-                        <span className="text-[11px] text-text-secondary w-28 shrink-0">{ms.label}</span>
-
-                        {/* account name */}
-                        <span className="text-[11px] text-accent-blue flex-1 truncate">
-                          {ms.tl.account_name || '—'}
-                        </span>
-
-                        {/* date */}
-                        <span className="text-[11px] text-text-muted shrink-0">
-                          {formatDate(msDate)}
-                        </span>
-
-                        {/* urgency badge */}
-                        <span
-                          className={[
-                            'text-[10px] px-1.5 py-0.5 rounded border shrink-0',
-                            isOverdue
-                              ? 'bg-accent-red/10 text-accent-red border-accent-red/30'
-                              : msDate === todayStr
-                              ? 'bg-accent-yellow/10 text-accent-yellow border-accent-yellow/30'
-                              : 'bg-[#10141b] text-text-dim border-border',
-                          ].join(' ')}
-                        >
-                          {isOverdue ? 'Overdue' : msDate === todayStr ? 'Today' : 'Upcoming'}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </Card>
+            <span className="text-[10px] text-text-dim ml-2">· Click a day (or “Add event”) to schedule a meeting</span>
           </div>
 
           {/* ── empty state ── */}
@@ -938,6 +991,15 @@ export default function CalendarPage() {
         />
       )}
 
+      {eventModal && (
+        <AddEventModal
+          timelines={timelines}
+          defaultDate={eventModal.date}
+          onClose={() => setEventModal(null)}
+          onSuccess={() => { setEventModal(null); reload(); }}
+        />
+      )}
+
       {popover && (
         <EditPopover
           tl={popover.tl}
@@ -946,6 +1008,61 @@ export default function CalendarPage() {
           onReload={() => { reload(); }}
         />
       )}
+    </div>
+  );
+}
+
+// ─── List View ───────────────────────────────────────────────────────────────
+// Flat list of every POV with status, date range, and its scheduled meetings.
+
+function ListView({ timelines }) {
+  if (!timelines.length) {
+    return (
+      <Card>
+        <div className="py-12 text-center text-[12px] text-text-dim">No POVs scheduled.</div>
+      </Card>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      {timelines.map(tl => {
+        const meetings = (tl.meetings || []).slice().sort((a, b) => a.meeting_date.localeCompare(b.meeting_date));
+        return (
+          <Card key={tl.id} className="overflow-hidden">
+            <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: tl.account_color || '#378ADD' }} />
+              <Link to={`/accounts/${tl.account_id}`} className="text-[13px] font-medium text-text-primary hover:text-accent-blue truncate">
+                {tl.account_name}
+              </Link>
+              {tl.label && <span className="text-[11px] text-text-muted truncate">· {tl.label}</span>}
+              <span className="ml-auto text-[11px] text-text-muted shrink-0">
+                {formatDate(tl.start_date)} – {formatDate(tl.end_date)}
+              </span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 font-medium ${statusClass(tl.status)}`}>
+                {tl.status || 'Draft'}
+              </span>
+            </div>
+            <div className="px-4 py-2.5">
+              {meetings.length === 0 ? (
+                <div className="text-[11px] text-text-dim">No meetings scheduled.</div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {meetings.map(m => {
+                    const def = MEETING_BY_KEY[m.type] || { label: m.type, color: '#8b949e' };
+                    return (
+                      <div key={m.id} className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: def.color }} />
+                        <span className="text-[11px] font-medium w-24 shrink-0" style={{ color: def.color }}>{def.label}</span>
+                        <span className="text-[11px] text-text-muted">{formatDate(m.meeting_date)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </Card>
+        );
+      })}
     </div>
   );
 }

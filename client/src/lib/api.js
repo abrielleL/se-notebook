@@ -96,6 +96,12 @@ export const api = {
     request(`/api/accounts/${accountId}/stage-gates/${encodeURIComponent(stage)}/${encodeURIComponent(gateKey)}`,
       { method: 'PUT', body: json({ completed }) }),
 
+  // account tags (managed catalog)
+  listTags: () => request('/api/tags'),
+  createTag: (body) => request('/api/tags', { method: 'POST', body: json(body) }),
+  updateTag: (id, body) => request(`/api/tags/${id}`, { method: 'PUT', body: json(body) }),
+  deleteTag: (id) => request(`/api/tags/${id}`, { method: 'DELETE' }),
+
   // pov config
   getPovConfig: () => request('/api/pov-config'),
   createPovConfig: (body) => request('/api/pov-config', { method: 'POST', body: json(body) }),
@@ -126,14 +132,14 @@ export const api = {
   emailDraft: (accountId, body) =>
     request(`/api/accounts/${accountId}/email-draft`, { method: 'POST', headers: aiHeaders(), body: json(body) }),
 
-  // export
-  exportPdf: (accountId, sections) =>
-    request(`/api/accounts/${accountId}/export`, { method: 'POST', body: json({ format: 'pdf', sections }) }),
-  exportDocx: async (accountId, sections) => {
+  // export (pov_id optional — targets a specific POV draft, else the latest)
+  exportPdf: (accountId, sections, povId) =>
+    request(`/api/accounts/${accountId}/export`, { method: 'POST', body: json({ format: 'pdf', sections, pov_id: povId }) }),
+  exportDocx: async (accountId, sections, povId) => {
     const res = await fetch(`/api/accounts/${accountId}/export`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: json({ format: 'docx', sections })
+      body: json({ format: 'docx', sections, pov_id: povId })
     });
     if (!res.ok) throw new Error(`Export failed: ${res.status}`);
     const blob = await res.blob();
@@ -143,6 +149,7 @@ export const api = {
   },
 
   // account files
+  listAllFiles: () => request('/api/files'),
   listFiles: (accountId) => request(`/api/accounts/${accountId}/files`),
   deleteFile: (id) => request(`/api/files/${id}`, { method: 'DELETE' }),
   fileDownloadUrl: (id) => `/api/files/${id}/download`,
@@ -169,5 +176,9 @@ export const api = {
   listTimelines: () => request('/api/pov-timeline'),
   createTimeline: (body) => request('/api/pov-timeline', { method: 'POST', body: json(body) }),
   updateTimeline: (id, body) => request(`/api/pov-timeline/${id}`, { method: 'PUT', body: json(body) }),
-  deleteTimeline: (id) => request(`/api/pov-timeline/${id}`, { method: 'DELETE' })
+  deleteTimeline: (id) => request(`/api/pov-timeline/${id}`, { method: 'DELETE' }),
+
+  // pov meetings (scoping/kickoff/check-in/wrap-up dates on a timeline)
+  addPovMeeting: (body) => request('/api/pov-meetings', { method: 'POST', body: json(body) }),
+  deletePovMeeting: (id) => request(`/api/pov-meetings/${id}`, { method: 'DELETE' })
 };

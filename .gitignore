@@ -1,41 +1,28 @@
-# Dependencies
 node_modules/
-
-# Environment / secrets
 .env
 .env.local
-.env.*.local
-
-# Logs
 *.log
-logs/
-server/logs/
-
-# OS / editor
 .DS_Store
+dist/
+build/
+server/uploads/*
+!server/uploads/.gitkeep
 .vscode/
 .idea/
 
-# Build output
-dist/
-build/
-client/dist/
-
-# Databases (SQLite) and backups — contain user/customer data
+# Database & sidecar files (contain account data + OAuth tokens) — never commit
+server/db/*.db
+server/db/*.db-shm
+server/db/*.db-wal
+server/db/*.db.bak-*
+server/db/token.json
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
-*.db
-*.db-shm
-*.db-wal
-*.db.bak-*
-server/db/*.db
-server/db/token.json
+
+# Local backups of the database (full data copies)
 backups/
 
-# Uploaded / imported user data — keep the folder, drop the contents
-server/uploads/*
-!server/uploads/.gitkeep
-
-# Local Claude Code config
-.claude/
+# Stray / exported artifacts that may contain customer data
+files.zip
+POV_*_test-export.docx

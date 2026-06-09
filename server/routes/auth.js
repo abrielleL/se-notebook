@@ -34,7 +34,6 @@ router.get('/callback', async (req, res, next) => {
     res.send(`<html><body style="font-family:system-ui;background:#0d0f12;color:#e6edf3;padding:40px;">
       <h2>Outlook connected.</h2>
       <p>You can close this tab and return to SE/notebook.</p>
-      <script>setTimeout(() => window.close(), 1500);</script>
     </body></html>`);
   } catch (err) {
     next(err);

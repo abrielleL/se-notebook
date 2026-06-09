@@ -32,7 +32,9 @@ export const Icon = {
   Mic: (p) => <svg {...baseProps} {...p}><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>,
   Link: (p) => <svg {...baseProps} {...p}><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>,
   Keyboard: (p) => <svg {...baseProps} {...p}><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6"/></svg>,
-  X: (p) => <svg {...baseProps} {...p}><path d="M18 6 6 18M6 6l12 12"/></svg>
+  X: (p) => <svg {...baseProps} {...p}><path d="M18 6 6 18M6 6l12 12"/></svg>,
+  Paperclip: (p) => <svg {...baseProps} {...p}><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>,
+  Copy: (p) => <svg {...baseProps} {...p}><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
 };
 
 export default Icon;

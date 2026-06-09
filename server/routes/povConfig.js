@@ -43,7 +43,6 @@ router.get('/pov-config', (_req, res) => {
 
 // POST a new item. sort_order = MAX(sort_order)+1 for that category.
 router.post('/pov-config', (req, res) => {
-  console.log('[pov-config] POST body:', req.body);
   const { category, label, value, icon, chroma_filters, valid_deployments } = req.body || {};
   if (!category || !label || !value) {
     return res.status(400).json({ error: 'category, label and value required' });

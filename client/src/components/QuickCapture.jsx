@@ -3,9 +3,11 @@ import Modal from './Modal.jsx';
 import { api } from '../lib/api.js';
 import { useToast } from './Toast.jsx';
 import { useOnline } from '../lib/offline.jsx';
-import { NOTE_TYPES, NOTE_TEMPLATE } from '../lib/constants.js';
 import { todayISO } from '../lib/stage.js';
 import { runFullExtraction } from '../lib/ai.js';
+import { upsertDraft, deleteDraft, getDraft, newDraftId } from '../lib/drafts.js';
+
+const meaningful = (t) => !!t.trim();
 
 // Global quick-capture modal, opened with the `Q` shortcut (when not typing
 // in a field). Save runs the full AI extraction pipeline; offline disables it.
@@ -13,12 +15,18 @@ export default function QuickCapture() {
   const [open, setOpen] = useState(false);
   const [accounts, setAccounts] = useState([]);
   const [accountId, setAccountId] = useState('');
-  const [noteType, setNoteType] = useState('General');
-  const [text, setText] = useState(NOTE_TEMPLATE);
+  const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
+  const [draftId, setDraftId] = useState(null);
   const toast = useToast();
   const online = useOnline();
   const taRef = useRef(null);
+
+  function openFresh() {
+    setDraftId(newDraftId());
+    setText(''); setAccountId('');
+    setOpen(true);
+  }
 
   useEffect(() => {
     function onKey(e) {
@@ -26,10 +34,21 @@ export default function QuickCapture() {
       const inField = tag === 'input' || tag === 'textarea' || e.target?.isContentEditable;
       if (e.key.toLowerCase() === 'q' && !inField && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
-        setOpen(true);
+        openFresh();
       }
     }
-    function onOpen() { setOpen(true); }
+    function onOpen(e) {
+      const id = e?.detail?.draftId;
+      const d = id && getDraft(id);
+      if (d) {
+        setDraftId(d.id);
+        setAccountId(d.payload?.accountId || '');
+        setText(d.payload?.text ?? d.text ?? '');
+        setOpen(true);
+      } else {
+        openFresh();
+      }
+    }
     window.addEventListener('keydown', onKey);
     window.addEventListener('open-quick-capture', onOpen);
     return () => {
@@ -37,6 +56,19 @@ export default function QuickCapture() {
       window.removeEventListener('open-quick-capture', onOpen);
     };
   }, []);
+
+  // Autosave the in-progress note as a draft while the modal is open.
+  useEffect(() => {
+    if (!open || !draftId || !meaningful(text)) return;
+    upsertDraft({
+      id: draftId,
+      source: 'quick-capture',
+      accountId: accountId || null,
+      accountName: accounts.find(a => a.id === accountId)?.account_name || '',
+      text,
+      payload: { accountId, text }
+    });
+  }, [open, draftId, text, accountId, accounts]);
 
   useEffect(() => {
     if (open) {
@@ -46,12 +78,12 @@ export default function QuickCapture() {
   }, [open]);
 
   function reset() {
-    setText(NOTE_TEMPLATE); setAccountId(''); setNoteType('General'); setOpen(false);
+    setText(''); setAccountId(''); setOpen(false);
   }
 
   async function save() {
     if (!accountId) return;
-    if (!text.trim() || text.trim() === NOTE_TEMPLATE.trim()) {
+    if (!text.trim()) {
       toast('Please add some notes before saving.', 'warn');
       return;
     }
@@ -59,7 +91,7 @@ export default function QuickCapture() {
     try {
       const note = await api.createNote({
         account_id: accountId, date: todayISO(), raw_notes: text,
-        note_type: noteType, pending_ai_extraction: online ? 0 : 1
+        pending_ai_extraction: online ? 0 : 1
       });
       if (online) {
         runFullExtraction(accountId, note.id)
@@ -73,6 +105,7 @@ export default function QuickCapture() {
       } else {
         toast('Note saved offline. AI extraction will run when back online.', 'warn');
       }
+      if (draftId) deleteDraft(draftId);
       reset();
     } catch (e) {
       toast(`Save failed: ${e.message}`, 'error');
@@ -105,10 +138,6 @@ export default function QuickCapture() {
             className="flex-1 bg-[#0a0d11] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary focus:outline-none focus:border-accent-blue/50">
             <option value="">Select account…</option>
             {accounts.map(a => <option key={a.id} value={a.id}>{a.account_name}</option>)}
-          </select>
-          <select value={noteType} onChange={e => setNoteType(e.target.value)}
-            className="bg-[#0a0d11] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary focus:outline-none focus:border-accent-blue/50">
-            {NOTE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
         <textarea

@@ -3,7 +3,8 @@ services:
     build: .
     container_name: se-notebook
     ports:
-      - "3001:3001"
+      # bind to localhost only — not reachable from the network
+      - "127.0.0.1:3001:3001"
     volumes:
       # persists your SQLite file and uploads on the host
       - ./server/db:/app/server/db
@@ -15,7 +16,8 @@ services:
   chromadb:
     image: chromadb/chroma:latest
     ports:
-      - "8000:8000"
+      # localhost only — ChromaDB has no auth; only the app/ingest need it
+      - "127.0.0.1:8000:8000"
     volumes:
       - chroma_data:/chroma/chroma
     environment:

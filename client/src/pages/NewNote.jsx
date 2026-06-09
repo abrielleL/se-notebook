@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import { api } from '../lib/api.js';
 import { hasApiKey, runAIWithSnapshot } from '../lib/ai.js';
@@ -7,43 +7,73 @@ import { todayISO, initials, colorForName, parseISODate, toISODate } from '../li
 import { PRESALES_STAGES } from '../lib/stages.js';
 import Card, { CardHeader } from '../components/Card.jsx';
 import Icon from '../components/Icons.jsx';
-
-const DRAFT_KEY = 'new_note_draft_v1';
+import { upsertDraft, deleteDraft, getDraft, newDraftId } from '../lib/drafts.js';
 
 const emptyContact = () => ({ name: '', title: '' });
+const emptyForm = () => ({
+  account_id: null,
+  account_name: '',
+  account_executive: '',
+  industry: '',
+  presales_stage: '',
+  date: todayISO(),
+  raw_notes: '',
+  contacts: [emptyContact()]
+});
 
 export default function NewNote() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const resumeId = params.get('draft');
   const [allAccounts, setAllAccounts] = useState([]);
+  // Draft id for this editing session — resumed from ?draft, else new.
+  const [draftId] = useState(() => resumeId || newDraftId());
   const [form, setForm] = useState(() => {
-    const saved = localStorage.getItem(DRAFT_KEY);
-    if (saved) try { return JSON.parse(saved); } catch {}
-    return {
-      account_id: null,
-      account_name: '',
-      account_executive: '',
-      industry: '',
-      presales_stage: '',
-      date: todayISO(),
-      raw_notes: '',
-      contacts: [emptyContact()]
-    };
+    if (resumeId) { const d = getDraft(resumeId); if (d?.payload) return { ...emptyForm(), ...d.payload }; }
+    return emptyForm();
   });
   const [draftSaved, setDraftSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
+  // Optional transcript file dropped/picked at note-creation time. Kept out of
+  // `form` (and the localStorage draft) since a File can't be serialized.
+  const [transcriptFile, setTranscriptFile] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef(null);
+
+  function onTranscriptDrop(e) {
+    e.preventDefault();
+    setDragOver(false);
+    const f = e.dataTransfer.files[0];
+    if (f) setTranscriptFile(f);
+  }
+  function onTranscriptPick(e) {
+    const f = e.target.files[0];
+    if (f) setTranscriptFile(f);
+    e.target.value = '';
+  }
 
   useEffect(() => { api.listAccounts().then(setAllAccounts); }, []);
 
+  // Autosave to the drafts store as you type (only once there's note content),
+  // debounced so it doesn't thrash on every keystroke.
   useEffect(() => {
-    const t = setInterval(() => {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(form));
+    if (!form.raw_notes.trim() && !form.account_name.trim()) return;
+    const t = setTimeout(() => {
+      upsertDraft({
+        id: draftId,
+        source: 'new-note',
+        accountId: form.account_id,
+        accountName: form.account_name,
+        text: form.raw_notes,
+        payload: form
+      });
       setDraftSaved(true);
       setTimeout(() => setDraftSaved(false), 1500);
-    }, 60000);
-    return () => clearInterval(t);
-  }, [form]);
+    }, 700);
+    return () => clearTimeout(t);
+  }, [form, draftId]);
 
   useEffect(() => {
     function onKey(e) {
@@ -94,7 +124,7 @@ export default function NewNote() {
 
   async function save() {
     if (!form.account_name.trim()) { setErr('Account Name required'); return; }
-    if (!form.raw_notes.trim()) { setErr('Notes required'); return; }
+    if (!form.raw_notes.trim() && !transcriptFile) { setErr('Add notes or drop a transcript file'); return; }
     setErr(''); setSaving(true);
     try {
       let accountId = form.account_id;
@@ -115,11 +145,21 @@ export default function NewNote() {
         });
       }
 
-      await api.createNote({
-        account_id: accountId,
-        date: form.date,
-        raw_notes: form.raw_notes
-      });
+      if (form.raw_notes.trim()) {
+        await api.createNote({
+          account_id: accountId,
+          date: form.date,
+          raw_notes: form.raw_notes
+        });
+      }
+
+      if (transcriptFile) {
+        const fd = new FormData();
+        fd.append('account_id', accountId);
+        fd.append('source', 'file_upload');
+        fd.append('file', transcriptFile);
+        await api.uploadTranscript(fd);
+      }
 
       for (const c of form.contacts) {
         if (c.name.trim()) await api.createContact({ account_id: accountId, name: c.name.trim(), title: c.title.trim() });
@@ -129,7 +169,7 @@ export default function NewNote() {
         try { await runAIWithSnapshot(accountId); } catch (e) { console.warn(e); }
       }
 
-      localStorage.removeItem(DRAFT_KEY);
+      deleteDraft(draftId);
       navigate(`/accounts/${accountId}`);
     } catch (e) {
       setErr(e.message);
@@ -138,17 +178,9 @@ export default function NewNote() {
   }
 
   function clearDraft() {
-    localStorage.removeItem(DRAFT_KEY);
-    setForm({
-      account_id: null,
-      account_name: '',
-      account_executive: '',
-      industry: '',
-      presales_stage: '',
-      date: todayISO(),
-      raw_notes: '',
-      contacts: [emptyContact()]
-    });
+    deleteDraft(draftId);
+    setTranscriptFile(null);
+    setForm(emptyForm());
   }
 
   return (
@@ -265,9 +297,36 @@ export default function NewNote() {
         />
       </div>
 
+      <div className="mb-5">
+        <Label hint="optional">Transcript file</Label>
+        {transcriptFile ? (
+          <div className="flex items-center gap-2 bg-card border border-border rounded px-3 py-2.5">
+            <Icon.Mic width={14} height={14} className="text-text-muted shrink-0" />
+            <span className="text-[12px] text-text-primary flex-1 truncate">{transcriptFile.name}</span>
+            <span className="text-[10px] text-text-dim shrink-0">{(transcriptFile.size / 1024).toFixed(0)} KB</span>
+            <button onClick={() => setTranscriptFile(null)} className="text-text-dim hover:text-accent-red shrink-0"><Icon.X width={12} height={12} /></button>
+          </div>
+        ) : (
+          <div
+            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={e => { e.preventDefault(); setDragOver(false); }}
+            onDrop={onTranscriptDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition ${dragOver ? 'border-accent-blue bg-accent-blue/10' : 'border-border hover:border-text-dim'}`}
+          >
+            <input ref={fileInputRef} type="file" className="hidden" onChange={onTranscriptPick} />
+            <div className="flex flex-col items-center gap-1">
+              <Icon.Upload width={18} height={18} className="text-text-muted" />
+              <span className="text-[11px] text-text-secondary">Drop a call transcript here or click to browse</span>
+              <span className="text-[10px] text-text-dim">.txt, .md, .pdf, .docx — processed with AI on save</span>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="bg-accent-blue/5 border border-accent-blue/20 rounded p-3 flex items-start gap-2 text-[12px] text-text-secondary">
         <Icon.Sparkles className="text-accent-blue shrink-0 mt-0.5" width={13} height={13} />
-        <div>AI will extract: summary, technical drivers, environment, and next steps. All editable after saving.</div>
+        <div>AI will extract summary, technical drivers, environment, and next steps from your notes{transcriptFile ? ' and transcript' : ''}. All editable after saving.</div>
       </div>
     </div>
   );

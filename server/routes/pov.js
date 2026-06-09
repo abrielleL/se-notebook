@@ -169,8 +169,7 @@ async function generateDraft(accountId, body, key, locals) {
     if (!account) { const e = new Error('Account not found'); e.status = 404; throw e; }
 
     const maps = loadPovConfigMaps();
-    // SE notes are intentionally NOT sent to the model. Log only for debugging.
-    if (body.se_notes) console.log('[pov] SE notes provided (excluded from prompt):', String(body.se_notes).slice(0, 200));
+    // SE notes are intentionally NOT sent to the model (and not logged — they're private).
     const di = dealIntelMap(accountId);
     const notes = db.prepare(
       'SELECT * FROM notes WHERE account_id = ? AND deleted_at IS NULL ORDER BY date DESC'
@@ -513,6 +512,8 @@ router.delete('/pov-drafts/:id', (req, res) => {
   const existing = db.prepare('SELECT id FROM pov_drafts WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'POV draft not found' });
   db.prepare('UPDATE pov_drafts SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(req.params.id);
+  // Remove the POV's scheduled meetings so they don't linger as orphans.
+  db.prepare('DELETE FROM pov_meetings WHERE pov_id = ?').run(req.params.id);
   res.json({ success: true });
 });
 
@@ -550,7 +551,11 @@ router.post('/pov-timeline', (req, res) => {
   res.status(201).json(serializeDraft(db.prepare('SELECT * FROM pov_drafts WHERE id = ?').get(info.lastInsertRowid)));
 });
 
-// GET all non-deleted timelines (manual + generated) with account info.
+// Valid POV meeting types (kept in sync with the calendar UI).
+const MEETING_TYPES = ['scoping', 'kickoff', 'checkin', 'wrapup'];
+
+// GET all non-deleted timelines (manual + generated) with account info, each
+// with its attached POV meetings (scoping call, kickoff, check-in, wrap-up).
 router.get('/pov-timeline', (_req, res) => {
   const rows = db.prepare(`
     SELECT p.id, p.account_id, a.account_name, a.color AS account_color,
@@ -560,7 +565,41 @@ router.get('/pov-timeline', (_req, res) => {
     WHERE p.deleted_at IS NULL AND p.start_date IS NOT NULL AND p.end_date IS NOT NULL
     ORDER BY p.start_date ASC
   `).all();
+
+  const meetings = db.prepare(
+    'SELECT id, pov_id, type, meeting_date FROM pov_meetings ORDER BY meeting_date ASC'
+  ).all();
+  const byPov = {};
+  for (const m of meetings) (byPov[m.pov_id] ||= []).push(m);
+  rows.forEach(r => { r.meetings = byPov[r.id] || []; });
+
   res.json(rows);
+});
+
+// POST add a meeting to a POV timeline.
+router.post('/pov-meetings', (req, res) => {
+  const { pov_id, type, meeting_date } = req.body || {};
+  if (!pov_id || !type || !meeting_date) {
+    return res.status(400).json({ error: 'pov_id, type and meeting_date required' });
+  }
+  if (!MEETING_TYPES.includes(type)) {
+    return res.status(400).json({ error: `Invalid meeting type: ${type}` });
+  }
+  const pov = db.prepare('SELECT id FROM pov_drafts WHERE id = ? AND deleted_at IS NULL').get(pov_id);
+  if (!pov) return res.status(404).json({ error: 'POV timeline not found' });
+
+  const info = db.prepare(
+    'INSERT INTO pov_meetings (pov_id, type, meeting_date) VALUES (?, ?, ?)'
+  ).run(pov_id, type, meeting_date);
+  res.status(201).json(db.prepare('SELECT id, pov_id, type, meeting_date FROM pov_meetings WHERE id = ?').get(info.lastInsertRowid));
+});
+
+// DELETE a meeting.
+router.delete('/pov-meetings/:id', (req, res) => {
+  const m = db.prepare('SELECT id FROM pov_meetings WHERE id = ?').get(req.params.id);
+  if (!m) return res.status(404).json({ error: 'Meeting not found' });
+  db.prepare('DELETE FROM pov_meetings WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
 });
 
 // PUT update a timeline's label / dates / status.
@@ -596,6 +635,7 @@ router.delete('/pov-timeline/:id', (req, res) => {
     return res.status(403).json({ error: 'Generated POV timelines cannot be deleted from the calendar. Manage them from the account page.' });
   }
   db.prepare('UPDATE pov_drafts SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(req.params.id);
+  db.prepare('DELETE FROM pov_meetings WHERE pov_id = ?').run(req.params.id);
   res.json({ success: true });
 });
 

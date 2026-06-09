@@ -221,7 +221,6 @@ router.post('/accounts/:id/run-extraction', async (req, res, next) => {
         : notes[notes.length - 1];
       const prior = notes.filter(n => n.id !== latest.id);
 
-      console.log('[contacts] latest note raw_notes (first 300):', String(latest.raw_notes || '').slice(0, 300));
       contacts = contacts.concat(extractContacts(req.params.id, latest.raw_notes, notes));
 
       if (key) {

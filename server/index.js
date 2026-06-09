@@ -9,7 +9,36 @@ require('./db/database');
 
 const app = express();
 
-app.use(cors());
+// Restrict CORS to same-origin / localhost only. In production the client is
+// served same-origin by this server, and in dev Vite proxies same-origin — so
+// no external site should ever be able to read the API cross-origin (which,
+// with no app auth, would otherwise expose all data to any page you visit).
+const LOCAL_ORIGIN = [/^https?:\/\/localhost(:\d+)?$/, /^https?:\/\/127\.0\.0\.1(:\d+)?$/];
+app.use(cors({
+  origin: (origin, cb) => cb(null, !origin || LOCAL_ORIGIN.some(re => re.test(origin)))
+}));
+
+// Security headers, incl. a Content-Security-Policy. Allows: same-origin assets,
+// Google Fonts (JetBrains Mono), direct browser→Anthropic API calls, and inline
+// styles (React style props / charts). No inline scripts are used by the app.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob:",
+  "connect-src 'self' https://api.anthropic.com",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'"
+].join('; ');
+app.use((_req, res, next) => {
+  res.setHeader('Content-Security-Policy', CSP);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+});
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -27,6 +56,7 @@ app.use('/api', require('./routes/crmSnapshots'));
 app.use('/api', require('./routes/dealIntelligence'));
 app.use('/api', require('./routes/stageGate'));
 app.use('/api', require('./routes/povConfig'));
+app.use('/api', require('./routes/tags'));
 app.use('/api', require('./routes/ai'));
 app.use('/api', require('./routes/pov'));
 app.use('/api', require('./routes/email'));

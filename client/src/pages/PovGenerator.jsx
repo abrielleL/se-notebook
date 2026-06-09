@@ -57,6 +57,13 @@ export default function PovGenerator() {
   const [submitting, setSubmitting] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [similar, setSimilar] = useState([]);
+  const [povVersion, setPovVersion] = useState(null);
+
+  // Version of a POV within its account = its position by creation order (oldest = v1).
+  const versionFromList = (list, targetId) => {
+    const idx = [...list].sort((a, b) => a.id - b.id).findIndex(x => String(x.id) === String(targetId));
+    return idx >= 0 ? idx + 1 : null;
+  };
 
   // Background generation job: survives navigation, auto-resumes on return.
   // Disabled auto-resume when viewing an existing POV (povId in the URL).
@@ -68,6 +75,7 @@ export default function PovGenerator() {
         const fresh = list.find(p => String(p.id) === String(resultPovId));
         if (fresh) {
           setPov(fresh);
+          setPovVersion(versionFromList(list, resultPovId));
           setMode('document');
           navigate(`/accounts/${id}/pov-generator/${resultPovId}`, { replace: true });
         }
@@ -97,7 +105,7 @@ export default function PovGenerator() {
   }, [id]);
 
   useEffect(() => {
-    if (povId) api.listPov(id).then(list => { const p = list.find(x => String(x.id) === String(povId)); if (p) { setPov(p); setMode('document'); } }).catch(() => {});
+    if (povId) api.listPov(id).then(list => { const p = list.find(x => String(x.id) === String(povId)); if (p) { setPov(p); setMode('document'); } setPovVersion(versionFromList(list, povId)); }).catch(() => {});
   }, [povId, id]);
 
   // similar POV suggestions across other accounts
@@ -200,6 +208,36 @@ export default function PovGenerator() {
     }
   }
 
+  // Reopen the preflight form prefilled from an existing POV's stored inputs
+  // (product selections, duration, timeline) so they can be reviewed/adjusted.
+  function editInputs() {
+    const s = (pov && pov.selections) || {};
+    setForm(f => ({
+      ...f,
+      account_name_override: account?.account_name || f.account_name_override,
+      contact_name: s.contact_name || f.contact_name,
+      contact_title: s.contact_title || f.contact_title,
+      duration: s.duration || f.duration,
+      start_date: pov?.start_date || f.start_date,
+      end_date: pov?.end_date || f.end_date,
+      selected_products: s.products || [],
+      selected_deployment: s.deployment || [],
+      selected_os: s.os || [],
+      selected_use_cases: s.use_cases || [],
+      selected_integrations: s.integrations || [],
+      selected_technologies: s.technologies || [],
+      metascan_windows_tier: s.metascan_windows_tier || '',
+      metascan_linux_tier: s.metascan_linux_tier || '',
+      selected_file_types: s.file_types || [],
+      selected_compliance: s.compliance || [],
+      network_topology: s.network_topology || '',
+      existing_stack: s.existing_stack || '',
+      competitors: s.competitors || '',
+      endpoint_count: s.user_count || f.endpoint_count
+    }));
+    setMode('preflight');
+  }
+
   if (!account) return <div className="p-8 text-[12px] text-text-muted">Loading…</div>;
 
   // ---------- PREFLIGHT ----------
@@ -208,8 +246,17 @@ export default function PovGenerator() {
       <div className="p-6 max-w-3xl mx-auto flex flex-col gap-4">
         <div className="flex items-center gap-2">
           <button onClick={() => navigate(`/accounts/${id}`)} className="text-text-dim hover:text-text-primary"><Icon.Back width={16} height={16} /></button>
-          <h1 className="text-[15px] font-semibold text-text-primary">Generate POV — {account.account_name}</h1>
+          <h1 className="text-[15px] font-semibold text-text-primary flex-1">Generate POV — {account.account_name}</h1>
+          {povId && pov && (
+            <button onClick={() => setMode('document')} className="text-[11px] text-text-muted hover:text-accent-blue shrink-0">← Back to document</button>
+          )}
         </div>
+
+        {povId && pov && (
+          <div className="px-3 py-2 rounded bg-[#2d2200]/40 border border-[#3d2f00] text-[11px] text-accent-yellow">
+            Editing inputs for POV {povVersion ? `v${povVersion}` : `#${pov.id}`}. Generating will create a <strong>new version</strong> — your existing document is kept.
+          </div>
+        )}
 
         <div className="bg-card border border-border rounded-lg p-4 grid grid-cols-2 gap-3">
           <Labeled label="Account name"><input className={inputCls} value={form.account_name_override} onChange={e => setForm(f => ({ ...f, account_name_override: e.target.value }))} /></Labeled>
@@ -382,7 +429,12 @@ export default function PovGenerator() {
   }
 
   // ---------- DOCUMENT VIEW ----------
-  return <PovDocument accountId={id} account={account} pov={pov} setPov={setPov} navigate={navigate}
+  // The POV loads asynchronously; if it hasn't resolved yet (e.g. the account
+  // fetch won the race), wait rather than rendering PovDocument with a null pov.
+  if (!pov) return <div className="p-8 text-[12px] text-text-muted">Loading POV…</div>;
+
+  return <PovDocument accountId={id} account={account} pov={pov} version={povVersion} setPov={setPov} navigate={navigate}
+    onEditInputs={editInputs}
     onExport={() => setExportOpen(true)} exportOpen={exportOpen} onCloseExport={() => setExportOpen(false)} online={online} />;
 }
 
@@ -391,7 +443,7 @@ function Labeled({ label, children }) {
   return <div><label className="text-[10px] text-text-muted block mb-1">{label}</label>{children}</div>;
 }
 
-function PovDocument({ accountId, account, pov, setPov, navigate, onExport, exportOpen, onCloseExport, online }) {
+function PovDocument({ accountId, account, pov, version, setPov, navigate, onEditInputs, onExport, exportOpen, onCloseExport, online }) {
   const toast = useToast();
   const [sections, setSections] = useState(pov.section_texts || {});
   const [sePrep, setSePrep] = useState(pov.se_prep_notes || '');
@@ -459,12 +511,13 @@ function PovDocument({ accountId, account, pov, setPov, navigate, onExport, expo
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <button onClick={() => navigate(`/accounts/${accountId}`)} className="text-text-dim hover:text-text-primary"><Icon.Back width={16} height={16} /></button>
-          <h1 className="text-[15px] font-semibold text-text-primary truncate">POV #{pov.id} — {account.account_name}</h1>
+          <h1 className="text-[15px] font-semibold text-text-primary truncate">POV {version ? `v${version}` : `#${pov.id}`} — {account.account_name}</h1>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <select value={status} onChange={e => saveStatus(e.target.value)} className="bg-card border border-border rounded px-2 py-1.5 text-[11px] text-text-primary">
             {POV_STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
+          <button onClick={onEditInputs} title="Review or change product selections, duration, and timeline" className="flex items-center gap-1 bg-card border border-border rounded px-2.5 py-1.5 text-[11px] text-text-primary hover:border-accent-blue/40"><Icon.Edit width={12} height={12} /> Edit inputs</button>
           <button onClick={makeAgenda} disabled={!online} className="bg-card border border-border rounded px-2.5 py-1.5 text-[11px] text-text-primary hover:border-accent-blue/40 disabled:opacity-40">Kickoff agenda</button>
           <button onClick={onExport} className="bg-accent-blue/15 text-accent-blue border border-accent-blue/30 rounded px-2.5 py-1.5 text-[11px] font-medium hover:bg-accent-blue/25">Export</button>
         </div>
