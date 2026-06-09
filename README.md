@@ -5,8 +5,11 @@ A local-first technical fieldbook for solutions engineers. Drop in notes, transc
 - React + Vite + Tailwind frontend
 - Node.js + Express backend
 - SQLite via better-sqlite3
-- Claude API called **directly from the browser** — no server-side AI
+- Claude for AI — summaries/snapshots run in the browser; POV generation runs server-side (RAG over a local ChromaDB)
 - Microsoft Graph for Outlook/Teams meeting sync
+- Runs locally via Docker Compose (app + ChromaDB)
+
+See **[OVERVIEW.md](OVERVIEW.md)** for the full feature list — POV generator & library, calendar, tags, drafts, attachment library, global search, exports, and more.
 
 ## Prerequisites
 
@@ -26,9 +29,22 @@ The first `npm run dev` will create `server/db/se-notebook.db` automatically.
 
 ## Running
 
-Two ways to run the app, depending on what you're doing:
+### Docker (recommended)
 
-### Always-on (recommended for daily use)
+The app and its ChromaDB vector store run as containers, both bound to **localhost only**:
+
+```bash
+cp .env.example .env            # optional: fill in Microsoft values for calendar sync
+docker compose up -d --build
+```
+
+Open **http://localhost:3001**. After changing code, re-run `docker compose up -d --build` to rebuild and restart.
+
+> POV **document generation** additionally needs the local embedding server running and a populated ChromaDB (see `scripts/schedule-embed-server.js` and `ingest.js`). Everything else — notes, AI summaries, calendar, exports — works without it.
+
+The non-Docker options below are for hacking on the app or running it as a native macOS service.
+
+### Always-on (macOS LaunchAgent)
 
 Installs a macOS LaunchAgent that starts the app at login, restarts it if it crashes, and serves the prebuilt React app from a single Express process on port **3001**:
 
@@ -112,15 +128,16 @@ The filename becomes the account name. The script detects a date in the content 
 |-----|--------|
 | `/` | Focus global search |
 | `N` | New Note |
+| `Q` | Quick capture |
 | `S` (or ⌘/Ctrl+S) | Save current form |
 | `?` | Shortcuts page |
 
 ## Architecture notes
 
-- **No auth.** Single-user local app.
-- **No server-side AI.** All Claude calls go from the browser to `https://api.anthropic.com/v1/messages` with `x-api-key` from localStorage. The `anthropic-dangerous-direct-browser-access: true` header is set explicitly because Anthropic blocks browser calls by default.
-- **Schema lives in `server/db/schema.sql`** and is `CREATE TABLE IF NOT EXISTS`-only, so the file is the source of truth and safe to re-run.
-- **FTS5** virtual table `search_index` is kept in sync with `notes` and `transcripts` via triggers. `GET /api/search?q=` returns ranked matches with `<mark>` snippet highlighting.
+- **Local-only, single-user.** No app login. As guardrails, CORS is restricted to localhost origins, the containers bind to `127.0.0.1` only, and a Content-Security-Policy + security headers are sent on every response.
+- **AI split.** Summaries, CRM snapshots, and section regeneration call `https://api.anthropic.com/v1/messages` **from the browser** (`x-api-key` from localStorage; the `anthropic-dangerous-direct-browser-access: true` header is required because Anthropic blocks browser calls by default). POV **document generation** runs **server-side** (Anthropic + retrieval over a local ChromaDB).
+- **Schema lives in `server/db/schema.sql`** (`CREATE TABLE IF NOT EXISTS`-only, safe to re-run); runtime column/table migrations live in `server/db/database.js`.
+- **FTS5** virtual table `search_index` covers notes, transcripts, accounts, contacts, deal intelligence, files, and tags — kept in sync via triggers plus a startup backfill. `GET /api/search?q=` returns ranked matches with `<mark>` snippet highlighting.
 - **Microsoft Graph token** is persisted in `server/db/token.json` (gitignored). Refresh happens silently via MSAL.
 
 ## Project layout
@@ -146,5 +163,5 @@ se-notebook/
 
 - **`better-sqlite3` install fails** — needs a working C++ toolchain. On macOS, `xcode-select --install`. Then re-run `npm install --prefix server`.
 - **`anthropic_api_key` not set banner won't go away** — open Settings, paste a key starting with `sk-ant-`, click Save.
-- **Outlook says "not connected"** — make sure `MICROSOFT_CLIENT_ID/SECRET/TENANT_ID` are set in `.env`, restart `npm run dev`, then click Connect Outlook. The OAuth tab will auto-close after consent.
+- **Outlook says "not connected"** — make sure `MICROSOFT_CLIENT_ID/SECRET/TENANT_ID` are set in `.env`, restart the app, then click Connect Outlook. After it shows "Outlook connected," close the tab manually and hit Sync.
 - **Port 3001 in use** — change `PORT` in `.env` and update the Vite proxy target in `client/vite.config.js`.
