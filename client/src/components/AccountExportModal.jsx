@@ -87,27 +87,13 @@ export default function AccountExportModal({ accountId, accountName, account = {
     finally { setBusy(false); }
   }
 
-  async function exportDocx() {
-    setBusy(true);
-    try {
-      const { blob, filename } = await api.exportDocx(accountId, [...selected]);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = filename; a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) { toast(`Export failed: ${e.message}`, 'error'); }
-    finally { setBusy(false); }
-  }
-
   return (
     <Modal title={`Export account — ${accountName}`} onClose={onClose} width="max-w-2xl"
       footer={
         <>
           <button onClick={onClose} className="text-[12px] text-text-muted hover:text-text-primary">Cancel</button>
           <button onClick={exportPdf} disabled={busy || !selected.size}
-            className="bg-card border border-border rounded px-3 py-1.5 text-[12px] text-text-primary hover:border-accent-blue/40 disabled:opacity-40">Export PDF</button>
-          <button onClick={exportDocx} disabled={busy || !selected.size}
-            className="bg-accent-blue/15 text-accent-blue border border-accent-blue/30 rounded px-3 py-1.5 text-[12px] font-medium hover:bg-accent-blue/25 disabled:opacity-40">Export .docx</button>
+            className="bg-accent-blue/15 text-accent-blue border border-accent-blue/30 rounded px-3 py-1.5 text-[12px] font-medium hover:bg-accent-blue/25 disabled:opacity-40">Export PDF</button>
         </>
       }>
       <div className="flex flex-col gap-3">

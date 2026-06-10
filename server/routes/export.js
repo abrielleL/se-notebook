@@ -159,6 +159,12 @@ function povFilename(account) {
   return `POV_${safe}_${date}.docx`;
 }
 
+function accountFilename(account) {
+  const safe = (account.account_name || 'Account').replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '');
+  const date = new Date().toISOString().slice(0, 10);
+  return `Account_${safe}_${date}.docx`;
+}
+
 // --- Branded OPSWAT POV docx rendering ---
 // Every typography / color / spacing value below is extracted from pov-template.docx
 // (word/styles.xml, word/document.xml, word/theme/theme1.xml) so the exported POV
@@ -494,6 +500,131 @@ async function renderDocx(account, pov, selectedKeys) {
   return Packer.toBuffer(doc);
 }
 
+// --- Account summary docx ---
+// Renders the normalized `assemble()` model (the SAME model the account PDF uses)
+// into a branded docx. This is the ACCOUNT export — selectable sections, not the
+// fixed POV document. `renderDocx` above stays reserved for the POV export.
+async function renderAccountDocx(account, items) {
+  const docx = require('docx');
+  const {
+    Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+    WidthType, BorderStyle, ShadingType, VerticalAlign, ImageRun, LineRuleType
+  } = docx;
+
+  const run = (text, o = {}) => new TextRun({ text: String(text == null ? '' : text), size: o.size || half(PT.body), bold: !!o.bold, color: o.color || C.ink, font: o.font });
+  const inlineRuns = (text, base = {}) =>
+    String(text == null ? '' : text).split(/(\*\*[^*]+\*\*)/g).filter(p => p !== '').map(p => {
+      const m = /^\*\*([^*]+)\*\*$/.exec(p);
+      return run(m ? m[1] : p, { ...base, bold: m ? true : base.bold });
+    });
+  const glyphs = (s) => String(s).replace(/\[ \]/g, '☐').replace(/\[x\]/gi, '☑');
+  const bodyPara = (text) => new Paragraph({
+    spacing: { before: 80, after: 40, line: 260, lineRule: LineRuleType.AT_LEAST },
+    children: inlineRuns(glyphs(text), { size: half(PT.body) })
+  });
+
+  const gridBorders = () => {
+    const b = { style: BorderStyle.SINGLE, size: 4, color: C.border };
+    return { top: b, bottom: b, left: b, right: b, insideHorizontal: b, insideVertical: b };
+  };
+  const cellMargins = { top: 40, bottom: 40, left: 108, right: 108 };
+  const cellPara = (kids) => new Paragraph({ spacing: { before: 40, after: 40, line: 260, lineRule: LineRuleType.AT_LEAST }, children: kids });
+  const dataCell = (text, fill) => new TableCell({
+    shading: { fill, type: ShadingType.CLEAR, color: 'auto' }, margins: cellMargins, verticalAlign: VerticalAlign.TOP,
+    children: [cellPara(inlineRuns(glyphs(String(text == null ? '' : text)), { size: half(PT.body) }))]
+  });
+  const headerCell = (text) => new TableCell({
+    shading: { fill: C.headerFill, type: ShadingType.CLEAR, color: 'auto' }, margins: cellMargins, verticalAlign: VerticalAlign.TOP,
+    children: [cellPara([run(text, { size: half(PT.body), bold: true, color: C.white })])]
+  });
+  const brandedTable = (headers, rows) => new Table({
+    width: { size: TABLE_W, type: WidthType.DXA }, borders: gridBorders(),
+    rows: [
+      new TableRow({ tableHeader: true, children: headers.map(h => headerCell(h)) }),
+      ...rows.map((r, i) => new TableRow({ children: r.map(c => dataCell(c, i % 2 ? C.greyRow : C.white)) }))
+    ]
+  });
+
+  const sectionHeading = (title, internal) => new Paragraph({
+    spacing: { before: 280, after: 200, line: 252, lineRule: LineRuleType.AUTO },
+    border: { bottom: { style: BorderStyle.SINGLE, size: 8, space: 8, color: C.blue } },
+    children: [run(title, { bold: true, color: internal ? C.internal : C.navy, size: half(PT.h2) })]
+  });
+  const subHeading = (title) => new Paragraph({
+    spacing: { before: 160, after: 40 }, children: [run(title, { bold: true, color: C.heading3, size: half(PT.h3) })]
+  });
+  const pushLines = (children, text) => {
+    for (const ln of String(text == null ? '' : text).split('\n')) if (ln.trim()) children.push(bodyPara(ln));
+  };
+
+  const children = [];
+  // Title + engagement metadata.
+  children.push(new Paragraph({ spacing: { after: 40 }, children: [run(`${account.account_name || 'Account'} — Account Export`, { bold: true, color: C.navy, size: half(PT.h1) })] }));
+  const meta = [
+    account.account_executive ? `AE: ${account.account_executive}` : null,
+    account.industry ? `Industry: ${account.industry}` : null,
+    (account.presales_stage || account.opportunity_stage) ? `Stage: ${account.presales_stage || account.opportunity_stage}` : null
+  ].filter(Boolean).join('  ·  ');
+  if (meta) children.push(new Paragraph({ spacing: { after: 20 }, children: [run(meta, { size: half(PT.small), color: C.muted })] }));
+  children.push(new Paragraph({ spacing: { after: 120 }, children: [run(`Generated ${new Date().toISOString().slice(0, 10)}`, { size: half(PT.small), color: C.muted })] }));
+
+  for (const item of items) {
+    if (item.internal) {
+      children.push(new Paragraph({ spacing: { before: 280, after: 60 }, children: [run(INTERNAL_LABEL, { bold: true, color: C.internal, size: half(PT.body) })] }));
+    }
+    children.push(sectionHeading(item.title, item.internal));
+    if (item.paragraphs) for (const p of item.paragraphs) pushLines(children, p);
+    if (item.table) children.push(brandedTable(item.table.headers, item.table.rows.length ? item.table.rows : [item.table.headers.map(() => '')]));
+    if (item.subsections) {
+      if (!item.subsections.length) children.push(bodyPara('(none)'));
+      for (const sub of item.subsections) {
+        children.push(subHeading(sub.heading));
+        for (const p of sub.paragraphs) pushLines(children, p);
+      }
+    }
+    if (item.sources && item.sources.length) {
+      children.push(subHeading('Sources'));
+      for (const u of item.sources) children.push(bodyPara(u));
+    }
+    if (item.images && item.images.length) {
+      for (const f of accountFiles(account.id)) {
+        if (!IMG_EXT.has((f.file_type || '').toLowerCase())) continue;
+        try {
+          const buf = fs.readFileSync(path.join(UPLOAD_ROOT, f.account_id, f.filename));
+          const dims = imageDims(buf);
+          let width = 450, height = 300;
+          if (dims && dims.w && dims.h) { width = Math.min(450, dims.w); height = Math.round((dims.h / dims.w) * width); }
+          children.push(new Paragraph({ spacing: { before: 120, after: 20 }, children: [new ImageRun({ data: buf, transformation: { width, height } })] }));
+          children.push(new Paragraph({ children: [run(f.original_name, { size: half(PT.caption), color: C.muted })] }));
+        } catch (e) {
+          console.warn('[export] could not embed image', f.original_name, e.message);
+        }
+      }
+    }
+  }
+
+  const doc = new Document({
+    styles: {
+      default: {
+        document: {
+          run: { font: FONT, size: half(PT.body), color: C.ink },
+          paragraph: { spacing: { after: 22, line: 260, lineRule: LineRuleType.AT_LEAST } }
+        }
+      }
+    },
+    sections: [{
+      properties: {
+        page: {
+          size: { width: 12240, height: 15840 },
+          margin: { top: 1440, right: 1080, bottom: 1166, left: 1080, header: 720, footer: 403 }
+        }
+      },
+      children
+    }]
+  });
+  return Packer.toBuffer(doc);
+}
+
 // --- PDF (HTML for client-side print) ---
 function renderHtml(account, items) {
   const parts = [];
@@ -544,18 +675,32 @@ router.post('/accounts/:id/export', async (req, res, next) => {
     const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.id);
     if (!account) return res.status(404).json({ error: 'Account not found' });
 
-    const { format, sections, pov_id } = req.body || {};
+    const { format, sections, pov_id, kind } = req.body || {};
     const sectionKeys = Array.isArray(sections) && sections.length ? sections : Object.keys(SECTION_TITLES);
 
+    // Two export kinds share this endpoint:
+    //   'pov'     — the fixed, branded POV document (no section picker)
+    //   'account' — the full account summary across the selected sections
+    // Older clients send neither; infer 'pov' only when a pov_id is targeted.
+    const isPov = kind === 'pov' || (kind == null && !!pov_id);
+
     if (format === 'docx') {
-      // Branded POV document. pov_id targets a specific draft; else most recent.
-      const pov = getPov(account.id, pov_id);
-      const buffer = await renderDocx(account, pov, sectionKeys);
+      if (isPov) {
+        // Branded POV document. pov_id targets a specific draft; else most recent.
+        const pov = getPov(account.id, pov_id);
+        const buffer = await renderDocx(account, pov, sectionKeys);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        res.setHeader('Content-Disposition', `attachment; filename="${povFilename(account)}"`);
+        return res.send(buffer);
+      }
+      // Full account summary across the selected sections.
+      const items = assemble(account, sectionKeys, pov_id);
+      const buffer = await renderAccountDocx(account, items);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-      res.setHeader('Content-Disposition', `attachment; filename="${povFilename(account)}"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${accountFilename(account)}"`);
       return res.send(buffer);
     }
-    // default: pdf -> HTML for client-side print (account-section summary)
+    // default: pdf -> HTML for client-side print (section model, both kinds)
     const items = assemble(account, sectionKeys, pov_id);
     return res.json({ html: renderHtml(account, items) });
   } catch (err) {

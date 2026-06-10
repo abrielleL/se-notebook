@@ -133,13 +133,14 @@ export const api = {
     request(`/api/accounts/${accountId}/email-draft`, { method: 'POST', headers: aiHeaders(), body: json(body) }),
 
   // export (pov_id optional — targets a specific POV draft, else the latest)
-  exportPdf: (accountId, sections, povId) =>
-    request(`/api/accounts/${accountId}/export`, { method: 'POST', body: json({ format: 'pdf', sections, pov_id: povId }) }),
-  exportDocx: async (accountId, sections, povId) => {
+  // kind: 'account' (full selectable summary) or 'pov' (fixed branded POV doc)
+  exportPdf: (accountId, sections, povId, kind = 'account') =>
+    request(`/api/accounts/${accountId}/export`, { method: 'POST', body: json({ format: 'pdf', sections, pov_id: povId, kind }) }),
+  exportDocx: async (accountId, sections, povId, kind = 'account') => {
     const res = await fetch(`/api/accounts/${accountId}/export`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: json({ format: 'docx', sections, pov_id: povId })
+      body: json({ format: 'docx', sections, pov_id: povId, kind })
     });
     if (!res.ok) throw new Error(`Export failed: ${res.status}`);
     const blob = await res.blob();
