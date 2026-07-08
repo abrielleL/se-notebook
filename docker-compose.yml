@@ -14,12 +14,16 @@ services:
     restart: always
 
   chromadb:
-    image: chromadb/chroma:latest
+    # Pinned: :latest silently drifts and has moved the persist path before,
+    # which orphaned the volume and wiped ingested data. Pin to the known-good version.
+    image: chromadb/chroma:1.0.0
     ports:
       # localhost only — ChromaDB has no auth; only the app/ingest need it
       - "127.0.0.1:8000:8000"
     volumes:
-      - chroma_data:/chroma/chroma
+      # Chroma 1.x persists to /data — the volume MUST mount there (was /chroma/chroma,
+      # an older path, so nothing was actually persisted).
+      - chroma_data:/data
     environment:
       - IS_PERSISTENT=TRUE
       - ANONYMIZED_TELEMETRY=FALSE

@@ -8,7 +8,10 @@ const PLIST_PATH = `${process.env.HOME}/Library/LaunchAgents/${PLIST_LABEL}.plis
 const PROJECT_DIR = path.resolve(__dirname, '..');
 const NODE_PATH = process.execPath;
 const EMBED_SCRIPT = path.join(PROJECT_DIR, 'embed-server.js');
-const LOG_DIR = path.join(PROJECT_DIR, 'logs');
+// Logs live under ~/Library/Logs (a stable, always-available local path).
+// The project root is on OneDrive CloudStorage, which launchd can't reliably
+// open for stdout/stderr — that surfaced as exit code 78 (EX_CONFIG).
+const LOG_DIR = path.join(process.env.HOME, 'Library', 'Logs', 'se-notebook');
 const LOG_OUT = path.join(LOG_DIR, 'embed-server.log');
 const LOG_ERR = path.join(LOG_DIR, 'embed-server-error.log');
 
