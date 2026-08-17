@@ -46,7 +46,15 @@ git pull && docker compose up -d --build    # get the latest version
 
 Your notes are stored on your own machine and stay there. Nothing is shared with anyone else who uses this repo.
 
-> **Note:** POV *document generation* needs one extra setup step — see [Enabling POV document generation](#enabling-pov-document-generation-retrieval-setup). Everything else works right away.
+> **What works right away vs. what doesn't.** Notes, transcripts, AI extraction, CRM
+> snapshots, calendar sync, and exports all work as soon as you've added your API key.
+>
+> **POV *document generation* will not work yet** — and that's expected. It retrieves from a
+> product-documentation corpus that is deliberately **not** in this repo (it isn't ours to
+> redistribute), so a fresh clone has nothing to retrieve from. To turn it on you need your
+> own copy of that corpus plus two local services running — see
+> [Enabling POV document generation](#enabling-pov-document-generation-retrieval-setup).
+> Until then the POV form will submit but produce thin or empty results.
 
 ---
 
