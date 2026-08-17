@@ -4,6 +4,7 @@ import { api } from '../lib/api.js';
 import Icon from '../components/Icons.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { formatDate } from '../lib/stage.js';
+import Markdown, { stripMarkdown } from '../components/Markdown.jsx';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -141,9 +142,9 @@ function PreviewDrawer({ pov, version, onClose, navigate, onDelete }) {
               {sections.map(([heading, text]) => (
                 <div key={heading}>
                   <div className="text-[11px] font-semibold uppercase tracking-wider text-accent-blue mb-1.5">{heading}</div>
-                  <div className="text-[12px] text-text-secondary leading-relaxed whitespace-pre-wrap break-words">
-                    {String(text || '').trim() || <span className="text-text-dim italic">empty</span>}
-                  </div>
+                  {String(text || '').trim()
+                    ? <Markdown className="text-[12px] text-text-secondary">{text}</Markdown>
+                    : <span className="text-[12px] text-text-dim italic">empty</span>}
                 </div>
               ))}
             </div>
@@ -204,7 +205,7 @@ function PovCard({ pov, version, products, deployment, useCases, onClick, onDele
         </div>
       )}
 
-      {snippet && <div className="text-[11px] text-text-dim leading-snug line-clamp-2">{snippet}…</div>}
+      {snippet && <div className="text-[11px] text-text-dim leading-snug line-clamp-2">{stripMarkdown(snippet)}…</div>}
 
       <div className="flex items-center justify-between mt-1 pt-2 border-t border-border">
         <span className="text-[10px] text-text-dim">

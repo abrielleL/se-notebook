@@ -9,7 +9,7 @@ const EMBED_FAIL_BANNER = '⚠ This POV was generated without OPSWAT documentati
 
 const router = express.Router();
 
-const POV_MODEL = 'claude-sonnet-4-20250514';
+const POV_MODEL = 'claude-sonnet-4-6';
 const LOW_CONFIDENCE_DISTANCE = 0.7;
 
 const POV_COLORS = ['#378ADD', '#BA7517', '#639922', '#534AB7', '#1D9E75', '#D85A30'];
@@ -30,6 +30,12 @@ Deployment and configuration guidance rules:
 - Flag any section where documentation was insufficient: [Note: verify this section against current documentation]
 - For air-gapped deployments: always include offline license staging and offline signature update package instructions with lead time warnings
 
+Product-accuracy rules (CRITICAL — accuracy outranks completeness):
+- Only attribute a capability to a product if that product actually provides it. Do NOT assume every product includes multi-scanning, Deep CDR, or Proactive DLP.
+- MetaDefender Drive performs multi-scanning-based inspection of laptops, USB drives, and removable media; it does NOT perform Deep CDR (Content Disarm and Reconstruction). Never describe CDR as part of MetaDefender Drive.
+- If the provided documentation does not support a specific capability, prerequisite, version, port, or step, do not state it — say the item should be verified against current documentation rather than guessing.
+- Do NOT fabricate specific quantitative targets (number of devices scanned, number of files, detection percentages such as "100%"). Keep claims qualitative unless the SE explicitly provided numbers.
+
 Tone: professional, consultative, direct. Write as an SE who has deployed these products many times, not a marketer.`;
 
 const SECTION_SPEC = `Generate the complete PoV document with these exact sections. Fill all placeholders with specific content. Do not leave any section generic or template-like.
@@ -47,7 +53,7 @@ Fill from selected_deployment and selected_os: Deployment location | Operating s
 
 SECTION 4: Objectives & success criteria
 Table: # | Success criterion | Validation method | Result
-Write 4-6 specific measurable criteria. Each must: be specific to this customer's environment, have a concrete validation method (e.g. 'Submit 10 EICAR test files and confirm 100% detection with threat report'), be achievable in a 2-week POV, map to a specific OPSWAT capability. Result column: [ ] Met [ ] Not Met. If success criteria override provided: use verbatim.
+Write 4-6 clear, verifiable criteria. Each must: be specific to this customer's environment, have a concrete validation method described qualitatively (e.g. 'Submit known-malicious and benign test files and confirm the threat verdict and report are correct'), be achievable in a 2-week POV, and map to a capability the selected product actually provides. Do NOT invent specific quantities or percentages (number of devices, number of files, '100% detection') unless the SE provided them. Result column: [ ] Met [ ] Not Met. If success criteria override provided: use verbatim.
 
 SECTION 5: Scope
 5.1 In scope: bullet list
@@ -75,7 +81,7 @@ Table: # | Assumption or Risk | Mitigation
 SECTION 11: Sign-off & next steps
 Standard sign-off table. Include 'Recommended next steps' paragraph suggesting follow-on engagement based on POV scope.
 
-OUTPUT FORMAT: Return as structured text using 'SECTION N: [name]' headers. This will be parsed by section for storage and display.`;
+OUTPUT FORMAT: Return as structured text using plain 'SECTION N: [name]' section headers, exactly — no leading '#' marks, and no document title, subtitle, byline, or horizontal rules ('---') before SECTION 1. Within a section, use a Markdown pipe table only where a table is specified above, and '- ' bullets only where a bullet list is specified. Do NOT use bold ('**'), italic ('*'), or heading ('#') decoration anywhere in the prose. Write clean plain sentences. This will be parsed by section for storage and display.`;
 
 // --- helpers ---
 
@@ -113,16 +119,20 @@ function chromaFoldersFor(productValues, deploymentValues, maps) {
 }
 
 // Split the model output on 'SECTION N: Name' headers into an ordered map.
+// Tolerates leading Markdown heading marks / bold / whitespace (e.g.
+// '## SECTION 1: Purpose' or '**SECTION 1:**') that models sometimes add,
+// and normalizes the stored key to a clean 'SECTION N: Name'.
 function parseSections(text) {
   const sections = {};
-  const re = /^SECTION\s+\d+:\s*.*$/gim;
+  const re = /^\s{0,3}#{0,6}\s*\**\s*SECTION\s+\d+\s*:.*$/gim;
   const matches = [...text.matchAll(re)];
   if (!matches.length) {
     sections['Document'] = text.trim();
     return sections;
   }
+  const cleanKey = (h) => h.replace(/^\s*#{0,6}\s*/, '').replace(/\*\*/g, '').trim();
   for (let i = 0; i < matches.length; i++) {
-    const header = matches[i][0].trim();
+    const header = cleanKey(matches[i][0]);
     const start = matches[i].index + matches[i][0].length;
     const end = i + 1 < matches.length ? matches[i + 1].index : text.length;
     sections[header] = text.slice(start, end).trim();

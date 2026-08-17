@@ -6,7 +6,7 @@
 // a fallback for headless/automated use, but the default model is BYO-key.)
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
+const DEFAULT_MODEL = 'claude-sonnet-4-6';
 
 function getKey(req) {
   return (req.get && req.get('x-anthropic-key')) || process.env.ANTHROPIC_API_KEY || '';

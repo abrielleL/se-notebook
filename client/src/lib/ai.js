@@ -1,7 +1,7 @@
 import { api } from './api.js';
 
 export const ANTHROPIC_KEY_STORAGE = 'anthropic_api_key';
-export const ANTHROPIC_MODEL = 'claude-sonnet-4-20250514';
+export const ANTHROPIC_MODEL = 'claude-sonnet-4-6';
 export const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 
 export function getApiKey() {
@@ -96,7 +96,7 @@ const SYSTEM_PROMPT = `You are a solutions engineering assistant. Analyze the fo
   "environment": "description of current technical environment and architecture",
   "next_steps": ["array", "of", "action items as strings"]
 }
-Be concise and technical. Use bullet points in summary, technical_drivers, and environment fields. Return only valid JSON, no other text.`;
+Be concise and technical. In summary, technical_drivers, and environment, use simple '- ' bullet points, one per line. Do not use bold ('**'), italic ('*'), headings ('#'), or tables. Return only valid JSON, no other text.`;
 
 function buildCorpus(account) {
   const noteBlocks = (account.notes || []).map(n =>
@@ -136,7 +136,7 @@ export async function runAIExtraction(accountId) {
 
   const body = {
     model: ANTHROPIC_MODEL,
-    max_tokens: 2048,
+    max_tokens: 4096,
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user', content: corpus }]
   };
@@ -299,17 +299,28 @@ export async function runFullExtraction(accountId, noteId, transcriptId) {
 
   // Contact extraction (and best-effort deal-intel) runs server-side and does
   // NOT need a key, so always call it. Summary + CRM snapshot need the key.
-  const tasks = [
-    api.runExtraction(accountId, body).catch(e => { console.warn('Server extraction failed:', e); return null; })
-  ];
+  const serverPromise = api.runExtraction(accountId, body)
+    .catch(e => { console.warn('Server extraction failed:', e); return null; });
+
+  // Capture the AI-summary outcome so a failure is surfaced to the user instead
+  // of silently looking like success (the toast otherwise reports only the
+  // server-side fields, which succeed independently of the summary).
+  let summaryError = null;
+  const aiTasks = [];
   if (key) {
-    tasks.push(runAIExtraction(accountId).catch(e => { console.warn('AI extraction failed:', e); return null; }));
-    tasks.push(generateCRMSnapshot(accountId).catch(e => { console.warn('Snapshot failed:', e); return null; }));
+    aiTasks.push(runAIExtraction(accountId).catch(e => {
+      console.warn('AI extraction failed:', e);
+      summaryError = e.message || String(e);
+      return null;
+    }));
+    aiTasks.push(generateCRMSnapshot(accountId).catch(e => { console.warn('Snapshot failed:', e); return null; }));
   }
-  const [serverRes] = await Promise.all(tasks);
+  const [serverRes] = await Promise.all([serverPromise, ...aiTasks]);
 
   return {
     fieldsUpdated: serverRes ? (serverRes.fields_updated || []) : [],
-    contacts: serverRes ? (serverRes.contacts || []) : []
+    contacts: serverRes ? (serverRes.contacts || []) : [],
+    hasKey: Boolean(key),
+    summaryError
   };
 }

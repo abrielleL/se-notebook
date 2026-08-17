@@ -8,6 +8,8 @@ import Modal from '../components/Modal.jsx';
 import ExportModal from '../components/ExportModal.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { useOnline } from '../lib/offline.jsx';
+import Markdown from '../components/Markdown.jsx';
+import EditableMarkdown from '../components/EditableMarkdown.jsx';
 import { usePovJob } from '../lib/povJob.js';
 import { generateKickoffAgenda } from '../lib/ai.js';
 import { formatDate, todayISO, parseISODate, toISODate } from '../lib/stage.js';
@@ -558,9 +560,15 @@ function PovDocument({ accountId, account, pov, version, setPov, navigate, onEdi
                     </div>
                   </div>
                 ) : (
-                  <textarea value={text} onChange={e => editSection(key, e.target.value)}
-                    className="w-full bg-transparent px-3 py-2 text-[11px] text-text-secondary leading-relaxed focus:outline-none resize-y whitespace-pre-wrap"
-                    style={{ minHeight: 100 }} />
+                  <div className="px-3 py-2">
+                    <EditableMarkdown
+                      value={text}
+                      onChange={v => editSection(key, v)}
+                      placeholder="Empty section"
+                      className="text-[11px] text-text-secondary"
+                      textareaClassName="w-full bg-transparent text-[11px] text-text-secondary leading-relaxed focus:outline-none resize-y whitespace-pre-wrap"
+                    />
+                  </div>
                 )}
               </div>
             );
@@ -618,7 +626,7 @@ function PovDocument({ accountId, account, pov, version, setPov, navigate, onEdi
       {agenda && (
         <Modal title="Kickoff agenda (45 min)" onClose={() => setAgenda(null)} width="max-w-lg"
           footer={<><button onClick={() => { navigator.clipboard?.writeText(agenda); toast('Copied', 'success'); }} className="text-[12px] text-accent-blue">Copy</button><button onClick={() => { window.location.href = `mailto:?subject=${encodeURIComponent('POV Kickoff Agenda')}&body=${encodeURIComponent(agenda)}`; }} className="text-[12px] text-text-muted">Add to invite</button></>}>
-          <div className="text-[11px] text-text-secondary whitespace-pre-wrap leading-relaxed">{agenda}</div>
+          <Markdown className="text-[11px] text-text-secondary">{agenda}</Markdown>
         </Modal>
       )}
       {exportOpen && <ExportModal accountId={accountId} accountName={account.account_name} account={account} pov={pov} onClose={onCloseExport} />}

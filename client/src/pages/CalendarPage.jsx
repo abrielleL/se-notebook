@@ -419,6 +419,155 @@ function AddEventModal({ timelines, defaultDate, onClose, onSuccess }) {
   );
 }
 
+// ─── Edit Timeline Modal (pick an existing POV, autofill its dates, adjust) ──
+// Lets you change a POV's start/end dates (e.g. an extension) without
+// regenerating the doc. Works for both manual and generated timelines.
+
+function EditTimelineModal({ timelines, onClose, onSuccess }) {
+  const toast = useToast();
+  const [query, setQuery]     = useState('');
+  const [tlId, setTlId]       = useState(null);
+  const [showDrop, setShowDrop] = useState(false);
+  const [startStr, setStart]  = useState('');
+  const [endStr, setEnd]      = useState('');
+  const [status, setStatus]   = useState('Draft');
+  const [saving, setSaving]   = useState(false);
+  const dropRef = useRef(null);
+
+  useEffect(() => {
+    function h(e) { if (dropRef.current && !dropRef.current.contains(e.target)) setShowDrop(false); }
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  const options = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return timelines
+      .map(t => ({ id: t.id, text: `${t.account_name}${t.label ? ' — ' + t.label : ''}`, start: t.start_date, end: t.end_date }))
+      .filter(o => !q || o.text.toLowerCase().includes(q))
+      .slice(0, 12);
+  }, [timelines, query]);
+
+  // autofill the picked timeline's current dates + status
+  function selectTimeline(o) {
+    const tl = timelines.find(t => t.id === o.id);
+    setTlId(o.id);
+    setQuery(o.text);
+    setStart(tl?.start_date || '');
+    setEnd(tl?.end_date || '');
+    setStatus(tl?.status || 'Draft');
+    setShowDrop(false);
+  }
+
+  const durationMsg = useMemo(() => {
+    if (!startStr || !endStr) return null;
+    const s = parseLocal(startStr), e = parseLocal(endStr);
+    if (!s || !e) return null;
+    const diff = Math.round((e - s) / 86400000);
+    if (diff <= 0) return { invalid: true, text: 'End date must be after start date' };
+    return { invalid: false, text: `${diff} day${diff !== 1 ? 's' : ''}` };
+  }, [startStr, endStr]);
+
+  const canSubmit = tlId && startStr && endStr && durationMsg && !durationMsg.invalid;
+
+  async function submit() {
+    if (!canSubmit) return;
+    setSaving(true);
+    try {
+      await api.updateTimeline(tlId, { start_date: startStr, end_date: endStr, status });
+      toast('Timeline updated', 'success');
+      onSuccess();
+    } catch (e) {
+      toast(e.message || 'Failed to update timeline', 'error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const footer = (
+    <>
+      <button onClick={onClose}
+        className="px-3 py-1.5 rounded text-[11px] text-[#8b949e] hover:text-[#e6edf3] border border-[#1e2530] hover:border-[#58a6ff]/40 transition">
+        Cancel
+      </button>
+      <button onClick={submit} disabled={!canSubmit || saving}
+        className="px-3 py-1.5 rounded text-[11px] bg-[#58a6ff]/15 text-[#58a6ff] border border-[#58a6ff]/30 hover:bg-[#58a6ff]/25 transition disabled:opacity-40 disabled:cursor-not-allowed">
+        {saving ? 'Saving…' : 'Save changes'}
+      </button>
+    </>
+  );
+
+  return (
+    <Modal title="Edit POV timeline" onClose={onClose} footer={footer}>
+      {timelines.length === 0 ? (
+        <div className="text-[12px] text-text-muted">
+          No POVs on the calendar yet. Use “Add timeline” first.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {/* POV picker */}
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-medium text-[#8b949e] uppercase tracking-wider">
+              POV <span className="text-[#f85149]">*</span>
+            </label>
+            <div className="relative" ref={dropRef}>
+              <input className={inputCls} placeholder="Search POVs by account…" value={query}
+                onChange={e => { setQuery(e.target.value); setTlId(null); setShowDrop(true); }}
+                onFocus={() => setShowDrop(true)} />
+              {showDrop && options.length > 0 && (
+                <div className="absolute z-50 mt-1 w-full bg-[#0d1117] border border-[#1e2530] rounded-lg shadow-lg overflow-auto max-h-48">
+                  {options.map(o => (
+                    <button key={o.id} type="button" onClick={() => selectTimeline(o)}
+                      className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-[#14181f] text-left transition">
+                      <span className="text-[12px] text-[#e6edf3] truncate">{o.text}</span>
+                      <span className="text-[9px] text-[#8b949e] shrink-0">{o.start} – {o.end}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Dates (autofilled from the selected POV) */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-medium text-[#8b949e] uppercase tracking-wider">
+                Start date <span className="text-[#f85149]">*</span>
+              </label>
+              <DatePicker selected={parseISODate(startStr)} onChange={d => setStart(toISODate(d))}
+                dateFormat="MMM d, yyyy" placeholderText="Select date" className={inputCls}
+                disabled={!tlId} popperPlacement="bottom-start" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-medium text-[#8b949e] uppercase tracking-wider">
+                End date <span className="text-[#f85149]">*</span>
+              </label>
+              <DatePicker selected={parseISODate(endStr)} onChange={d => setEnd(toISODate(d))}
+                dateFormat="MMM d, yyyy" placeholderText="Select date" className={inputCls}
+                disabled={!tlId} popperPlacement="bottom-start" />
+            </div>
+          </div>
+
+          {/* Duration indicator */}
+          {durationMsg && (
+            <div className={`text-[11px] ${durationMsg.invalid ? 'text-[#f85149]' : 'text-[#8b949e]'}`}>
+              {durationMsg.text}
+            </div>
+          )}
+
+          {/* Status */}
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-medium text-[#8b949e] uppercase tracking-wider">Status</label>
+            <select className={selectCls} value={status} onChange={e => setStatus(e.target.value)} disabled={!tlId}>
+              {POV_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 // ─── Timeline Popover (detail + meetings; editable for manual timelines) ─────
 
 function EditPopover({ tl, pos, onClose, onReload }) {
@@ -475,7 +624,9 @@ function EditPopover({ tl, pos, onClose, onReload }) {
     if (!s || !e || e <= s) { setDateErr('End date must be after start date'); return; }
     setDateErr(''); setSaving(true);
     try {
-      await api.updateTimeline(tl.id, { label, start_date: startStr, end_date: endStr, status });
+      const payload = { start_date: startStr, end_date: endStr, status };
+      if (isManual) payload.label = label;
+      await api.updateTimeline(tl.id, payload);
       onReload(); onClose();
     } catch (err) { toast(err.message || 'Failed to save', 'error'); }
     finally { setSaving(false); }
@@ -555,39 +706,43 @@ function EditPopover({ tl, pos, onClose, onReload }) {
         </div>
       </div>
 
-      {/* manual timelines: editable fields + delete; generated: link out */}
-      {isManual ? (
-        <div className="flex flex-col gap-2.5 pt-1 border-t border-[#1e2530]">
-          <div className="text-[9px] font-medium text-[#8b949e] uppercase tracking-wider">Edit timeline</div>
+      {/* Dates + status are editable for every timeline (incl. generated POVs —
+          adjust start/end for extensions without regenerating the doc). Label
+          editing and removal stay limited to manual timelines. */}
+      <div className="flex flex-col gap-2.5 pt-1 border-t border-[#1e2530]">
+        <div className="text-[9px] font-medium text-[#8b949e] uppercase tracking-wider">
+          {isManual ? 'Edit timeline' : 'Adjust dates'}
+        </div>
+        {isManual && (
           <input className={inputCls} value={label} onChange={e => setLabel(e.target.value)} placeholder="Timeline label" />
-          <div className="grid grid-cols-2 gap-2">
-            <DatePicker selected={parseISODate(startStr)} onChange={d => setStart(toISODate(d))} dateFormat="MMM d, yyyy" placeholderText="Start" className={inputCls} withPortal />
-            <DatePicker selected={parseISODate(endStr)} onChange={d => setEnd(toISODate(d))} dateFormat="MMM d, yyyy" placeholderText="End" className={inputCls} withPortal />
+        )}
+        <div className="grid grid-cols-2 gap-2">
+          <DatePicker selected={parseISODate(startStr)} onChange={d => setStart(toISODate(d))} dateFormat="MMM d, yyyy" placeholderText="Start" className={inputCls} withPortal />
+          <DatePicker selected={parseISODate(endStr)} onChange={d => setEnd(toISODate(d))} dateFormat="MMM d, yyyy" placeholderText="End" className={inputCls} withPortal />
+        </div>
+        <select className={selectCls} value={status} onChange={e => setStatus(e.target.value)}>
+          {POV_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        {dateErr && <div className="text-[10px] text-[#f85149]">{dateErr}</div>}
+        {confirmDel ? (
+          <div className="flex flex-col gap-1.5">
+            <div className="text-[10px] text-[#f85149]">Remove from calendar?</div>
+            <div className="flex gap-2">
+              <button onClick={handleDelete} disabled={deleting} className="px-2 py-1 rounded text-[10px] bg-[#f85149]/15 text-[#f85149] border border-[#f85149]/30 hover:bg-[#f85149]/25 transition disabled:opacity-40">{deleting ? 'Deleting…' : 'Yes'}</button>
+              <button onClick={() => setConfirmDel(false)} className="px-2 py-1 rounded text-[10px] text-[#8b949e] border border-[#1e2530] hover:text-[#e6edf3] transition">No</button>
+            </div>
           </div>
-          <select className={selectCls} value={status} onChange={e => setStatus(e.target.value)}>
-            {POV_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-          {dateErr && <div className="text-[10px] text-[#f85149]">{dateErr}</div>}
-          {confirmDel ? (
-            <div className="flex flex-col gap-1.5">
-              <div className="text-[10px] text-[#f85149]">Remove from calendar?</div>
-              <div className="flex gap-2">
-                <button onClick={handleDelete} disabled={deleting} className="px-2 py-1 rounded text-[10px] bg-[#f85149]/15 text-[#f85149] border border-[#f85149]/30 hover:bg-[#f85149]/25 transition disabled:opacity-40">{deleting ? 'Deleting…' : 'Yes'}</button>
-                <button onClick={() => setConfirmDel(false)} className="px-2 py-1 rounded text-[10px] text-[#8b949e] border border-[#1e2530] hover:text-[#e6edf3] transition">No</button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between">
+        ) : (
+          <div className="flex items-center justify-between">
+            {isManual ? (
               <button onClick={() => setConfirmDel(true)} className="px-2 py-1 rounded text-[10px] text-[#f85149] border border-[#f85149]/20 hover:bg-[#f85149]/10 transition">Delete</button>
-              <button onClick={handleSave} disabled={saving} className="px-2.5 py-1 rounded text-[10px] bg-[#58a6ff]/15 text-[#58a6ff] border border-[#58a6ff]/30 hover:bg-[#58a6ff]/25 transition disabled:opacity-40">{saving ? 'Saving…' : 'Save'}</button>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="pt-1 border-t border-[#1e2530]">
-          <Link to={`/accounts/${tl.account_id}`} className="text-[10px] text-accent-blue hover:underline">Open account to edit this POV →</Link>
-        </div>
-      )}
+            ) : (
+              <Link to={`/accounts/${tl.account_id}`} className="text-[10px] text-accent-blue hover:underline">Open account →</Link>
+            )}
+            <button onClick={handleSave} disabled={saving} className="px-2.5 py-1 rounded text-[10px] bg-[#58a6ff]/15 text-[#58a6ff] border border-[#58a6ff]/30 hover:bg-[#58a6ff]/25 transition disabled:opacity-40">{saving ? 'Saving…' : 'Save'}</button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -604,6 +759,7 @@ export default function CalendarPage() {
   const [view, setView]           = useState('month'); // 'month' | 'quarter' | 'list'
 
   const [showAddModal, setShowAddModal]   = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [eventModal, setEventModal]       = useState(null); // { date } | null
   const [popover, setPopover]             = useState(null); // { tl, pos }
 
@@ -797,6 +953,15 @@ export default function CalendarPage() {
             <TablerIcon name="ti-calendar-plus" className="text-[12px]" />
             Add timeline
           </button>
+
+          {/* Edit timeline button */}
+          <button
+            onClick={() => setShowEditModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] bg-[#e3b341]/10 text-[#e3b341] border border-[#e3b341]/25 hover:bg-[#e3b341]/20 transition"
+          >
+            <TablerIcon name="ti-calendar-cog" className="text-[12px]" />
+            Edit timeline
+          </button>
         </div>
       </div>
 
@@ -988,6 +1153,14 @@ export default function CalendarPage() {
         <AddTimelineModal
           onClose={() => setShowAddModal(false)}
           onSuccess={() => { setShowAddModal(false); reload(); }}
+        />
+      )}
+
+      {showEditModal && (
+        <EditTimelineModal
+          timelines={timelines}
+          onClose={() => setShowEditModal(false)}
+          onSuccess={() => { setShowEditModal(false); reload(); }}
         />
       )}
 

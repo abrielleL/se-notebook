@@ -288,7 +288,14 @@ async function renderDocx(account, pov, selectedKeys) {
     ]
   });
 
-  // Parse a markdown section body into docx blocks (tables, bullets, paragraphs).
+  // Markdown '#'-heading rendered inside a section body (used by the fallback
+  // path when a POV was stored as one un-split blob). Level scales the size.
+  const mdHeadingPara = (text, level) => new Paragraph({
+    spacing: { before: level <= 2 ? 200 : 140, after: 60, line: 252, lineRule: LineRuleType.AUTO },
+    children: [run(text, { bold: true, color: level <= 2 ? C.navy : C.heading3, size: half(level <= 2 ? PT.h2 : PT.h3) })]
+  });
+
+  // Parse a markdown section body into docx blocks (headings, tables, bullets, paragraphs).
   function parseBody(text, opts = {}) {
     const out = [];
     const lines = String(text || '').split('\n');
@@ -302,7 +309,10 @@ async function renderDocx(account, pov, selectedKeys) {
       }
       const trimmed = lines[i].trim();
       if (!trimmed) { i++; continue; }
-      if (/^[-•*]\s+/.test(trimmed)) out.push(bulletPara(trimmed.replace(/^[-•*]\s+/, ''), opts.bulletChar || '•', opts.bulletColor));
+      const heading = trimmed.match(/^(#{1,6})\s+(.*)$/);
+      if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) { i++; continue; } // skip horizontal rules
+      else if (heading) out.push(mdHeadingPara(heading[2].replace(/\*\*/g, ''), heading[1].length));
+      else if (/^[-•*]\s+/.test(trimmed)) out.push(bulletPara(trimmed.replace(/^[-•*]\s+/, ''), opts.bulletChar || '•', opts.bulletColor));
       else out.push(bodyPara(trimmed));
       i++;
     }
@@ -417,9 +427,11 @@ async function renderDocx(account, pov, selectedKeys) {
     return key ? sectionTexts[key] : null;
   };
 
+  const anyNumbered = POV_SECTION_ORDER.some(([num]) => findSection(num) != null);
+
   if (!pov || !Object.keys(sectionTexts).length) {
     children.push(bodyPara('No POV draft is available to export for this account. Generate a POV first.'));
-  } else {
+  } else if (anyNumbered) {
     for (const [num, title] of POV_SECTION_ORDER) {
       const body = findSection(num);
       if (body == null) continue;
@@ -436,6 +448,16 @@ async function renderDocx(account, pov, selectedKeys) {
       } else {
         children.push(...parseBody(body));
       }
+    }
+  } else {
+    // Fallback: the POV wasn't split into numbered sections (e.g. stored as a
+    // single 'Document' blob). Render every entry's content generically so the
+    // full document still exports instead of just the cover page. Drop any
+    // decorative title preamble before 'SECTION 1' (redundant with the cover).
+    for (const [heading, body] of Object.entries(sectionTexts)) {
+      if (heading && !/^document$/i.test(heading)) children.push(sectionHeading('', heading));
+      const trimmed = String(body || '').replace(/^[\s\S]*?(?=^\s*#{0,6}\s*\**\s*SECTION\s+1\b)/im, '');
+      children.push(...parseBody(trimmed || body));
     }
   }
 

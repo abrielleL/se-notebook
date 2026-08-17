@@ -8,6 +8,7 @@ import AccountExportModal from '../components/AccountExportModal.jsx';
 import AccountFiles from '../components/AccountFiles.jsx';
 import StageGateModal from '../components/StageGateModal.jsx';
 import FieldDrawer from '../components/FieldDrawer.jsx';
+import Markdown, { stripMarkdown } from '../components/Markdown.jsx';
 import AccountTagEditor from '../components/AccountTagEditor.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { useOnline } from '../lib/offline.jsx';
@@ -33,8 +34,14 @@ function extractionMessage(prefix, r) {
   const updated = (r.contacts || []).filter(c => !c.created).length;
   if (created) parts.push(`${created} contact${created > 1 ? 's' : ''} extracted`);
   else if (updated) parts.push(`${updated} contact${updated > 1 ? 's' : ''} updated`);
+  if (!r.hasKey) parts.push('AI summary skipped — no API key set (add it in Settings)');
+  else if (r.summaryError) parts.push(`AI summary failed: ${r.summaryError}`);
   return parts.join(' · ');
 }
+
+// Success only when the AI summary actually ran; otherwise warn so a swallowed
+// summary failure no longer reads as a green "success" toast.
+const extractionSeverity = (r) => (r && r.hasKey && !r.summaryError) ? 'success' : 'warn';
 
 function splitHistory(value) {
   if (!value) return [];
@@ -148,7 +155,7 @@ export default function AccountDetail() {
         const r = await runFullExtraction(id, note.id).catch(() => null);
         setExtracting(false);
         await loadAll();
-        toast(extractionMessage('Note saved', r), r ? 'success' : 'warn');
+        toast(extractionMessage('Note saved', r), extractionSeverity(r));
       } else { await loadAll(); toast('Note saved offline. Extraction will run when reconnected.', 'warn'); }
     } catch (e) { toast(`Save failed: ${e.message}`, 'error'); }
   }
@@ -173,7 +180,7 @@ export default function AccountDetail() {
       if (online) {
         const r = await runFullExtraction(id, null, t && t.id).catch(() => null);
         await loadAll();
-        toast(extractionMessage('Transcript processed', r), r ? 'success' : 'warn');
+        toast(extractionMessage('Transcript processed', r), extractionSeverity(r));
       } else {
         await loadAll();
         toast('Transcript saved offline. Run AI extract when reconnected.', 'warn');
@@ -284,8 +291,8 @@ export default function AccountDetail() {
           <div className="flex flex-col gap-3 min-w-0">
             <Section title="AI summary" icon={Icon.Sparkles}
               right={account.ai_summary_updated_at && <span className="text-[10px] text-text-dim">{formatDate(account.ai_summary_updated_at)}</span>}>
-              <div className="text-[11px] text-text-secondary leading-relaxed whitespace-pre-wrap mb-3 max-h-32 overflow-hidden">
-                {account.ai_summary || <span className="text-text-dim">No summary yet.</span>}
+              <div className="text-[11px] text-text-secondary mb-3 max-h-32 overflow-hidden">
+                {account.ai_summary ? <Markdown>{account.ai_summary}</Markdown> : <span className="text-text-dim">No summary yet.</span>}
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <Pane title="Technical drivers" value={account.ai_technical_drivers}
@@ -310,7 +317,7 @@ export default function AccountDetail() {
                         <span className="text-[10px] font-medium text-text-primary">{f.label}</span>
                       </div>
                       <div className="text-[10px] text-text-muted leading-snug overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                        {has ? entry.value : <span className="text-text-dim">Empty</span>}
+                        {has ? stripMarkdown(entry.value) : <span className="text-text-dim">Empty</span>}
                       </div>
                       {has && entry.last_updated && <div className="text-[9px] text-text-dim mt-1">AI extracted · {formatDate(entry.last_updated)}</div>}
                     </button>
@@ -396,7 +403,7 @@ function Pane({ title, value, onExpand }) {
         <button onClick={onExpand} className="text-text-dim hover:text-accent-blue opacity-0 group-hover:opacity-100"><Icon.Eye width={12} height={12} /></button>
       </div>
       <div className="text-[10px] text-text-secondary leading-snug overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
-        {value || <span className="text-text-dim">—</span>}
+        {value ? stripMarkdown(value) : <span className="text-text-dim">—</span>}
       </div>
     </div>
   );
@@ -626,7 +633,7 @@ function CrmSnapshotCard({ account, snapshot, onChange }) {
       }>
       <div className="text-[10px] text-text-dim mb-1.5">Stage: {account.presales_stage || '—'}</div>
       {text
-        ? <div className="text-[11px] text-text-secondary leading-relaxed whitespace-pre-wrap">{text}</div>
+        ? <Markdown className="text-[11px] text-text-secondary">{text}</Markdown>
         : <div className="text-[11px] text-text-dim">No snapshot yet. Generate one or save a note.</div>}
       {text && (
         <div className="flex items-center justify-between mt-2">
@@ -779,7 +786,7 @@ function SePrepCard({ pov, onExpand }) {
       right={<span className="text-[9px] px-1.5 py-0.5 rounded bg-[#2d2200] text-accent-yellow">🔒 Private</span>}>
       {pov && pov.se_prep_notes ? (
         <>
-          <div className="text-[10px] text-text-secondary leading-snug overflow-hidden whitespace-pre-wrap" style={{ display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical' }}>{pov.se_prep_notes}</div>
+          <div className="text-[10px] text-text-secondary leading-snug overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical' }}>{stripMarkdown(pov.se_prep_notes)}</div>
           <button onClick={onExpand} className="text-[10px] text-accent-blue hover:underline mt-1">Edit</button>
         </>
       ) : <div className="text-[10px] text-text-dim">Generate a POV to get SE prep notes. Never included in customer exports.</div>}
@@ -860,7 +867,7 @@ function EmailDraftModal({ accountId, online, onClose }) {
         {result && (
           <div className="border border-border rounded p-3 flex flex-col gap-2">
             <div className="text-[12px] text-text-primary font-medium">{result.subject}</div>
-            <div className="text-[11px] text-text-secondary whitespace-pre-wrap leading-relaxed">{result.body}</div>
+            <Markdown className="text-[11px] text-text-secondary">{result.body}</Markdown>
             <button onClick={() => { navigator.clipboard?.writeText(`${result.subject}\n\n${result.body}`); toast('Copied', 'success'); }} className="self-end text-[11px] text-accent-blue hover:underline">Copy</button>
           </div>
         )}
