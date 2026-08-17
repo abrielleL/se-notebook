@@ -20,10 +20,15 @@ const { pipeline } = require('@xenova/transformers');
 const { ChromaClient } = require('chromadb');
 
 // ---- settings ----
-const DOCS_DIR = '/Users/abrielle.land/Library/CloudStorage/OneDrive-OPSWAT/Desktop/Project/se-knowledge/docs';
-const MANIFEST_PATH = '/Users/abrielle.land/Library/CloudStorage/OneDrive-OPSWAT/Desktop/Project/se-knowledge/manifest.json';
-const SYNC_REPORT_PATH = '/Users/abrielle.land/Library/CloudStorage/OneDrive-OPSWAT/Desktop/Project/se-knowledge/sync-report.json';
-const SYNC_PDFS_REPORT_PATH = '/Users/abrielle.land/Library/CloudStorage/OneDrive-OPSWAT/Desktop/Project/se-knowledge/sync-pdfs-report.json';
+// The product-docs corpus lives OUTSIDE this repo (it isn't ours to ship). Point
+// SE_KNOWLEDGE_DIR at your own checkout; the default is a sibling `se-knowledge`
+// folder next to this project.
+const KNOWLEDGE_DIR = process.env.SE_KNOWLEDGE_DIR
+  || path.resolve(__dirname, '..', 'se-knowledge');
+const DOCS_DIR = path.join(KNOWLEDGE_DIR, 'docs');
+const MANIFEST_PATH = path.join(KNOWLEDGE_DIR, 'manifest.json');
+const SYNC_REPORT_PATH = path.join(KNOWLEDGE_DIR, 'sync-report.json');
+const SYNC_PDFS_REPORT_PATH = path.join(KNOWLEDGE_DIR, 'sync-pdfs-report.json');
 const CHROMA_URL = 'http://localhost:8000';
 const COLLECTION_NAME = 'opswat_docs';
 const EMBEDDING_MODEL = 'Xenova/all-MiniLM-L6-v2';

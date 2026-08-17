@@ -26,3 +26,11 @@ backups/
 # Stray / exported artifacts that may contain customer data
 files.zip
 POV_*_test-export.docx
+*.docx
+!pov-template.docx
+
+# Per-machine tooling state (contains local home paths / personal allowlists)
+.claude/settings.local.json
+hydrate.progress
+__pycache__/
+*.pyc
