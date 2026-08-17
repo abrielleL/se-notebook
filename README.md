@@ -11,6 +11,45 @@ A local-first technical fieldbook for solutions engineers. Drop in notes, transc
 
 See **[OVERVIEW.md](OVERVIEW.md)** for the full feature list — POV generator & library, calendar, tags, drafts, attachment library, global search, exports, and more.
 
+---
+
+## Quick start
+
+You need two things first: **[Docker Desktop](https://www.docker.com/products/docker-desktop/)** (installed and running — check for the whale icon in your menu bar) and an **Anthropic API key** from [console.anthropic.com](https://console.anthropic.com).
+
+Open Terminal and paste these four commands, one at a time:
+
+```bash
+git clone https://github.com/abrielleL/se-notebook.git
+cd se-notebook
+cp .env.example .env
+docker compose up -d --build
+```
+
+The last command takes a few minutes the first time. When it finishes, open **http://localhost:3001**.
+
+Then, in the app:
+
+1. Click the **gear icon** (Settings) in the sidebar.
+2. Paste your Anthropic API key and click **Save**.
+3. Go to **Accounts → New**, create an account, and add a note.
+
+That's it — the AI fills in the summary, technical drivers, environment, contacts, and next steps automatically when you save.
+
+**Everyday commands:**
+
+```bash
+docker compose stop            # stop it
+docker compose start           # start it again
+git pull && docker compose up -d --build    # get the latest version
+```
+
+Your notes are stored on your own machine and stay there. Nothing is shared with anyone else who uses this repo.
+
+> **Note:** POV *document generation* needs one extra setup step — see [Enabling POV document generation](#enabling-pov-document-generation-retrieval-setup). Everything else works right away.
+
+---
+
 ## Prerequisites
 
 - Node.js 18+ (20+ recommended)
@@ -22,7 +61,7 @@ See **[OVERVIEW.md](OVERVIEW.md)** for the full feature list — POV generator &
 git clone <this repo>          # or unzip
 cd se-notebook
 npm run install:all            # installs root, server, client deps
-cp .env.example .env           # fill in the Microsoft values if you want calendar sync
+cp .env.example .env           # required — Docker won't start without a .env file
 ```
 
 The first `npm run dev` will create `server/db/se-notebook.db` automatically.
@@ -34,8 +73,8 @@ The first `npm run dev` will create `server/db/se-notebook.db` automatically.
 The app and its ChromaDB vector store run as containers, both bound to **localhost only**:
 
 ```bash
-cp .env.example .env            # optional: fill in Microsoft values for calendar sync
-docker compose up -d --build
+cp .env.example .env            # required — Compose fails with "env file not found" without it
+docker compose up -d --build    # Microsoft values are optional; leave the placeholders unless you want calendar sync
 ```
 
 Open **http://localhost:3001**. After changing code, re-run `docker compose up -d --build` to rebuild and restart.
@@ -253,6 +292,9 @@ se-notebook/
 
 ## Troubleshooting
 
+- **`env file /path/to/.env not found`** — you skipped `cp .env.example .env`. Run it from inside the `se-notebook` folder, then re-run `docker compose up -d --build`.
+- **`Cannot connect to the Docker daemon`** — Docker Desktop isn't running. Open it, wait for the whale icon to stop animating, then retry.
+- **http://localhost:3001 won't load** — check the container is up with `docker ps` (look for `se-notebook`, status `Up`). If it isn't listed, run `docker compose up -d --build` and check `docker logs se-notebook` for errors.
 - **`better-sqlite3` install fails** — needs a working C++ toolchain. On macOS, `xcode-select --install`. Then re-run `npm install --prefix server`.
 - **`anthropic_api_key` not set banner won't go away** — open Settings, paste a key starting with `sk-ant-`, click Save.
 - **Outlook says "not connected"** — make sure `MICROSOFT_CLIENT_ID/SECRET/TENANT_ID` are set in `.env`, restart the app, then click Connect Outlook. After it shows "Outlook connected," close the tab manually and hit Sync.
