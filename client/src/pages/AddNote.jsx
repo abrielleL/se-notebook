@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import { api } from '../lib/api.js';
-import { hasApiKey, runAIWithSnapshot } from '../lib/ai.js';
+import { runFullExtraction } from '../lib/ai.js';
 import { todayISO, parseISODate, toISODate } from '../lib/stage.js';
 import Icon from '../components/Icons.jsx';
 
@@ -51,11 +51,18 @@ export default function AddNote() {
     if (!raw.trim()) { setErr('Notes required'); return; }
     setSaving(true); setErr('');
     try {
-      await api.createNote({ account_id: id, date, raw_notes: raw });
+      // pending_ai_extraction=1 until the extraction below clears it server-side,
+      // so a failure (or navigating away mid-run) is recovered by the catch-up
+      // pass on the account page rather than lost.
+      const note = await api.createNote({ account_id: id, date, raw_notes: raw, pending_ai_extraction: 1 });
       if (meetingId) await api.updateMeeting(meetingId, { has_note: 1 });
-      if (hasApiKey()) {
-        try { await runAIWithSnapshot(id); } catch (e) { console.warn(e); }
-      }
+      // runFullExtraction, not runAIWithSnapshot: it runs the same AI summary and
+      // CRM snapshot *plus* the server-side pass that fills the account
+      // qualification fields and extracts contacts. This page previously only
+      // did the summary, so notes saved here never populated qualification.
+      // No hasApiKey() gate -- note-based contact extraction needs no key, and
+      // runFullExtraction skips the key-dependent work on its own.
+      try { await runFullExtraction(id, note.id); } catch (e) { console.warn('Extraction failed:', e); }
       localStorage.removeItem(draftKey);
       navigate(`/accounts/${id}`);
     } catch (e) {

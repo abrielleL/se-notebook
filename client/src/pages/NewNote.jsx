@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import { api } from '../lib/api.js';
-import { hasApiKey, runAIWithSnapshot } from '../lib/ai.js';
+import { runFullExtraction } from '../lib/ai.js';
 import { todayISO, initials, colorForName, parseISODate, toISODate } from '../lib/stage.js';
 import { PRESALES_STAGES } from '../lib/stages.js';
 import Card, { CardHeader } from '../components/Card.jsx';
@@ -145,28 +145,39 @@ export default function NewNote() {
         });
       }
 
+      // See AddNote: pending_ai_extraction=1 is cleared server-side once the
+      // extraction below runs, so a failure here is recoverable.
+      let note = null;
       if (form.raw_notes.trim()) {
-        await api.createNote({
+        note = await api.createNote({
           account_id: accountId,
           date: form.date,
-          raw_notes: form.raw_notes
+          raw_notes: form.raw_notes,
+          pending_ai_extraction: 1
         });
       }
 
+      let transcript = null;
       if (transcriptFile) {
         const fd = new FormData();
         fd.append('account_id', accountId);
         fd.append('source', 'file_upload');
         fd.append('file', transcriptFile);
-        await api.uploadTranscript(fd);
+        transcript = await api.uploadTranscript(fd);
       }
 
       for (const c of form.contacts) {
         if (c.name.trim()) await api.createContact({ account_id: accountId, name: c.name.trim(), title: c.title.trim() });
       }
 
-      if (hasApiKey()) {
-        try { await runAIWithSnapshot(accountId); } catch (e) { console.warn(e); }
+      // runFullExtraction covers the AI summary and CRM snapshot as well as the
+      // server-side qualification + contact extraction this page used to skip.
+      // Passing the transcript id also gets its participants extracted, which
+      // never happened when a transcript was attached here.
+      if (note || transcript) {
+        try {
+          await runFullExtraction(accountId, note ? note.id : null, transcript ? transcript.id : null);
+        } catch (e) { console.warn('Extraction failed:', e); }
       }
 
       deleteDraft(draftId);
