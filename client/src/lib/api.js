@@ -70,6 +70,13 @@ export const api = {
   deleteContactNote: (id, noteId) =>
     request(`/api/contacts/${id}/notes/${noteId}`, { method: 'DELETE' }),
 
+  // Parse pasted LinkedIn profile text into suggested fields. Returns
+  // suggestions only — nothing is written until the user applies them.
+  parseContactProfile: (id, text) =>
+    request(`/api/contacts/${id}/parse-profile`, {
+      method: 'POST', headers: aiHeaders(), body: json({ text })
+    }),
+
   // duplicate review queue
   contactMergeCandidates: () => request('/api/contacts/merge-candidates'),
   dismissMergeCandidate: (id) =>

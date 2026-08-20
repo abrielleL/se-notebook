@@ -6,6 +6,8 @@ const {
   upsertContact, linkAccount, hydrate, mergeContacts
 } = require('../lib/contactStore');
 const { syncPrimaryAccount } = require('../db/contactsMigration');
+const { normalizeLinkedInUrl } = require('../lib/linkedin');
+const { callAnthropic, getKey, extractJson, DEFAULT_MODEL } = require('../lib/anthropic');
 
 const router = express.Router();
 
@@ -178,6 +180,7 @@ router.post('/', (req, res) => {
     email: b.email,
     phone: b.phone,
     org_name: b.org_name,
+    linkedin_url: b.linkedin_url,
     contact_type: b.contact_type,
     role: b.meddpicc_role || b.role,
     auto_extracted: 0
@@ -192,7 +195,10 @@ router.post('/', (req, res) => {
   });
 });
 
-const EDITABLE = ['name', 'title', 'email', 'phone', 'org_name', 'contact_type', 'meddpicc_role'];
+const EDITABLE = [
+  'name', 'title', 'email', 'phone', 'org_name', 'contact_type',
+  'meddpicc_role', 'linkedin_url'
+];
 
 router.put('/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM contacts WHERE id = ?').get(req.params.id);
@@ -226,6 +232,16 @@ router.put('/:id', (req, res) => {
     }
     if (f === 'contact_type') v = cleanType(v);
     if (f === 'meddpicc_role') v = cleanRole(v);
+    if (f === 'linkedin_url') {
+      const trimmed = String(v == null ? '' : v).trim();
+      if (trimmed) {
+        const norm = normalizeLinkedInUrl(trimmed);
+        if (!norm) return res.status(400).json({ error: 'That does not look like a LinkedIn URL.' });
+        v = norm;
+      } else {
+        v = null;
+      }
+    }
     updates.push(`${f} = ?`);
     values.push(v === '' ? null : v);
   }
@@ -289,6 +305,93 @@ router.delete('/:id/accounts/:accountId', (req, res) => {
   const c = db.prepare('SELECT * FROM contacts WHERE id = ?').get(req.params.id);
   if (!c) return res.json({ ok: true, deleted: true });
   res.json(hydrate(db, c));
+});
+
+// ---------------------------------------------------------------------------
+// Paste-to-parse
+//
+// POST /api/contacts/:id/parse-profile  { text }
+//
+// The user opens a LinkedIn profile in their own browser, copies the text, and
+// pastes it here. We parse that text into fields. Nothing is fetched from
+// LinkedIn and nothing is written -- the response is a set of suggestions the
+// UI shows for confirmation, so a bad parse can't quietly overwrite good data.
+// ---------------------------------------------------------------------------
+const PROFILE_SYSTEM_PROMPT = `You are reading text copied from a professional profile page. Extract what is stated and nothing more.
+
+Return JSON only:
+{
+  "name": string,
+  "title": string,
+  "org_name": string,
+  "linkedin_url": string,
+  "summary": string
+}
+
+Rules:
+- Use only what appears in the text. If a field is not stated, return an empty string. Never guess or infer an employer from a job title.
+- title: their CURRENT role only, without the company name in it.
+- org_name: their CURRENT employer.
+- name: "First Last", no honorifics, credentials, or parentheticals.
+- linkedin_url: only if a linkedin.com URL literally appears in the text.
+- summary: at most two sentences of background relevant to a technical sales conversation — seniority, domain (OT, cloud, compliance, etc.), notable prior employers, tenure. Plain sentences, no markdown, no bullet points. Empty string if the text is too thin to say anything useful.
+No explanation, JSON only.`;
+
+router.post('/:id/parse-profile', async (req, res, next) => {
+  try {
+    const contact = db.prepare('SELECT * FROM contacts WHERE id = ?').get(req.params.id);
+    if (!contact) return res.status(404).json({ error: 'Contact not found' });
+
+    const text = String((req.body && req.body.text) || '').trim();
+    if (!text) return res.status(400).json({ error: 'Paste the profile text first.' });
+    if (text.length < 20) return res.status(400).json({ error: 'That is too short to parse.' });
+
+    const key = getKey(req);
+    if (!key) return res.status(400).json({ error: 'Add your Anthropic API key in Settings to parse profiles.' });
+
+    let parsed = {};
+    try {
+      const raw = await callAnthropic({
+        key, model: DEFAULT_MODEL, max_tokens: 700,
+        system: PROFILE_SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: text.slice(0, 12000) }]
+      });
+      parsed = extractJson(raw) || {};
+    } catch (e) {
+      console.warn('[contacts] profile parse failed:', e.message);
+      return res.status(502).json({ error: 'Could not parse that profile text.' });
+    }
+
+    const str = (v) => (typeof v === 'string' ? v.trim() : '');
+    const url = normalizeLinkedInUrl(str(parsed.linkedin_url));
+
+    // Only offer a field when it adds something: either the contact has
+    // nothing there, or the parsed value is more specific.
+    const suggestions = {};
+    const name = str(parsed.name);
+    if (name && name.toLowerCase() !== (contact.name || '').toLowerCase()) suggestions.name = name;
+
+    const title = str(parsed.title);
+    if (title && title.length > (contact.title || '').length) suggestions.title = title;
+
+    const org = str(parsed.org_name);
+    if (org && !(contact.org_name || '').trim()) suggestions.org_name = org;
+
+    if (url && !(contact.linkedin_url || '').trim()) suggestions.linkedin_url = url;
+
+    res.json({
+      suggestions,
+      summary: str(parsed.summary),
+      current: {
+        name: contact.name,
+        title: contact.title || '',
+        org_name: contact.org_name || '',
+        linkedin_url: contact.linkedin_url || ''
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ---------------------------------------------------------------------------

@@ -18,6 +18,7 @@
 
 const { v4: uuid } = require('uuid');
 const { normalizeName, nameKey, tokenCount, compareNames } = require('./contactNames');
+const { normalizeLinkedInUrl } = require('./linkedin');
 const { mergeContacts, syncPrimaryAccount } = require('../db/contactsMigration');
 
 const CONTACT_TYPES = ['customer', 'partner', 'analyst', 'internal'];
@@ -78,7 +79,7 @@ function linkAccount(db, contactId, accountId, role, makePrimary) {
 // as more specific ("IT Manager" -> "Global IT Infrastructure Manager").
 function enrich(db, existing, incoming) {
   const updates = {};
-  for (const f of ['email', 'phone', 'org_name']) {
+  for (const f of ['email', 'phone', 'org_name', 'linkedin_url']) {
     const cur = (existing[f] || '').trim();
     const next = (incoming[f] || '').trim();
     if (!cur && next) updates[f] = next;
@@ -119,6 +120,7 @@ function upsertContact(db, input) {
     email: (input.email || '').trim(),
     phone: (input.phone || '').trim(),
     org_name: (input.org_name || '').trim(),
+    linkedin_url: normalizeLinkedInUrl(input.linkedin_url) || '',
     contact_type: cleanType(input.contact_type),
     auto_extracted: input.auto_extracted ? 1 : 0
   };
@@ -188,12 +190,13 @@ function upsertContact(db, input) {
     db.prepare(`
       INSERT INTO contacts
         (id, account_id, name, name_key, title, email, phone, org_name,
-         contact_type, meddpicc_role, auto_extracted)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         linkedin_url, contact_type, meddpicc_role, auto_extracted)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id, accountId, name, key,
       incoming.title || null, incoming.email || null, incoming.phone || null,
-      incoming.org_name || null, incoming.contact_type, role, incoming.auto_extracted
+      incoming.org_name || null, incoming.linkedin_url || null,
+      incoming.contact_type, role, incoming.auto_extracted
     );
   } catch (e) {
     if (!/UNIQUE/i.test(e.message)) throw e;
@@ -243,7 +246,7 @@ function upsertContact(db, input) {
 function contactsForAccount(db, accountId, { customerOnly = false } = {}) {
   return db.prepare(`
     SELECT c.id, c.name, c.title, c.email, c.phone, c.org_name, c.contact_type,
-           c.auto_extracted, c.created_at,
+           c.linkedin_url, c.auto_extracted, c.created_at,
            COALESCE(ca.role, c.meddpicc_role) AS meddpicc_role,
            ca.is_primary,
            (SELECT COUNT(*) FROM contact_accounts x WHERE x.contact_id = c.id) AS account_count,

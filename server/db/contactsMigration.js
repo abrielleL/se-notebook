@@ -164,7 +164,7 @@ function mergeContacts(db, keeperId, loserId) {
     // Fill gaps on the keeper from the loser -- never overwrite a value the
     // keeper already has, except to prefer a longer (more specific) title.
     const updates = {};
-    for (const f of ['title', 'email', 'phone', 'org_name']) {
+    for (const f of ['title', 'email', 'phone', 'org_name', 'linkedin_url']) {
       const kv = (keeper[f] || '').trim();
       const lv = (loser[f] || '').trim();
       if (!kv && lv) updates[f] = lv;

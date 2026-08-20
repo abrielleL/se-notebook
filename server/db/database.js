@@ -66,6 +66,10 @@ addColumn('contacts', 'org_name', 'TEXT DEFAULT NULL');
 // contact_type: 'customer' | 'partner' | 'analyst' | 'internal'
 addColumn('contacts', 'contact_type', "TEXT DEFAULT 'customer'");
 addColumn('contacts', 'updated_at', 'TIMESTAMP');
+// linkedin_url: stored by hand or pasted. There is no LinkedIn API that can
+// look up another member's profile (and its terms forbid storing one), so this
+// is a deep link the SE follows in their own browser -- never fetched by us.
+addColumn('contacts', 'linkedin_url', 'TEXT DEFAULT NULL');
 
 // --- notes additions ---
 addColumn('notes', 'pending_ai_extraction', 'INTEGER DEFAULT 0');

@@ -5,6 +5,7 @@ import Icon from './Icons.jsx';
 import { api } from '../lib/api.js';
 import { useToast } from './Toast.jsx';
 import { formatDate } from '../lib/stage.js';
+import { linkedInSearchUrl, looksLikeLinkedInUrl } from '../lib/linkedin.js';
 import { ROLE_OPTIONS, ROLE_BADGES, CONTACT_TYPES, CONTACT_TYPE_OPTIONS } from '../lib/constants.js';
 
 const FIELD = 'bg-[#0a0d11] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50 w-full';
@@ -55,6 +56,10 @@ export default function ContactDrawer({ contactId, accounts = [], onClose, onCha
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editingNote, setEditingNote] = useState(null);
   const [editingBody, setEditingBody] = useState('');
+  const [pasting, setPasting] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const [parsing, setParsing] = useState(false);
+  const [parsed, setParsed] = useState(null);
 
   const load = () => {
     setLoading(true);
@@ -67,7 +72,8 @@ export default function ContactDrawer({ contactId, accounts = [], onClose, onCha
           email: c.email || '',
           phone: c.phone || '',
           org_name: c.org_name || '',
-          contact_type: c.contact_type || 'customer'
+          contact_type: c.contact_type || 'customer',
+          linkedin_url: c.linkedin_url || ''
         });
       })
       .catch(() => toast('Failed to load contact', 'error'))
@@ -167,6 +173,55 @@ export default function ContactDrawer({ contactId, accounts = [], onClose, onCha
     }
   }
 
+  // Parse pasted profile text into suggestions. Nothing is saved here — the
+  // user picks which fields to accept, so a bad parse can't overwrite good data.
+  async function parseProfile() {
+    const text = pasteText.trim();
+    if (!text) return;
+    setParsing(true);
+    setParsed(null);
+    try {
+      const r = await api.parseContactProfile(contactId, text);
+      setParsed(r);
+      if (!Object.keys(r.suggestions || {}).length && !r.summary) {
+        toast('Nothing new found in that text', 'warn');
+      }
+    } catch (e) {
+      toast(e.message || 'Could not parse that text', 'error');
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  // Accept one suggested field into the form (still requires Save).
+  function applySuggestion(field) {
+    setForm(f => ({ ...f, [field]: parsed.suggestions[field] }));
+    setParsed(p => {
+      const next = { ...p, suggestions: { ...p.suggestions } };
+      delete next.suggestions[field];
+      return next;
+    });
+  }
+
+  async function applyAllSuggestions() {
+    setForm(f => ({ ...f, ...parsed.suggestions }));
+    setParsed(p => ({ ...p, suggestions: {} }));
+  }
+
+  // Keep the parsed background as a contact note rather than cramming it into
+  // a field — it's context, not an attribute.
+  async function saveSummaryAsNote() {
+    try {
+      await api.createContactNote(contactId, { body: parsed.summary });
+      setParsed(p => ({ ...p, summary: '' }));
+      load();
+      onChange?.();
+      toast('Saved as a note', 'success');
+    } catch (e) {
+      toast(e.message || 'Could not save note', 'error');
+    }
+  }
+
   async function removeContact() {
     try {
       await api.deleteContact(contactId);
@@ -262,6 +317,145 @@ export default function ContactDrawer({ contactId, accounts = [], onClose, onCha
                 Auto-extracted from notes or a transcript — worth a quick check.
               </div>
             ) : null}
+          </div>
+
+          {/* ---------------------------------------------------------------
+              LinkedIn. We only store a link and open it in the user's own
+              browser; LinkedIn has no API that returns another member's
+              profile, so there is nothing to fetch automatically.
+             --------------------------------------------------------------- */}
+          <div>
+            <div className="text-[11px] font-semibold text-text-primary mb-2">LinkedIn</div>
+
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <input
+                value={form.linkedin_url}
+                onChange={set('linkedin_url')}
+                placeholder="Paste their profile URL"
+                className={FIELD}
+              />
+              {form.linkedin_url ? (
+                <a
+                  href={form.linkedin_url}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="px-2 py-1.5 rounded text-[11px] bg-accent-blue/15 text-accent-blue border border-accent-blue/30 hover:bg-accent-blue/25 shrink-0"
+                  title="Open profile"
+                >
+                  Open
+                </a>
+              ) : (
+                <a
+                  href={linkedInSearchUrl(contact) || '#'}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className={`px-2 py-1.5 rounded text-[11px] border shrink-0 ${
+                    linkedInSearchUrl(contact)
+                      ? 'bg-card text-text-muted border-border hover:text-text-primary'
+                      : 'opacity-40 pointer-events-none bg-card text-text-dim border-border'
+                  }`}
+                  title="Search LinkedIn for this person"
+                >
+                  Find
+                </a>
+              )}
+            </div>
+            {!looksLikeLinkedInUrl(form.linkedin_url) && (
+              <div className="text-[10px] text-accent-red mb-1.5">
+                That doesn't look like a linkedin.com URL.
+              </div>
+            )}
+
+            {!pasting ? (
+              <button
+                onClick={() => { setPasting(true); setParsed(null); }}
+                className="text-[10px] text-text-dim hover:text-accent-blue"
+              >
+                Paste profile text to fill in title, employer, and background →
+              </button>
+            ) : (
+              <div className="border border-border rounded p-2 bg-[#10141b] flex flex-col gap-1.5">
+                <div className="text-[10px] text-text-muted">
+                  Open their profile, select the page, and paste it here. Nothing is
+                  fetched from LinkedIn — this only reads what you paste.
+                </div>
+                <textarea
+                  value={pasteText}
+                  onChange={e => setPasteText(e.target.value)}
+                  rows={4}
+                  placeholder="Paste the profile text…"
+                  className={FIELD + ' resize-y'}
+                  autoFocus
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={parseProfile}
+                    disabled={parsing || !pasteText.trim()}
+                    className="px-2 py-1 rounded text-[11px] bg-accent-blue/15 text-accent-blue border border-accent-blue/30 hover:bg-accent-blue/25 disabled:opacity-40"
+                  >
+                    {parsing ? 'Reading…' : 'Read profile'}
+                  </button>
+                  <button
+                    onClick={() => { setPasting(false); setPasteText(''); setParsed(null); }}
+                    className="text-[10px] text-text-muted hover:text-text-primary"
+                  >
+                    Cancel
+                  </button>
+                </div>
+
+                {parsed && (
+                  <div className="flex flex-col gap-1.5 mt-1">
+                    {Object.keys(parsed.suggestions || {}).length > 0 && (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <div className="text-[10px] uppercase tracking-wide text-text-dim">Suggested</div>
+                          <button onClick={applyAllSuggestions} className="text-[10px] text-accent-blue hover:underline ml-auto">
+                            Accept all
+                          </button>
+                        </div>
+                        {Object.entries(parsed.suggestions).map(([field, value]) => (
+                          <div key={field} className="flex items-start gap-2 px-2 py-1.5 bg-card border border-border rounded">
+                            <div className="min-w-0 flex-1">
+                              <div className="text-[9px] uppercase tracking-wide text-text-dim">
+                                {field.replace(/_/g, ' ')}
+                              </div>
+                              <div className="text-[11px] text-text-primary break-words">{value}</div>
+                              {parsed.current?.[field] ? (
+                                <div className="text-[9px] text-text-dim break-words">
+                                  replaces: {parsed.current[field]}
+                                </div>
+                              ) : null}
+                            </div>
+                            <button
+                              onClick={() => applySuggestion(field)}
+                              className="text-[10px] text-accent-blue hover:underline shrink-0"
+                            >
+                              Use
+                            </button>
+                          </div>
+                        ))}
+                        <div className="text-[9px] text-text-dim">
+                          Accepted values land in the fields above — press Save to keep them.
+                        </div>
+                      </>
+                    )}
+
+                    {parsed.summary ? (
+                      <div className="px-2 py-1.5 bg-card border border-border rounded">
+                        <div className="text-[9px] uppercase tracking-wide text-text-dim mb-0.5">Background</div>
+                        <div className="text-[11px] text-text-secondary break-words">{parsed.summary}</div>
+                        <button
+                          onClick={saveSummaryAsNote}
+                          className="text-[10px] text-accent-blue hover:underline mt-1"
+                        >
+                          Save as a note
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* accounts */}

@@ -5,6 +5,7 @@ import Icon from '../components/Icons.jsx';
 import { useToast } from '../components/Toast.jsx';
 import ContactDrawer, { ContactTypeBadge, RoleBadge } from '../components/ContactDrawer.jsx';
 import { initials, colorForName, formatDate } from '../lib/stage.js';
+import { linkedInSearchUrl } from '../lib/linkedin.js';
 import {
   CONTACT_TYPES, CONTACT_TYPE_OPTIONS, ROLE_OPTIONS, DUPE_REASONS
 } from '../lib/constants.js';
@@ -355,10 +356,13 @@ export default function Contacts() {
       ) : (
         <div className="flex flex-col gap-1">
           {contacts.map(c => (
-            <button
+            <div
               key={c.id}
+              className="flex items-center bg-card border border-border rounded hover:border-accent-blue/40 transition"
+            >
+            <button
               onClick={() => setOpenId(c.id)}
-              className="flex items-center gap-3 px-3 py-2.5 bg-card border border-border rounded hover:border-accent-blue/40 transition text-left w-full"
+              className="flex items-center gap-3 px-3 py-2.5 text-left flex-1 min-w-0"
             >
               <span
                 className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-[10px] font-semibold text-white"
@@ -399,6 +403,22 @@ export default function Contacts() {
                 )}
               </span>
             </button>
+
+            {/* Opened in the user's own browser — the notebook never fetches it. */}
+            <a
+              href={c.linkedin_url || linkedInSearchUrl(c) || '#'}
+              target="_blank"
+              rel="noreferrer noopener"
+              title={c.linkedin_url ? 'Open LinkedIn profile' : 'Search for them on LinkedIn'}
+              className={`px-3 py-2.5 shrink-0 ${
+                c.linkedin_url
+                  ? 'text-accent-blue hover:text-accent-blue'
+                  : 'text-text-dim hover:text-text-muted'
+              }`}
+            >
+              <Icon.Link width={12} height={12} />
+            </a>
+            </div>
           ))}
         </div>
       )}

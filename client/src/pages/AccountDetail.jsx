@@ -17,6 +17,7 @@ import { usePovJob } from '../lib/povJob.js';
 import { emitAccountUpdated } from '../lib/accountStore.js';
 import { runFullExtraction, generateCRMSnapshot, CRM_SNAPSHOT_MAX } from '../lib/ai.js';
 import { formatDate, initials, todayISO, parseISODate, toISODate } from '../lib/stage.js';
+import { linkedInSearchUrl } from '../lib/linkedin.js';
 import {
   riskDot, RISK_OPTIONS, escalationStyle, ESCALATION_OPTIONS, QUAL_FIELDS,
   ROLE_BADGES, ROLE_OPTIONS, STAGE_BAR, EXTRA_STAGES, STAGE_GATES, nextStage, stageBarStyle,
@@ -427,7 +428,7 @@ function NoteRow({ note }) {
 const CONTACT_INPUT = 'bg-[#0a0d11] border border-border rounded px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:border-accent-blue/50 w-full';
 const emptyContactForm = () => ({
   name: '', title: '', org_name: '', email: '', phone: '',
-  contact_type: 'customer', meddpicc_role: ''
+  contact_type: 'customer', meddpicc_role: '', linkedin_url: ''
 });
 
 function ContactFields({ form, setForm }) {
@@ -451,6 +452,7 @@ function ContactFields({ form, setForm }) {
         <input placeholder="Email" value={form.email} onChange={set('email')} className={CONTACT_INPUT} />
         <input placeholder="Phone" value={form.phone} onChange={set('phone')} className={CONTACT_INPUT} />
       </div>
+      <input placeholder="LinkedIn URL (optional)" value={form.linkedin_url} onChange={set('linkedin_url')} className={CONTACT_INPUT} />
       <select value={form.meddpicc_role} onChange={set('meddpicc_role')} className={CONTACT_INPUT}>
         {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
       </select>
@@ -647,6 +649,19 @@ function ContactsCard({ account, onChange }) {
                   )}
                 </div>
                 {badge && <span className="text-[9px] px-1.5 py-0.5 rounded shrink-0" style={{ background: `${badge.color}22`, color: badge.color }}>{badge.label}</span>}
+                <a
+                  href={c.linkedin_url || linkedInSearchUrl(c) || '#'}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  title={c.linkedin_url ? 'Open LinkedIn profile' : 'Search for them on LinkedIn'}
+                  className={`shrink-0 transition ${
+                    c.linkedin_url
+                      ? 'text-accent-blue'
+                      : 'text-text-dim hover:text-accent-blue opacity-0 group-hover:opacity-100'
+                  }`}
+                >
+                  <Icon.Link width={11} height={11} />
+                </a>
                 <button onClick={() => setOpenId(c.id)} className="text-text-dim hover:text-accent-blue shrink-0 opacity-0 group-hover:opacity-100 transition" title="Open contact">
                   <Icon.Edit width={11} height={11} />
                 </button>
