@@ -35,7 +35,7 @@ export default function Settings() {
           value={value}
           onChange={e => setValue(e.target.value)}
           placeholder="sk-ant-..."
-          className="w-full bg-[#0a0d11] border border-border rounded px-3 py-2 text-[12px] text-text-primary placeholder-text-dim font-mono focus:outline-none focus:border-accent-blue/50"
+          className="w-full bg-[#040d1c] border border-border rounded px-3 py-2 text-[12px] text-text-primary placeholder-text-dim font-mono focus:outline-none focus:border-accent-blue/50"
         />
         {value && (
           <button onClick={clear} className="text-[12px] text-text-muted hover:text-accent-red mt-3">

@@ -41,10 +41,10 @@ export default function FieldDrawer({ title, value, history = [], footNote, onSa
           value={text}
           onChange={e => setText(e.target.value)}
           autoFocus
-          className="w-full h-64 bg-[#0a0d11] border border-border rounded px-3 py-2 text-[12px] text-text-primary leading-relaxed focus:outline-none focus:border-accent-blue/50 resize-none whitespace-pre-wrap"
+          className="w-full h-64 bg-[#040d1c] border border-border rounded px-3 py-2 text-[12px] text-text-primary leading-relaxed focus:outline-none focus:border-accent-blue/50 resize-none whitespace-pre-wrap"
         />
       ) : (
-        <div className="min-h-[6rem] bg-[#0a0d11] border border-border rounded px-3 py-2" onDoubleClick={() => setEditing(true)}>
+        <div className="min-h-[6rem] bg-[#040d1c] border border-border rounded px-3 py-2" onDoubleClick={() => setEditing(true)}>
           {text.trim() ? <Markdown className="text-[12px] text-text-secondary">{text}</Markdown> : <span className="text-[12px] text-text-dim italic">Empty</span>}
         </div>
       )}

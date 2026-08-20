@@ -123,7 +123,7 @@ const GlobalSearch = forwardRef(function GlobalSearch(_props, ref) {
         onChange={e => { setQuery(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onKeyDown={onKeyDown}
-        className="w-full bg-[#0a0d11] border border-border rounded pl-8 pr-3 py-1.5 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50"
+        className="w-full bg-[#040d1c] border border-border rounded pl-8 pr-3 py-1.5 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50"
       />
 
       {showDropdown && (
@@ -146,8 +146,8 @@ const GlobalSearch = forwardRef(function GlobalSearch(_props, ref) {
                   onClick={() => go(g)}
                   className={`w-full text-left px-3 py-2 border-l-2 transition ${
                     i === active
-                      ? 'bg-[#11161e] border-accent-blue'
-                      : 'border-transparent hover:bg-[#11161e]'
+                      ? 'bg-[#111f42] border-accent-blue'
+                      : 'border-transparent hover:bg-[#111f42]'
                   }`}
                 >
                   <div className="flex items-center gap-2">

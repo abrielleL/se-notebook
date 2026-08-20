@@ -5,7 +5,7 @@ import Icon from '../components/Icons.jsx';
 import { useToast } from '../components/Toast.jsx';
 
 // Preset chip colors (app accent palette).
-const COLORS = ['#58a6ff', '#3fb950', '#e3b341', '#bc8cff', '#f0883e', '#f85149', '#8b949e'];
+const COLORS = ['#5c9bff', '#4fd15c', '#ff9a4d', '#8f47e8', '#ff9a4d', '#ff6b66', '#838892'];
 
 function ColorSwatches({ value, onChange }) {
   return (
@@ -35,9 +35,9 @@ function TagRow({ tag, onSave, onDelete }) {
 
   if (editing) {
     return (
-      <div className="flex items-center flex-wrap gap-2 px-3 py-2 border border-accent-blue/30 rounded bg-[#0a1628]">
+      <div className="flex items-center flex-wrap gap-2 px-3 py-2 border border-accent-blue/30 rounded bg-[#111f42]">
         <input value={label} onChange={e => setLabel(e.target.value)} placeholder="Label" autoFocus
-          className="flex-1 min-w-[140px] bg-[#0a0d11] border border-border rounded px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:border-accent-blue/50" />
+          className="flex-1 min-w-[140px] bg-[#040d1c] border border-border rounded px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:border-accent-blue/50" />
         <ColorSwatches value={color} onChange={setColor} />
         <label className="flex items-center gap-1 text-[10px] text-text-muted cursor-pointer">
           <input type="checkbox" checked={inactive} onChange={e => setInactive(e.target.checked)} /> inactive
@@ -120,7 +120,7 @@ export default function TagSettings() {
       <div className="flex items-center flex-wrap gap-2 px-3 py-2 border border-dashed border-border rounded">
         <input value={label} onChange={e => setLabel(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()}
           placeholder="New tag label…"
-          className="flex-1 min-w-[140px] bg-[#0a0d11] border border-border rounded px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:border-accent-blue/50" />
+          className="flex-1 min-w-[140px] bg-[#040d1c] border border-border rounded px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:border-accent-blue/50" />
         <ColorSwatches value={color} onChange={setColor} />
         <label className="flex items-center gap-1 text-[10px] text-text-muted cursor-pointer">
           <input type="checkbox" checked={inactive} onChange={e => setInactive(e.target.checked)} /> inactive

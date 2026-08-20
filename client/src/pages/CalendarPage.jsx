@@ -61,10 +61,10 @@ const DAY_HEADERS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 // User-scheduled meetings attached to a POV (not auto-derived from the dates).
 
 const MEETING_TYPES = [
-  { key: 'scoping',  label: 'Scoping Call', color: '#bc8cff' },
-  { key: 'kickoff',  label: 'Kick Off',     color: '#58a6ff' },
-  { key: 'checkin',  label: 'Check In',     color: '#e3b341' },
-  { key: 'wrapup',   label: 'Wrap Up',      color: '#3fb950' },
+  { key: 'scoping',  label: 'Scoping Call', color: '#8f47e8' },
+  { key: 'kickoff',  label: 'Kick Off',     color: '#5c9bff' },
+  { key: 'checkin',  label: 'Check In',     color: '#ff9a4d' },
+  { key: 'wrapup',   label: 'Wrap Up',      color: '#4fd15c' },
 ];
 const MEETING_BY_KEY = Object.fromEntries(MEETING_TYPES.map(m => [m.key, m]));
 
@@ -81,7 +81,7 @@ const statusClass = (s) => POV_STATUS_STYLE[(s || '').toLowerCase()] || 'text-te
 // Flatten a timeline's stored meetings into calendar-ready markers.
 function getMeetingsForTimeline(tl) {
   return (tl.meetings || []).map(m => {
-    const def = MEETING_BY_KEY[m.type] || { label: m.type, color: '#8b949e' };
+    const def = MEETING_BY_KEY[m.type] || { label: m.type, color: '#838892' };
     return { id: m.id, key: m.type, label: def.label, color: def.color, date: parseLocal(m.meeting_date), tl };
   }).filter(m => m.date);
 }
@@ -89,9 +89,9 @@ function getMeetingsForTimeline(tl) {
 // ─── input class shared across modal/popover ────────────────────────────────
 
 const inputCls = [
-  'w-full px-2.5 py-1.5 rounded bg-[#0d1117] border border-[#1e2530]',
-  'text-[12px] text-[#e6edf3] placeholder-[#4a5568]',
-  'focus:outline-none focus:border-[#58a6ff]/60',
+  'w-full px-2.5 py-1.5 rounded bg-[#081938] border border-[#273454]',
+  'text-[12px] text-[#f4f4f5] placeholder-[#616875]',
+  'focus:outline-none focus:border-[#5c9bff]/60',
 ].join(' ');
 
 const selectCls = inputCls;
@@ -173,14 +173,14 @@ function AddTimelineModal({ onClose, onSuccess }) {
     <>
       <button
         onClick={onClose}
-        className="px-3 py-1.5 rounded text-[11px] text-[#8b949e] hover:text-[#e6edf3] border border-[#1e2530] hover:border-[#58a6ff]/40 transition"
+        className="px-3 py-1.5 rounded text-[11px] text-[#838892] hover:text-[#f4f4f5] border border-[#273454] hover:border-[#5c9bff]/40 transition"
       >
         Cancel
       </button>
       <button
         onClick={handleSubmit}
         disabled={!canSubmit || saving}
-        className="px-3 py-1.5 rounded text-[11px] bg-[#58a6ff]/15 text-[#58a6ff] border border-[#58a6ff]/30 hover:bg-[#58a6ff]/25 transition disabled:opacity-40 disabled:cursor-not-allowed"
+        className="px-3 py-1.5 rounded text-[11px] bg-[#5c9bff]/15 text-[#5c9bff] border border-[#5c9bff]/30 hover:bg-[#5c9bff]/25 transition disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {saving ? 'Adding…' : 'Add to calendar'}
       </button>
@@ -193,8 +193,8 @@ function AddTimelineModal({ onClose, onSuccess }) {
 
         {/* Account */}
         <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-medium text-[#8b949e] uppercase tracking-wider">
-            Account <span className="text-[#f85149]">*</span>
+          <label className="text-[10px] font-medium text-[#838892] uppercase tracking-wider">
+            Account <span className="text-[#ff6b66]">*</span>
           </label>
           <div className="relative" ref={dropRef}>
             <input
@@ -209,17 +209,17 @@ function AddTimelineModal({ onClose, onSuccess }) {
               onFocus={() => setShowDropdown(true)}
             />
             {showDropdown && filtered.length > 0 && (
-              <div className="absolute z-50 mt-1 w-full bg-[#0d1117] border border-[#1e2530] rounded-lg shadow-lg overflow-auto max-h-48">
+              <div className="absolute z-50 mt-1 w-full bg-[#081938] border border-[#273454] rounded-lg shadow-lg overflow-auto max-h-48">
                 {filtered.map(a => (
                   <button
                     key={a.id}
                     type="button"
                     onClick={() => selectAccount(a)}
-                    className="w-full flex items-center justify-between px-3 py-2 hover:bg-[#14181f] text-left transition"
+                    className="w-full flex items-center justify-between px-3 py-2 hover:bg-[#111f42] text-left transition"
                   >
-                    <span className="text-[12px] text-[#e6edf3] truncate">{a.account_name}</span>
+                    <span className="text-[12px] text-[#f4f4f5] truncate">{a.account_name}</span>
                     {a.presales_stage && (
-                      <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded border border-[#1e2530] text-[#8b949e] shrink-0">
+                      <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded border border-[#273454] text-[#838892] shrink-0">
                         {a.presales_stage}
                       </span>
                     )}
@@ -232,7 +232,7 @@ function AddTimelineModal({ onClose, onSuccess }) {
 
         {/* Label */}
         <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-medium text-[#8b949e] uppercase tracking-wider">Label</label>
+          <label className="text-[10px] font-medium text-[#838892] uppercase tracking-wider">Label</label>
           <input
             className={inputCls}
             placeholder="e.g. Q3 POV, Phase 2, Initial eval"
@@ -244,8 +244,8 @@ function AddTimelineModal({ onClose, onSuccess }) {
         {/* Dates */}
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium text-[#8b949e] uppercase tracking-wider">
-              Start date <span className="text-[#f85149]">*</span>
+            <label className="text-[10px] font-medium text-[#838892] uppercase tracking-wider">
+              Start date <span className="text-[#ff6b66]">*</span>
             </label>
             <DatePicker
               selected={parseISODate(startStr)}
@@ -257,8 +257,8 @@ function AddTimelineModal({ onClose, onSuccess }) {
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium text-[#8b949e] uppercase tracking-wider">
-              End date <span className="text-[#f85149]">*</span>
+            <label className="text-[10px] font-medium text-[#838892] uppercase tracking-wider">
+              End date <span className="text-[#ff6b66]">*</span>
             </label>
             <DatePicker
               selected={parseISODate(endStr)}
@@ -273,14 +273,14 @@ function AddTimelineModal({ onClose, onSuccess }) {
 
         {/* Duration indicator */}
         {durationMsg && (
-          <div className={`text-[11px] ${durationMsg.invalid ? 'text-[#f85149]' : 'text-[#8b949e]'}`}>
+          <div className={`text-[11px] ${durationMsg.invalid ? 'text-[#ff6b66]' : 'text-[#838892]'}`}>
             {durationMsg.text}
           </div>
         )}
 
         {/* Status */}
         <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-medium text-[#8b949e] uppercase tracking-wider">Status</label>
+          <label className="text-[10px] font-medium text-[#838892] uppercase tracking-wider">Status</label>
           <select
             className={selectCls}
             value={status}
@@ -344,11 +344,11 @@ function AddEventModal({ timelines, defaultDate, onClose, onSuccess }) {
   const footer = (
     <>
       <button onClick={onClose}
-        className="px-3 py-1.5 rounded text-[11px] text-[#8b949e] hover:text-[#e6edf3] border border-[#1e2530] hover:border-[#58a6ff]/40 transition">
+        className="px-3 py-1.5 rounded text-[11px] text-[#838892] hover:text-[#f4f4f5] border border-[#273454] hover:border-[#5c9bff]/40 transition">
         Cancel
       </button>
       <button onClick={submit} disabled={!canSubmit || saving}
-        className="px-3 py-1.5 rounded text-[11px] bg-[#58a6ff]/15 text-[#58a6ff] border border-[#58a6ff]/30 hover:bg-[#58a6ff]/25 transition disabled:opacity-40 disabled:cursor-not-allowed">
+        className="px-3 py-1.5 rounded text-[11px] bg-[#5c9bff]/15 text-[#5c9bff] border border-[#5c9bff]/30 hover:bg-[#5c9bff]/25 transition disabled:opacity-40 disabled:cursor-not-allowed">
         {saving ? 'Adding…' : 'Add event'}
       </button>
     </>
@@ -364,20 +364,20 @@ function AddEventModal({ timelines, defaultDate, onClose, onSuccess }) {
         <div className="flex flex-col gap-4">
           {/* POV picker */}
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium text-[#8b949e] uppercase tracking-wider">
-              POV <span className="text-[#f85149]">*</span>
+            <label className="text-[10px] font-medium text-[#838892] uppercase tracking-wider">
+              POV <span className="text-[#ff6b66]">*</span>
             </label>
             <div className="relative" ref={dropRef}>
               <input className={inputCls} placeholder="Search POVs by account…" value={query}
                 onChange={e => { setQuery(e.target.value); setPovId(null); setShowDrop(true); }}
                 onFocus={() => setShowDrop(true)} />
               {showDrop && options.length > 0 && (
-                <div className="absolute z-50 mt-1 w-full bg-[#0d1117] border border-[#1e2530] rounded-lg shadow-lg overflow-auto max-h-48">
+                <div className="absolute z-50 mt-1 w-full bg-[#081938] border border-[#273454] rounded-lg shadow-lg overflow-auto max-h-48">
                   {options.map(o => (
                     <button key={o.id} type="button" onClick={() => selectPov(o)}
-                      className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-[#14181f] text-left transition">
-                      <span className="text-[12px] text-[#e6edf3] truncate">{o.text}</span>
-                      <span className="text-[9px] text-[#8b949e] shrink-0">{o.start} – {o.end}</span>
+                      className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-[#111f42] text-left transition">
+                      <span className="text-[12px] text-[#f4f4f5] truncate">{o.text}</span>
+                      <span className="text-[9px] text-[#838892] shrink-0">{o.start} – {o.end}</span>
                     </button>
                   ))}
                 </div>
@@ -387,7 +387,7 @@ function AddEventModal({ timelines, defaultDate, onClose, onSuccess }) {
 
           {/* Event type chips */}
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium text-[#8b949e] uppercase tracking-wider">Event type</label>
+            <label className="text-[10px] font-medium text-[#838892] uppercase tracking-wider">Event type</label>
             <div className="flex flex-wrap gap-1.5">
               {MEETING_TYPES.map(t => {
                 const active = type === t.key;
@@ -396,7 +396,7 @@ function AddEventModal({ timelines, defaultDate, onClose, onSuccess }) {
                     className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] border font-medium transition"
                     style={active
                       ? { color: t.color, background: `${t.color}26`, borderColor: `${t.color}88` }
-                      : { color: '#8b949e', background: 'transparent', borderColor: '#1e2530' }}>
+                      : { color: '#838892', background: 'transparent', borderColor: '#273454' }}>
                     <span className="w-2 h-2 rounded-full" style={{ background: t.color }} />
                     {t.label}
                   </button>
@@ -407,8 +407,8 @@ function AddEventModal({ timelines, defaultDate, onClose, onSuccess }) {
 
           {/* Date */}
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium text-[#8b949e] uppercase tracking-wider">
-              Date <span className="text-[#f85149]">*</span>
+            <label className="text-[10px] font-medium text-[#838892] uppercase tracking-wider">
+              Date <span className="text-[#ff6b66]">*</span>
             </label>
             <DatePicker selected={parseISODate(dateStr)} onChange={d => setDateStr(toISODate(d))}
               dateFormat="MMM d, yyyy" placeholderText="Select date" className={inputCls} popperPlacement="bottom-start" />
@@ -487,11 +487,11 @@ function EditTimelineModal({ timelines, onClose, onSuccess }) {
   const footer = (
     <>
       <button onClick={onClose}
-        className="px-3 py-1.5 rounded text-[11px] text-[#8b949e] hover:text-[#e6edf3] border border-[#1e2530] hover:border-[#58a6ff]/40 transition">
+        className="px-3 py-1.5 rounded text-[11px] text-[#838892] hover:text-[#f4f4f5] border border-[#273454] hover:border-[#5c9bff]/40 transition">
         Cancel
       </button>
       <button onClick={submit} disabled={!canSubmit || saving}
-        className="px-3 py-1.5 rounded text-[11px] bg-[#58a6ff]/15 text-[#58a6ff] border border-[#58a6ff]/30 hover:bg-[#58a6ff]/25 transition disabled:opacity-40 disabled:cursor-not-allowed">
+        className="px-3 py-1.5 rounded text-[11px] bg-[#5c9bff]/15 text-[#5c9bff] border border-[#5c9bff]/30 hover:bg-[#5c9bff]/25 transition disabled:opacity-40 disabled:cursor-not-allowed">
         {saving ? 'Saving…' : 'Save changes'}
       </button>
     </>
@@ -507,20 +507,20 @@ function EditTimelineModal({ timelines, onClose, onSuccess }) {
         <div className="flex flex-col gap-4">
           {/* POV picker */}
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium text-[#8b949e] uppercase tracking-wider">
-              POV <span className="text-[#f85149]">*</span>
+            <label className="text-[10px] font-medium text-[#838892] uppercase tracking-wider">
+              POV <span className="text-[#ff6b66]">*</span>
             </label>
             <div className="relative" ref={dropRef}>
               <input className={inputCls} placeholder="Search POVs by account…" value={query}
                 onChange={e => { setQuery(e.target.value); setTlId(null); setShowDrop(true); }}
                 onFocus={() => setShowDrop(true)} />
               {showDrop && options.length > 0 && (
-                <div className="absolute z-50 mt-1 w-full bg-[#0d1117] border border-[#1e2530] rounded-lg shadow-lg overflow-auto max-h-48">
+                <div className="absolute z-50 mt-1 w-full bg-[#081938] border border-[#273454] rounded-lg shadow-lg overflow-auto max-h-48">
                   {options.map(o => (
                     <button key={o.id} type="button" onClick={() => selectTimeline(o)}
-                      className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-[#14181f] text-left transition">
-                      <span className="text-[12px] text-[#e6edf3] truncate">{o.text}</span>
-                      <span className="text-[9px] text-[#8b949e] shrink-0">{o.start} – {o.end}</span>
+                      className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-[#111f42] text-left transition">
+                      <span className="text-[12px] text-[#f4f4f5] truncate">{o.text}</span>
+                      <span className="text-[9px] text-[#838892] shrink-0">{o.start} – {o.end}</span>
                     </button>
                   ))}
                 </div>
@@ -531,16 +531,16 @@ function EditTimelineModal({ timelines, onClose, onSuccess }) {
           {/* Dates (autofilled from the selected POV) */}
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-medium text-[#8b949e] uppercase tracking-wider">
-                Start date <span className="text-[#f85149]">*</span>
+              <label className="text-[10px] font-medium text-[#838892] uppercase tracking-wider">
+                Start date <span className="text-[#ff6b66]">*</span>
               </label>
               <DatePicker selected={parseISODate(startStr)} onChange={d => setStart(toISODate(d))}
                 dateFormat="MMM d, yyyy" placeholderText="Select date" className={inputCls}
                 disabled={!tlId} popperPlacement="bottom-start" />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-medium text-[#8b949e] uppercase tracking-wider">
-                End date <span className="text-[#f85149]">*</span>
+              <label className="text-[10px] font-medium text-[#838892] uppercase tracking-wider">
+                End date <span className="text-[#ff6b66]">*</span>
               </label>
               <DatePicker selected={parseISODate(endStr)} onChange={d => setEnd(toISODate(d))}
                 dateFormat="MMM d, yyyy" placeholderText="Select date" className={inputCls}
@@ -550,14 +550,14 @@ function EditTimelineModal({ timelines, onClose, onSuccess }) {
 
           {/* Duration indicator */}
           {durationMsg && (
-            <div className={`text-[11px] ${durationMsg.invalid ? 'text-[#f85149]' : 'text-[#8b949e]'}`}>
+            <div className={`text-[11px] ${durationMsg.invalid ? 'text-[#ff6b66]' : 'text-[#838892]'}`}>
               {durationMsg.text}
             </div>
           )}
 
           {/* Status */}
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-medium text-[#8b949e] uppercase tracking-wider">Status</label>
+            <label className="text-[10px] font-medium text-[#838892] uppercase tracking-wider">Status</label>
             <select className={selectCls} value={status} onChange={e => setStatus(e.target.value)} disabled={!tlId}>
               {POV_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
@@ -660,7 +660,7 @@ function EditPopover({ tl, pos, onClose, onReload }) {
 
   return (
     <div ref={ref} style={style}
-      className="bg-[#0d1117] border border-[#1e2530] rounded-lg shadow-lg p-3 flex flex-col gap-2.5 max-h-[88vh] overflow-y-auto">
+      className="bg-[#081938] border border-[#273454] rounded-lg shadow-lg p-3 flex flex-col gap-2.5 max-h-[88vh] overflow-y-auto">
 
       {/* header */}
       <div className="flex items-start justify-between gap-2">
@@ -676,11 +676,11 @@ function EditPopover({ tl, pos, onClose, onReload }) {
       </div>
 
       {/* meetings manager */}
-      <div className="flex flex-col gap-1.5 pt-1 border-t border-[#1e2530]">
-        <div className="text-[9px] font-medium text-[#8b949e] uppercase tracking-wider">POV meetings</div>
+      <div className="flex flex-col gap-1.5 pt-1 border-t border-[#273454]">
+        <div className="text-[9px] font-medium text-[#838892] uppercase tracking-wider">POV meetings</div>
         {meetings.length === 0 && <div className="text-[10px] text-text-dim">No meetings scheduled yet.</div>}
         {meetings.map(m => {
-          const def = MEETING_BY_KEY[m.type] || { label: m.type, color: '#8b949e' };
+          const def = MEETING_BY_KEY[m.type] || { label: m.type, color: '#838892' };
           return (
             <div key={m.id} className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full shrink-0" style={{ background: def.color }} />
@@ -693,12 +693,12 @@ function EditPopover({ tl, pos, onClose, onReload }) {
         {/* add meeting row */}
         <div className="flex items-center gap-1.5 mt-1">
           <select value={mType} onChange={e => setMType(e.target.value)}
-            className="bg-[#0d1117] border border-[#1e2530] rounded px-1.5 py-1 text-[10px] text-text-primary focus:outline-none focus:border-accent-blue/60">
+            className="bg-[#081938] border border-[#273454] rounded px-1.5 py-1 text-[10px] text-text-primary focus:outline-none focus:border-accent-blue/60">
             {MEETING_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
           </select>
           <DatePicker selected={parseISODate(mDate)} onChange={d => setMDate(toISODate(d))}
             dateFormat="MMM d, yyyy" placeholderText="Date" withPortal
-            className="w-[96px] bg-[#0d1117] border border-[#1e2530] rounded px-1.5 py-1 text-[10px] text-text-primary focus:outline-none focus:border-accent-blue/60" />
+            className="w-[96px] bg-[#081938] border border-[#273454] rounded px-1.5 py-1 text-[10px] text-text-primary focus:outline-none focus:border-accent-blue/60" />
           <button onClick={addMeeting} disabled={!mDate || addingMeeting}
             className="px-2 py-1 rounded text-[10px] bg-accent-blue/15 text-accent-blue border border-accent-blue/30 hover:bg-accent-blue/25 transition disabled:opacity-40 shrink-0">
             {addingMeeting ? '…' : 'Add'}
@@ -709,8 +709,8 @@ function EditPopover({ tl, pos, onClose, onReload }) {
       {/* Dates + status are editable for every timeline (incl. generated POVs —
           adjust start/end for extensions without regenerating the doc). Label
           editing and removal stay limited to manual timelines. */}
-      <div className="flex flex-col gap-2.5 pt-1 border-t border-[#1e2530]">
-        <div className="text-[9px] font-medium text-[#8b949e] uppercase tracking-wider">
+      <div className="flex flex-col gap-2.5 pt-1 border-t border-[#273454]">
+        <div className="text-[9px] font-medium text-[#838892] uppercase tracking-wider">
           {isManual ? 'Edit timeline' : 'Adjust dates'}
         </div>
         {isManual && (
@@ -723,23 +723,23 @@ function EditPopover({ tl, pos, onClose, onReload }) {
         <select className={selectCls} value={status} onChange={e => setStatus(e.target.value)}>
           {POV_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        {dateErr && <div className="text-[10px] text-[#f85149]">{dateErr}</div>}
+        {dateErr && <div className="text-[10px] text-[#ff6b66]">{dateErr}</div>}
         {confirmDel ? (
           <div className="flex flex-col gap-1.5">
-            <div className="text-[10px] text-[#f85149]">Remove from calendar?</div>
+            <div className="text-[10px] text-[#ff6b66]">Remove from calendar?</div>
             <div className="flex gap-2">
-              <button onClick={handleDelete} disabled={deleting} className="px-2 py-1 rounded text-[10px] bg-[#f85149]/15 text-[#f85149] border border-[#f85149]/30 hover:bg-[#f85149]/25 transition disabled:opacity-40">{deleting ? 'Deleting…' : 'Yes'}</button>
-              <button onClick={() => setConfirmDel(false)} className="px-2 py-1 rounded text-[10px] text-[#8b949e] border border-[#1e2530] hover:text-[#e6edf3] transition">No</button>
+              <button onClick={handleDelete} disabled={deleting} className="px-2 py-1 rounded text-[10px] bg-[#ff6b66]/15 text-[#ff6b66] border border-[#ff6b66]/30 hover:bg-[#ff6b66]/25 transition disabled:opacity-40">{deleting ? 'Deleting…' : 'Yes'}</button>
+              <button onClick={() => setConfirmDel(false)} className="px-2 py-1 rounded text-[10px] text-[#838892] border border-[#273454] hover:text-[#f4f4f5] transition">No</button>
             </div>
           </div>
         ) : (
           <div className="flex items-center justify-between">
             {isManual ? (
-              <button onClick={() => setConfirmDel(true)} className="px-2 py-1 rounded text-[10px] text-[#f85149] border border-[#f85149]/20 hover:bg-[#f85149]/10 transition">Delete</button>
+              <button onClick={() => setConfirmDel(true)} className="px-2 py-1 rounded text-[10px] text-[#ff6b66] border border-[#ff6b66]/20 hover:bg-[#ff6b66]/10 transition">Delete</button>
             ) : (
               <Link to={`/accounts/${tl.account_id}`} className="text-[10px] text-accent-blue hover:underline">Open account →</Link>
             )}
-            <button onClick={handleSave} disabled={saving} className="px-2.5 py-1 rounded text-[10px] bg-[#58a6ff]/15 text-[#58a6ff] border border-[#58a6ff]/30 hover:bg-[#58a6ff]/25 transition disabled:opacity-40">{saving ? 'Saving…' : 'Save'}</button>
+            <button onClick={handleSave} disabled={saving} className="px-2.5 py-1 rounded text-[10px] bg-[#5c9bff]/15 text-[#5c9bff] border border-[#5c9bff]/30 hover:bg-[#5c9bff]/25 transition disabled:opacity-40">{saving ? 'Saving…' : 'Save'}</button>
           </div>
         )}
       </div>
@@ -832,7 +832,7 @@ export default function CalendarPage() {
 
     // timeline bars
     timelines.forEach(tl => {
-      const barColor   = tl.account_color || '#378ADD';
+      const barColor   = tl.account_color || '#1d6bfc';
       const barLabel   = tl.label || tl.account_name || '';
       const isManual   = tl.manually_created === 1;
       const start = tl.start_date ? parseLocal(tl.start_date) : null;
@@ -911,7 +911,7 @@ export default function CalendarPage() {
 
         <div className="flex items-center gap-2">
           {/* view toggle */}
-          <div className="flex items-center gap-1 bg-[#10141b] border border-border rounded p-0.5">
+          <div className="flex items-center gap-1 bg-[#111f42] border border-border rounded p-0.5">
             {(['month','list']).map(v => (
               <button
                 key={v}
@@ -930,7 +930,7 @@ export default function CalendarPage() {
           {/* New POV button */}
           <button
             onClick={() => navigate('/accounts')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] bg-[#58a6ff]/10 text-[#58a6ff] border border-[#58a6ff]/25 hover:bg-[#58a6ff]/20 transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] bg-[#5c9bff]/10 text-[#5c9bff] border border-[#5c9bff]/25 hover:bg-[#5c9bff]/20 transition"
           >
             <TablerIcon name="ti-file-plus" className="text-[12px]" />
             New POV
@@ -939,7 +939,7 @@ export default function CalendarPage() {
           {/* Add event button */}
           <button
             onClick={() => setEventModal({ date: '' })}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] bg-[#bc8cff]/10 text-[#bc8cff] border border-[#bc8cff]/25 hover:bg-[#bc8cff]/20 transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] bg-[#8f47e8]/10 text-[#8f47e8] border border-[#8f47e8]/25 hover:bg-[#8f47e8]/20 transition"
           >
             <TablerIcon name="ti-calendar-event" className="text-[12px]" />
             Add event
@@ -948,7 +948,7 @@ export default function CalendarPage() {
           {/* Add timeline button */}
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] bg-[#3fb950]/10 text-[#3fb950] border border-[#3fb950]/25 hover:bg-[#3fb950]/20 transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] bg-[#4fd15c]/10 text-[#4fd15c] border border-[#4fd15c]/25 hover:bg-[#4fd15c]/20 transition"
           >
             <TablerIcon name="ti-calendar-plus" className="text-[12px]" />
             Add timeline
@@ -957,7 +957,7 @@ export default function CalendarPage() {
           {/* Edit timeline button */}
           <button
             onClick={() => setShowEditModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] bg-[#e3b341]/10 text-[#e3b341] border border-[#e3b341]/25 hover:bg-[#e3b341]/20 transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] bg-[#ff9a4d]/10 text-[#ff9a4d] border border-[#ff9a4d]/25 hover:bg-[#ff9a4d]/20 transition"
           >
             <TablerIcon name="ti-calendar-cog" className="text-[12px]" />
             Edit timeline
@@ -1003,14 +1003,14 @@ export default function CalendarPage() {
                 </button>
                 <button
                   onClick={prevMonth}
-                  className="p-1.5 rounded text-text-muted hover:text-text-primary hover:bg-[#14181f] transition"
+                  className="p-1.5 rounded text-text-muted hover:text-text-primary hover:bg-[#111f42] transition"
                   aria-label="Previous month"
                 >
                   <Icon.Back width={13} height={13} />
                 </button>
                 <button
                   onClick={nextMonth}
-                  className="p-1.5 rounded text-text-muted hover:text-text-primary hover:bg-[#14181f] transition"
+                  className="p-1.5 rounded text-text-muted hover:text-text-primary hover:bg-[#111f42] transition"
                   style={{ transform: 'scaleX(-1)' }}
                   aria-label="Next month"
                 >
@@ -1049,7 +1049,7 @@ export default function CalendarPage() {
                     className={[
                       'min-h-[90px] border-b border-r border-border px-1.5 pt-1 pb-1.5 relative flex flex-col gap-0.5',
                       isWeekend ? 'bg-app' : 'bg-card',
-                      day ? 'cursor-pointer hover:bg-[#11161e]' : '',
+                      day ? 'cursor-pointer hover:bg-[#111f42]' : '',
                       isLastRow ? 'border-b-0' : '',
                       idx % 7 === 6 ? 'border-r-0' : '',
                     ].join(' ')}
@@ -1203,7 +1203,7 @@ function ListView({ timelines }) {
         return (
           <Card key={tl.id} className="overflow-hidden">
             <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border">
-              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: tl.account_color || '#378ADD' }} />
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: tl.account_color || '#1d6bfc' }} />
               <Link to={`/accounts/${tl.account_id}`} className="text-[13px] font-medium text-text-primary hover:text-accent-blue truncate">
                 {tl.account_name}
               </Link>
@@ -1221,7 +1221,7 @@ function ListView({ timelines }) {
               ) : (
                 <div className="flex flex-col gap-1.5">
                   {meetings.map(m => {
-                    const def = MEETING_BY_KEY[m.type] || { label: m.type, color: '#8b949e' };
+                    const def = MEETING_BY_KEY[m.type] || { label: m.type, color: '#838892' };
                     return (
                       <div key={m.id} className="flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full shrink-0" style={{ background: def.color }} />

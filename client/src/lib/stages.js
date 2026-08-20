@@ -14,21 +14,28 @@ export const PRESALES_STAGES = [
   'Canceled',
 ];
 
+// Stage badge colors.
+//
+// These were Tailwind's default light scales (bg-blue-50 / text-blue-700),
+// which rendered as pale pills on a dark app and are a library default rather
+// than a brand value. They now use the same tint/ink pairs as the stage bar in
+// constants.js: a flattened brand status tint behind the matching dark-mode
+// status ink.
 export const STAGE_COLORS = {
-  '1-Discovery':      { bg: 'bg-blue-50',   text: 'text-blue-700',  dot: '#378ADD' },
-  '2-Demo':           { bg: 'bg-blue-50',   text: 'text-blue-700',  dot: '#378ADD' },
-  '3-Workshop':       { bg: 'bg-blue-50',   text: 'text-blue-700',  dot: '#378ADD' },
-  '4-Planning':       { bg: 'bg-blue-50',   text: 'text-blue-700',  dot: '#378ADD' },
-  '5-Deployment':     { bg: 'bg-amber-50',  text: 'text-amber-700', dot: '#BA7517' },
-  '6-In Progress':    { bg: 'bg-amber-50',  text: 'text-amber-700', dot: '#BA7517' },
-  '7-Technical Win':  { bg: 'bg-green-50',  text: 'text-green-700', dot: '#639922' },
-  '8-Technical Loss': { bg: 'bg-red-50',    text: 'text-red-700',   dot: '#E24B4A' },
-  'Not Required':     { bg: 'bg-gray-50',   text: 'text-gray-500',  dot: '#888780' },
-  'Stalled':          { bg: 'bg-gray-50',   text: 'text-gray-500',  dot: '#888780' },
-  'Canceled':         { bg: 'bg-gray-50',   text: 'text-gray-500',  dot: '#888780' },
+  '1-Discovery':      { bg: 'bg-[#0c295f]', text: 'text-[#5c9bff]', dot: '#1d6bfc' },
+  '2-Demo':           { bg: 'bg-[#0c295f]', text: 'text-[#5c9bff]', dot: '#1d6bfc' },
+  '3-Workshop':       { bg: 'bg-[#0c295f]', text: 'text-[#5c9bff]', dot: '#1d6bfc' },
+  '4-Planning':       { bg: 'bg-[#0c295f]', text: 'text-[#5c9bff]', dot: '#1d6bfc' },
+  '5-Deployment':     { bg: 'bg-[#2e1d18]', text: 'text-[#ff9a4d]', dot: '#ff9a4d' },
+  '6-In Progress':    { bg: 'bg-[#2e1d18]', text: 'text-[#ff9a4d]', dot: '#ff9a4d' },
+  '7-Technical Win':  { bg: 'bg-[#032417]', text: 'text-[#4fd15c]', dot: '#4fd15c' },
+  '8-Technical Loss': { bg: 'bg-[#290b17]', text: 'text-[#ff6b66]', dot: '#ff6b66' },
+  'Not Required':     { bg: 'bg-[#111f42]', text: 'text-[#838892]', dot: '#838892' },
+  'Stalled':          { bg: 'bg-[#111f42]', text: 'text-[#838892]', dot: '#838892' },
+  'Canceled':         { bg: 'bg-[#111f42]', text: 'text-[#838892]', dot: '#838892' },
 };
 
-const FALLBACK = { bg: 'bg-gray-50', text: 'text-gray-500', dot: '#888780' };
+const FALLBACK = { bg: 'bg-[#111f42]', text: 'text-[#838892]', dot: '#838892' };
 
 export function stageColor(stage) {
   return STAGE_COLORS[stage] || FALLBACK;

@@ -228,7 +228,7 @@ export default function NewNote() {
                     key={a.id}
                     onMouseDown={e => e.preventDefault()}
                     onClick={() => pickAccount(a)}
-                    className="block w-full text-left px-3 py-2 text-[12px] hover:bg-[#14181f] text-text-primary"
+                    className="block w-full text-left px-3 py-2 text-[12px] hover:bg-[#111f42] text-text-primary"
                   >
                     {a.account_name}{a.account_executive ? <span className="text-text-dim"> · {a.account_executive}</span> : null}
                   </button>
@@ -341,4 +341,4 @@ function Label({ children, hint }) {
   );
 }
 
-const inputCls = 'w-full bg-[#0a0d11] border border-border rounded px-3 py-2 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50';
+const inputCls = 'w-full bg-[#040d1c] border border-border rounded px-3 py-2 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50';

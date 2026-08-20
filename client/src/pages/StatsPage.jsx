@@ -93,16 +93,15 @@ function MetricCard({ label, value }) {
     <div className="bg-card border border-border rounded-lg px-5 py-4 flex flex-col gap-1 min-w-0">
       <span
         style={{
-          fontFamily: "'JetBrains Mono', monospace",
-          fontSize: 28,
+                    fontSize: 28,
           fontWeight: 600,
-          color: '#e6edf3',
+          color: '#f4f4f5',
           lineHeight: 1.1,
         }}
       >
         {value}
       </span>
-      <span style={{ fontSize: 11, color: '#8b949e', fontFamily: "'JetBrains Mono', monospace" }}>
+      <span style={{ fontSize: 11, color: '#838892' }}>
         {label}
       </span>
     </div>
@@ -114,7 +113,7 @@ function RankedList({ items, emptyLabel = 'Not enough data' }) {
     return (
       <div
         className="px-4 py-3"
-        style={{ fontSize: 11, color: '#4a5568', fontFamily: "'JetBrains Mono', monospace" }}
+        style={{ fontSize: 11, color: '#616875' }}
       >
         {emptyLabel}
       </div>
@@ -126,14 +125,13 @@ function RankedList({ items, emptyLabel = 'Not enough data' }) {
         <div
           key={name}
           className="flex items-center justify-between px-4 py-2 border border-border rounded mx-3 my-1.5"
-          style={{ background: '#0d1117' }}
+          style={{ background: '#081938' }}
         >
           <div className="flex items-center gap-2 min-w-0">
             <span
               style={{
                 fontSize: 10,
-                color: '#58a6ff',
-                fontFamily: "'JetBrains Mono', monospace",
+                color: '#5c9bff',
                 minWidth: 18,
               }}
             >
@@ -141,7 +139,7 @@ function RankedList({ items, emptyLabel = 'Not enough data' }) {
             </span>
             <span
               className="truncate"
-              style={{ fontSize: 11, color: '#e6edf3', fontFamily: "'JetBrains Mono', monospace" }}
+              style={{ fontSize: 11, color: '#f4f4f5' }}
             >
               {name}
             </span>
@@ -149,8 +147,7 @@ function RankedList({ items, emptyLabel = 'Not enough data' }) {
           <span
             style={{
               fontSize: 10,
-              color: '#8b949e',
-              fontFamily: "'JetBrains Mono', monospace",
+              color: '#838892',
               marginLeft: 8,
               flexShrink: 0,
             }}
@@ -163,20 +160,12 @@ function RankedList({ items, emptyLabel = 'Not enough data' }) {
   );
 }
 
-const CHART_COLORS = [
-  '#58a6ff',
-  '#3fb950',
-  '#e3b341',
-  '#f85149',
-  '#bc8cff',
-  '#f0883e',
-  '#58a6ff',
-  '#3fb950',
-  '#e3b341',
-  '#f85149',
-  '#bc8cff',
-  '#f0883e',
-];
+// Single-series magnitude chart: one hue, not a color per bar. Cycling hues
+// across the bars of one series encodes position rather than identity, which
+// reads as meaning that isn't there — and it burned status colors (red/amber)
+// as decoration, next to a UI where those mean risk.
+const BAR_FILL = '#1d6bfc';        // --opswat-primary
+const BAR_FILL_MUTED = '#273454';  // --opswat-dark-100, for zero/empty stages
 
 // ── main component ───────────────────────────────────────────────────────────
 
@@ -279,8 +268,8 @@ export default function StatsPage() {
 
   if (error) {
     return (
-      <div className="p-6" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-        <p style={{ color: '#f85149', fontSize: 12 }}>Error: {error}</p>
+      <div className="p-6">
+        <p style={{ color: '#ff6b66', fontSize: 12 }}>Error: {error}</p>
       </div>
     );
   }
@@ -288,18 +277,18 @@ export default function StatsPage() {
   return (
     <div
       className="p-6 flex flex-col gap-6 min-h-screen"
-      style={{ background: '#0d1117', fontFamily: "'JetBrains Mono', monospace" }}
+      style={{ background: '#081938' }}
     >
       {/* page header */}
       <div>
-        <h1 style={{ fontSize: 16, fontWeight: 600, color: '#e6edf3', margin: 0 }}>Stats</h1>
-        <p style={{ fontSize: 11, color: '#8b949e', margin: '2px 0 0' }}>
+        <h1 style={{ fontSize: 16, fontWeight: 600, color: '#f4f4f5', margin: 0 }}>Stats</h1>
+        <p style={{ fontSize: 11, color: '#838892', margin: '2px 0 0' }}>
           Computed locally from your notebook.
         </p>
       </div>
 
       {isLoading ? (
-        <div style={{ fontSize: 11, color: '#8b949e' }}>Loading…</div>
+        <div style={{ fontSize: 11, color: '#838892' }}>Loading…</div>
       ) : (
         <>
           {/* top metric cards */}
@@ -314,7 +303,7 @@ export default function StatsPage() {
           <Card>
             <CardHeader title="Accounts by stage" />
             {stageChartData.length === 0 ? (
-              <div className="px-4 py-6" style={{ fontSize: 11, color: '#4a5568' }}>
+              <div className="px-4 py-6" style={{ fontSize: 11, color: '#616875' }}>
                 No accounts yet.
               </div>
             ) : (
@@ -326,15 +315,15 @@ export default function StatsPage() {
                   >
                     <XAxis
                       dataKey="stage"
-                      tick={{ fill: '#8b949e', fontSize: 10 }}
-                      axisLine={{ stroke: '#1e2530' }}
+                      tick={{ fill: '#838892', fontSize: 10 }}
+                      axisLine={{ stroke: '#273454' }}
                       tickLine={false}
                       angle={-35}
                       textAnchor="end"
                       interval={0}
                     />
                     <YAxis
-                      tick={{ fill: '#8b949e', fontSize: 10 }}
+                      tick={{ fill: '#838892', fontSize: 10 }}
                       axisLine={false}
                       tickLine={false}
                       allowDecimals={false}
@@ -342,21 +331,20 @@ export default function StatsPage() {
                     <Tooltip
                       cursor={{ fill: 'rgba(88,166,255,0.06)' }}
                       contentStyle={{
-                        background: '#0d1117',
-                        border: '1px solid #1e2530',
+                        background: '#081938',
+                        border: '1px solid #273454',
                         fontSize: 11,
-                        color: '#e6edf3',
-                        fontFamily: "'JetBrains Mono', monospace",
+                        color: '#f4f4f5',
                         borderRadius: 6,
                       }}
-                      labelStyle={{ color: '#8b949e', marginBottom: 2 }}
-                      itemStyle={{ color: '#e6edf3' }}
+                      labelStyle={{ color: '#838892', marginBottom: 2 }}
+                      itemStyle={{ color: '#f4f4f5' }}
                     />
                     <Bar dataKey="count" radius={[3, 3, 0, 0]} maxBarSize={36}>
                       {stageChartData.map((entry, index) => (
                         <Cell
                           key={`cell-${index}`}
-                          fill={CHART_COLORS[index % CHART_COLORS.length]}
+                          fill={entry.count ? BAR_FILL : BAR_FILL_MUTED}
                         />
                       ))}
                     </Bar>

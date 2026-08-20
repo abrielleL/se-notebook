@@ -4,10 +4,10 @@ const ToastContext = createContext(() => {});
 export function useToast() { return useContext(ToastContext); }
 
 const TYPE_STYLES = {
-  info: 'border-accent-blue/40 text-accent-blue bg-[#0a1628]',
-  success: 'border-accent-green/40 text-accent-green bg-[#0d2a1a]',
-  error: 'border-accent-red/40 text-accent-red bg-[#2d0d0d]',
-  warn: 'border-accent-yellow/40 text-accent-yellow bg-[#2d2200]'
+  info: 'border-accent-blue/40 text-accent-blue bg-[#111f42]',
+  success: 'border-accent-green/40 text-accent-green bg-[#032417]',
+  error: 'border-accent-red/40 text-accent-red bg-[#290b17]',
+  warn: 'border-accent-yellow/40 text-accent-yellow bg-[#2e1d18]'
 };
 
 export function ToastProvider({ children }) {

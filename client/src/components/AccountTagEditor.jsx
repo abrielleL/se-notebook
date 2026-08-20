@@ -22,7 +22,7 @@ export default function AccountTagEditor({ tags = [], catalog = [], onChange }) 
   return (
     <div className="flex flex-wrap items-center gap-1.5" ref={ref}>
       {tags.map(label => {
-        const color = byLabel[label]?.color || '#8b949e';
+        const color = byLabel[label]?.color || '#838892';
         return (
           <span key={label} className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium"
             style={{ color, background: `${color}22`, border: `1px solid ${color}55` }}>
@@ -49,7 +49,7 @@ export default function AccountTagEditor({ tags = [], catalog = [], onChange }) 
               const active = tags.includes(t.label);
               return (
                 <button key={t.id} onClick={() => toggle(t.label)}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[#11161e] transition">
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[#111f42] transition">
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: t.color }} />
                   <span className="text-[11px] text-text-primary flex-1 truncate">{t.label}</span>
                   {active && <Icon.Check width={11} height={11} className="text-accent-green shrink-0" />}

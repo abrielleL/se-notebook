@@ -95,7 +95,7 @@ function PreviewDrawer({ pov, version, onClose, navigate, onDelete }) {
         <div className="px-5 py-3 border-b border-border flex items-start justify-between gap-3 shrink-0">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#10141b] text-text-muted border border-border font-medium shrink-0">v{version}</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#111f42] text-text-muted border border-border font-medium shrink-0">v{version}</span>
               <span className="text-[14px] font-semibold text-text-primary truncate">{pov._account?.account_name || 'POV'}</span>
             </div>
             <div className="text-[11px] text-text-muted truncate">
@@ -169,9 +169,9 @@ function PovCard({ pov, version, products, deployment, useCases, onClick, onDele
 
   return (
     <div onClick={onClick} role="button" tabIndex={0}
-      className="cursor-pointer text-left bg-card border border-border rounded-lg p-4 flex flex-col gap-2 hover:border-accent-blue/40 hover:bg-[#11161e] transition">
+      className="cursor-pointer text-left bg-card border border-border rounded-lg p-4 flex flex-col gap-2 hover:border-accent-blue/40 hover:bg-[#111f42] transition">
       <div className="flex items-start gap-2">
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#10141b] text-text-muted border border-border font-medium shrink-0">v{version}</span>
+        <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#111f42] text-text-muted border border-border font-medium shrink-0">v{version}</span>
         <span className="text-[13px] font-medium text-text-primary truncate flex-1">{pov._account?.account_name || '—'}</span>
         <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium shrink-0 ${statusClass(pov.status)}`}>{pov.status || 'Draft'}</span>
         {pov.win_loss && (
@@ -186,7 +186,7 @@ function PovCard({ pov, version, products, deployment, useCases, onClick, onDele
       {products.length > 0 ? (
         <div className="flex flex-wrap gap-1">
           {products.slice(0, 3).map(p => (
-            <span key={p} className="text-[10px] px-1.5 py-0.5 rounded bg-[#1a2744] text-accent-blue border border-[#1e3a6e] font-medium">{p}</span>
+            <span key={p} className="text-[10px] px-1.5 py-0.5 rounded bg-[#0c295f] text-accent-blue border border-[#273454] font-medium">{p}</span>
           ))}
           {products.length > 3 && <span className="text-[10px] text-text-dim self-center">+{products.length - 3}</span>}
         </div>
@@ -199,7 +199,7 @@ function PovCard({ pov, version, products, deployment, useCases, onClick, onDele
       {useCases.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {useCases.slice(0, 3).map(u => (
-            <span key={u} className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#10141b] text-text-muted border border-border">{u}</span>
+            <span key={u} className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#111f42] text-text-muted border border-border">{u}</span>
           ))}
           {useCases.length > 3 && <span className="text-[9px] text-text-dim">+{useCases.length - 3}</span>}
         </div>
@@ -344,14 +344,14 @@ export default function PovLibrary() {
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] uppercase tracking-wider text-text-dim">Industry</span>
           <select value={industryFilter} onChange={e => setIndustryFilter(e.target.value)}
-            className="bg-[#10141b] border border-border rounded text-[11px] px-2 py-1 text-text-primary focus:outline-none focus:border-accent-blue/50">
+            className="bg-[#111f42] border border-border rounded text-[11px] px-2 py-1 text-text-primary focus:outline-none focus:border-accent-blue/50">
             {industries.map(i => <option key={i} value={i}>{i}</option>)}
           </select>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] uppercase tracking-wider text-text-dim">Product</span>
           <select value={productFilter} onChange={e => setProductFilter(e.target.value)}
-            className="bg-[#10141b] border border-border rounded text-[11px] px-2 py-1 text-text-primary focus:outline-none focus:border-accent-blue/50">
+            className="bg-[#111f42] border border-border rounded text-[11px] px-2 py-1 text-text-primary focus:outline-none focus:border-accent-blue/50">
             {productOptions.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </div>
@@ -360,7 +360,7 @@ export default function PovLibrary() {
           <div className="flex gap-1">
             {['All', 'Win', 'Loss', 'Open'].map(opt => (
               <button key={opt} onClick={() => setOutcomeFilter(opt)}
-                className={`text-[10px] px-2 py-1 rounded border transition ${outcomeFilter === opt ? 'bg-accent-blue/15 text-accent-blue border-accent-blue/30' : 'bg-[#10141b] text-text-muted border-border hover:text-text-primary'}`}>
+                className={`text-[10px] px-2 py-1 rounded border transition ${outcomeFilter === opt ? 'bg-accent-blue/15 text-accent-blue border-accent-blue/30' : 'bg-[#111f42] text-text-muted border-border hover:text-text-primary'}`}>
                 {opt}
               </button>
             ))}

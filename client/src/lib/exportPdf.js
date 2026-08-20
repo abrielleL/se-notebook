@@ -41,20 +41,20 @@ export function exportAccountPdf(account) {
 <title>${escapeHtml(account.account_name)} — SE Notebook Export</title>
 <style>
   @page { margin: 0.6in; }
-  body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #111; background: #fff; line-height: 1.5; font-size: 11pt; }
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #050E22; background: #fff; line-height: 1.5; font-size: 11pt; }
   h1 { font-size: 22pt; margin: 0 0 4px; }
-  h2 { font-size: 13pt; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #ddd; color: #2d5a9e; }
+  h2 { font-size: 13pt; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #dbe1f0; color: #0D2553; }
   h3 { font-size: 11pt; margin: 14px 0 4px; color: #333; }
   .subtitle { color: #666; font-size: 10pt; margin-bottom: 12px; }
   .muted { color: #777; }
   ul { margin: 0 0 8px; padding-left: 18px; }
   li { margin: 2px 0; }
   li.done { text-decoration: line-through; color: #888; }
-  .tag { font-size: 8pt; background: #eee; color: #555; padding: 1px 5px; border-radius: 3px; margin-left: 4px; }
-  pre { white-space: pre-wrap; font-family: inherit; background: #f7f7f7; padding: 8px 10px; border-radius: 4px; border: 1px solid #eee; margin: 0; }
+  .tag { font-size: 8pt; background: #f1f3f8; color: #6D7C98; padding: 1px 5px; border-radius: 3px; margin-left: 4px; }
+  pre { white-space: pre-wrap; font-family: inherit; background: #f4f4f5; padding: 8px 10px; border-radius: 4px; border: 1px solid #e9eaeb; margin: 0; }
   .note { margin-bottom: 14px; page-break-inside: avoid; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .summary-box { background: #f4f7fc; border-left: 3px solid #2d5a9e; padding: 10px 12px; border-radius: 0 4px 4px 0; margin-top: 6px; white-space: pre-wrap; }
+  .summary-box { background: #eff4ff; border-left: 3px solid #2571FB; padding: 10px 12px; border-radius: 0 4px 4px 0; margin-top: 6px; white-space: pre-wrap; }
 </style></head>
 <body>
   <h1>${escapeHtml(account.account_name)}</h1>

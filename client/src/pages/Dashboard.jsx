@@ -6,7 +6,7 @@ import { riskDot, PRESALES_STAGES, stageColor } from '../lib/constants.js';
 const NO_STAGE = 'No stage';
 const STAGE_ORDER = [...PRESALES_STAGES, NO_STAGE];
 const slug = (s) => 'stage-' + s.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
-const dotFor = (s) => (s === NO_STAGE ? '#4a5568' : stageColor(s).dot);
+const dotFor = (s) => (s === NO_STAGE ? '#616875' : stageColor(s).dot);
 
 function fmtMoney(n) {
   if (!n) return null;
@@ -15,8 +15,8 @@ function fmtMoney(n) {
   return `$${n}`;
 }
 function ageColor(days) {
-  if (days == null) return '#4a5568';
-  return days > 30 ? '#f85149' : days > 14 ? '#e3b341' : '#8b949e';
+  if (days == null) return '#616875';
+  return days > 30 ? '#ff6b66' : days > 14 ? '#ff9a4d' : '#838892';
 }
 
 export default function Dashboard() {
@@ -87,7 +87,7 @@ export default function Dashboard() {
                 )}
                 {groups[s].map(a => (
                   <Link key={a.id} to={`/accounts/${a.id}`}
-                    className="block bg-card border border-border rounded px-3 py-2 hover:border-accent-blue/40 hover:bg-[#11161e] transition">
+                    className="block bg-card border border-border rounded px-3 py-2 hover:border-accent-blue/40 hover:bg-[#111f42] transition">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: riskDot(a.risk) }} title={`Risk: ${a.risk || 'none'}`} />
                       <span className="text-[12px] font-medium text-text-primary truncate flex-1 min-w-0">{a.account_name}</span>
@@ -102,7 +102,7 @@ export default function Dashboard() {
                     {(a.tags || []).length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1.5">
                         {a.tags.slice(0, 3).map(t => (
-                          <span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#10141b] text-text-muted border border-border">{t}</span>
+                          <span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#111f42] text-text-muted border border-border">{t}</span>
                         ))}
                       </div>
                     )}

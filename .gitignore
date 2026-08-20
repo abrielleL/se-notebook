@@ -34,3 +34,9 @@ POV_*_test-export.docx
 hydrate.progress
 __pycache__/
 *.pyc
+
+# OPSWAT brand kit bundle. Contains Simplon Norm, which is licensed from
+# Lineto — not for redistribution via this repo. Installed as a Claude Code
+# skill at ~/.claude/skills/opswat-branding/ instead. The logo SVGs the app
+# actually renders are committed under client/src/assets/.
+opswat-branding.skill

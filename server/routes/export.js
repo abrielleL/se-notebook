@@ -681,21 +681,21 @@ function renderHtml(account, items) {
     }
     if (item.images && item.images.length) {
       for (const img of item.images) {
-        parts.push(`<div style="margin:8px 0;"><img src="/api/files/${img.id}/download" style="max-width:100%; border:1px solid #ccc;" /><div style="font-size:10px;color:#666;">${escapeHtml(img.name)}</div></div>`);
+        parts.push(`<div style="margin:8px 0;"><img src="/api/files/${img.id}/download" style="max-width:100%; border:1px solid #d2d4d6;" /><div style="font-size:10px;color:#6D7C98;">${escapeHtml(img.name)}</div></div>`);
       }
     }
   }
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(account.account_name)} — Export</title>
 <style>
 @page { size: letter; margin: 1in; }
-body { font-family: Arial, Helvetica, sans-serif; color: #111; font-size: 12px; line-height: 1.5; }
-h1 { font-size: 20px; } h2 { font-size: 15px; border-bottom: 1px solid #ccc; padding-bottom: 3px; margin-top: 20px; }
-h2.internal { color: #b00000; } h3 { font-size: 13px; margin-top: 12px; }
+body { font-family: Arial, Helvetica, sans-serif; color: #050E22; font-size: 12px; line-height: 1.5; }
+h1 { font-size: 20px; } h2 { font-size: 15px; border-bottom: 1px solid #dbe1f0; padding-bottom: 3px; margin-top: 20px; }
+h2.internal { color: #d00300; } h3 { font-size: 13px; margin-top: 12px; }
 table { width: 100%; border-collapse: collapse; margin: 8px 0; }
-th, td { border: 1px solid #999; padding: 5px 7px; text-align: left; vertical-align: top; font-size: 11px; }
-th { background: #f0f0f0; }
-.sources a { color: #0645ad; word-break: break-all; }
-footer { margin-top: 30px; text-align: center; color: #888; font-size: 10px; }
+th, td { border: 1px solid #d2d4d6; padding: 5px 7px; text-align: left; vertical-align: top; font-size: 11px; }
+th { background: #f1f3f8; }
+.sources a { color: #2571FB; word-break: break-all; }
+footer { margin-top: 30px; text-align: center; color: #6D7C98; font-size: 10px; }
 </style></head><body>
 <h1>${escapeHtml(account.account_name)} — Account Export</h1>
 <p><em>Generated ${new Date().toISOString().slice(0, 10)}</em></p>

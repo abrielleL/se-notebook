@@ -13,7 +13,15 @@ const router = express.Router();
 const POV_MODEL = 'claude-sonnet-4-6';
 const LOW_CONFIDENCE_DISTANCE = 0.7;
 
-const POV_COLORS = ['#378ADD', '#BA7517', '#639922', '#534AB7', '#1D9E75', '#D85A30'];
+// Identity colors for account cards / POV timeline bars, cycled on creation.
+//
+// Brand hues (product-UI chart-1..6), re-stepped for the dark app surfaces:
+// the kit's light-mode chart values fail four of the six dataviz checks against
+// #081938. Verified with the dataviz validator on that surface — worst adjacent
+// CVD deltaE 18.8, normal-vision floor 32.3, every slot >= 3:1 contrast.
+// Status colors are deliberately NOT in this list: red/amber/green mean risk
+// elsewhere in the app and must not double as decoration.
+const POV_COLORS = ['#008a00', '#1d6bfc', '#e06106', '#8f47e8', '#e51a16', '#0f8fa3'];
 
 const SYSTEM_PROMPT = `You are an expert OPSWAT Solutions Engineer with deep hands-on knowledge of the MetaDefender product family, deployment architectures, and critical infrastructure security use cases. You are writing a Proof of Value (PoV) Plan & Success Criteria document for a prospective customer.
 

@@ -10,7 +10,7 @@ import {
   CONTACT_TYPES, CONTACT_TYPE_OPTIONS, ROLE_OPTIONS, DUPE_REASONS
 } from '../lib/constants.js';
 
-const FIELD = 'bg-[#0a0d11] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50';
+const FIELD = 'bg-[#040d1c] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50';
 
 const SORTS = [
   { value: 'name', label: 'Name' },
@@ -59,7 +59,7 @@ function DuplicateReview({ candidates, onResolved, onOpen }) {
   }
 
   const Side = ({ c, other, cand }) => (
-    <div className="flex-1 min-w-0 px-2.5 py-2 bg-[#10141b] border border-border rounded">
+    <div className="flex-1 min-w-0 px-2.5 py-2 bg-[#111f42] border border-border rounded">
       <button
         onClick={() => onOpen(c.id)}
         className="text-[12px] text-text-primary hover:text-accent-blue truncate block text-left w-full"
@@ -85,7 +85,7 @@ function DuplicateReview({ candidates, onResolved, onOpen }) {
   );
 
   return (
-    <div className="mb-5 border border-accent-yellow/30 bg-[#2d2200]/20 rounded-lg p-4">
+    <div className="mb-5 border border-accent-yellow/30 bg-[#2e1d18]/20 rounded-lg p-4">
       <div className="flex items-center gap-2 mb-1">
         <Icon.Sparkles width={13} height={13} />
         <div className="text-[13px] font-semibold text-text-primary">
@@ -101,7 +101,7 @@ function DuplicateReview({ candidates, onResolved, onOpen }) {
         {candidates.map(cand => (
           <div key={cand.id} className="bg-card border border-border rounded p-2.5">
             <div className="flex items-center gap-2 mb-2 text-[10px]">
-              <span className="px-1.5 py-0.5 rounded bg-[#10141b] border border-border text-text-muted">
+              <span className="px-1.5 py-0.5 rounded bg-[#111f42] border border-border text-text-muted">
                 {DUPE_REASONS[cand.reason] || cand.reason}
               </span>
               {cand.account_name && (
@@ -305,7 +305,7 @@ export default function Contacts() {
         placeholder="Search by name, title, email, or organization"
         value={query}
         onChange={e => setQuery(e.target.value)}
-        className="w-full bg-[#0a0d11] border border-border rounded px-3 py-2 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50 mb-3"
+        className="w-full bg-[#040d1c] border border-border rounded px-3 py-2 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50 mb-3"
       />
 
       <div className="flex flex-wrap items-center gap-1.5 mb-4">
@@ -389,7 +389,7 @@ export default function Contacts() {
                 {c.account_ids.slice(0, 3).map((id, i) => (
                   <span
                     key={id}
-                    className="text-[10px] px-1.5 py-0.5 rounded bg-[#10141b] text-text-muted border border-border truncate max-w-[130px]"
+                    className="text-[10px] px-1.5 py-0.5 rounded bg-[#111f42] text-text-muted border border-border truncate max-w-[130px]"
                     title={c.account_names[i]}
                   >
                     {accountsById[id]?.account_name || c.account_names[i]}

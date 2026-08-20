@@ -25,7 +25,7 @@ import {
 } from '../lib/constants.js';
 
 // Accent color for a terminal stage when it is the account's current stage.
-const EXTRA_STAGE_COLOR = { 'Not Required': '#8b949e', 'Stalled': '#e3b341', 'Canceled': '#f85149' };
+const EXTRA_STAGE_COLOR = { 'Not Required': '#838892', 'Stalled': '#ff9a4d', 'Canceled': '#ff6b66' };
 
 // Build the post-save toast, including extracted/updated contacts (STEP 5).
 function extractionMessage(prefix, r) {
@@ -209,7 +209,7 @@ export default function AccountDetail() {
             <button onClick={() => navigate('/accounts')} className="text-text-dim hover:text-text-primary"><Icon.Back width={16} height={16} /></button>
             <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: riskDot(account.risk) }} />
             <span className="text-[15px] font-semibold text-text-primary truncate">{account.account_name}</span>
-            {account.presales_stage && <span className="text-[10px] px-2 py-0.5 rounded bg-[#1a2744] text-accent-blue shrink-0">{account.presales_stage}</span>}
+            {account.presales_stage && <span className="text-[10px] px-2 py-0.5 rounded bg-[#0c295f] text-accent-blue shrink-0">{account.presales_stage}</span>}
             {account.escalation && account.escalation !== 'Not Needed' && (
               <span className="text-[10px] px-2 py-0.5 rounded shrink-0" style={{ background: escalationStyle(account.escalation).bg, color: escalationStyle(account.escalation).text }}>{account.escalation}</span>
             )}
@@ -245,13 +245,13 @@ export default function AccountDetail() {
         <span className="w-px h-5 bg-border mx-1 shrink-0" />
         {EXTRA_STAGES.map(stage => {
           const isCurrent = account.presales_stage === stage;
-          const color = EXTRA_STAGE_COLOR[stage] || '#8b949e';
+          const color = EXTRA_STAGE_COLOR[stage] || '#838892';
           return (
             <button key={stage} onClick={() => isCurrent ? null : setGateTarget(stage)}
               className="text-[10px] px-2.5 py-1 rounded whitespace-nowrap border transition hover:opacity-80"
               style={isCurrent
                 ? { background: `${color}26`, color: color, borderColor: `${color}88` }
-                : { background: 'transparent', color: '#8b949e', borderColor: '#1e2530' }}>
+                : { background: 'transparent', color: '#838892', borderColor: '#273454' }}>
               {stage}
             </button>
           );
@@ -315,7 +315,7 @@ export default function AccountDetail() {
                       save: (t) => api.updateDealIntelligence(id, f.key, { value: t, mode: 'replace' }).then(() => loadAll())
                     })} className="text-left border border-border rounded p-2 hover:border-accent-blue/40 transition">
                       <div className="flex items-center gap-1.5 mb-1">
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: has ? '#3fb950' : '#f85149' }} />
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: has ? '#4fd15c' : '#ff6b66' }} />
                         <span className="text-[10px] font-medium text-text-primary">{f.label}</span>
                       </div>
                       <div className="text-[10px] text-text-muted leading-snug overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
@@ -337,7 +337,7 @@ export default function AccountDetail() {
                 onChange={e => setNoteText(e.target.value)}
                 rows={20}
                 placeholder="Type or paste your notes…"
-                className="w-full bg-[#0a0d11] border border-border rounded px-3 py-2 text-[11px] text-text-primary placeholder-text-dim font-mono leading-relaxed focus:outline-none focus:border-accent-blue/50 resize-y"
+                className="w-full bg-[#040d1c] border border-border rounded px-3 py-2 text-[11px] text-text-primary placeholder-text-dim font-mono leading-relaxed focus:outline-none focus:border-accent-blue/50 resize-y"
               />
               <div className="flex justify-end gap-2 mt-2">
                 <button onClick={() => setTranscriptOpen(true)}
@@ -399,7 +399,7 @@ function Row({ label, value }) {
 
 function Pane({ title, value, onExpand }) {
   return (
-    <div className="border border-border rounded p-2 bg-[#080e1a] group relative">
+    <div className="border border-border rounded p-2 bg-[#040d1c] group relative">
       <div className="flex items-center justify-between mb-1">
         <span className="text-[10px] font-medium text-text-muted">{title}</span>
         <button onClick={onExpand} className="text-text-dim hover:text-accent-blue opacity-0 group-hover:opacity-100"><Icon.Eye width={12} height={12} /></button>
@@ -415,9 +415,9 @@ function NoteRow({ note }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="border border-border rounded">
-      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-2 px-2.5 py-1.5 bg-[#10141b] text-left">
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-2 px-2.5 py-1.5 bg-[#111f42] text-left">
         <span className="text-[11px] text-text-primary">{formatDate(note.date)}</span>
-        {note.note_type && <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#1a2744] text-accent-blue">{note.note_type}</span>}
+        {note.note_type && <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#0c295f] text-accent-blue">{note.note_type}</span>}
         <span className="ml-auto text-text-dim text-[10px]">{open ? '▾' : '▸'}</span>
       </button>
       {open && <div className="px-2.5 py-2 text-[11px] text-text-secondary whitespace-pre-wrap leading-relaxed">{note.raw_notes || <span className="text-text-dim">empty</span>}</div>}
@@ -425,7 +425,7 @@ function NoteRow({ note }) {
   );
 }
 
-const CONTACT_INPUT = 'bg-[#0a0d11] border border-border rounded px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:border-accent-blue/50 w-full';
+const CONTACT_INPUT = 'bg-[#040d1c] border border-border rounded px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:border-accent-blue/50 w-full';
 const emptyContactForm = () => ({
   name: '', title: '', org_name: '', email: '', phone: '',
   contact_type: 'customer', meddpicc_role: '', linkedin_url: ''
@@ -493,7 +493,7 @@ function LinkExistingContact({ account, onDone, onCancel }) {
   }
 
   return (
-    <div className="flex flex-col gap-1.5 border border-accent-blue/30 rounded p-2 bg-[#0a1628]">
+    <div className="flex flex-col gap-1.5 border border-accent-blue/30 rounded p-2 bg-[#111f42]">
       <div className="text-[10px] text-text-muted">Link someone already in the directory</div>
       <input
         autoFocus
@@ -510,7 +510,7 @@ function LinkExistingContact({ account, onDone, onCancel }) {
           <button
             key={c.id}
             onClick={() => link(c)}
-            className="flex items-center gap-2 px-1.5 py-1 rounded hover:bg-[#14181f] text-left"
+            className="flex items-center gap-2 px-1.5 py-1 rounded hover:bg-[#111f42] text-left"
           >
             <span className="min-w-0 flex-1">
               <span className="block text-[11px] text-text-primary truncate">{c.name}</span>
@@ -623,7 +623,7 @@ function ContactsCard({ account, onChange }) {
               className="transition-opacity duration-200"
               style={{ opacity: removingId === c.id ? 0 : 1 }}>
               <div className="group flex items-start gap-2">
-                <span className="w-6 h-6 rounded flex items-center justify-center text-[9px] font-semibold shrink-0 mt-0.5" style={{ background: '#1a2744', color: '#58a6ff' }}>{initials(c.name)}</span>
+                <span className="w-6 h-6 rounded flex items-center justify-center text-[9px] font-semibold shrink-0 mt-0.5" style={{ background: '#0c295f', color: '#5c9bff' }}>{initials(c.name)}</span>
                 <div className="min-w-0 flex-1">
                   <div className="text-[11px] font-medium text-text-primary truncate flex items-center gap-1">
                     {c.name}
@@ -722,7 +722,7 @@ function StageGateCard({ account, onAdvance }) {
   return (
     <Section title="Stage gates" icon={Icon.Check}>
       {account.escalation && account.escalation !== 'Not Needed' && (
-        <div className="mb-2 text-[10px] px-2 py-1.5 rounded bg-[#2d2200]/50 border border-[#3d2f00] text-accent-yellow flex items-center justify-between gap-2">
+        <div className="mb-2 text-[10px] px-2 py-1.5 rounded bg-[#2e1d18]/50 border border-[#5c3e2d] text-accent-yellow flex items-center justify-between gap-2">
           <span>⚠ {account.escalation}</span>
           {account.jira_ticket_url && <a href={account.jira_ticket_url} target="_blank" rel="noreferrer" className="underline shrink-0">Jira</a>}
         </div>
@@ -850,7 +850,7 @@ function ActivePovCard({ povs = [], accountId, navigate, generating, onChange })
                 <span className="text-[11px] font-medium text-text-primary flex-1 truncate">
                   POV v{versionOf[p.id]}{p.label ? ` · ${p.label}` : ''}
                 </span>
-                <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#1a2744] text-accent-blue shrink-0">{p.status || 'Draft'}</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#0c295f] text-accent-blue shrink-0">{p.status || 'Draft'}</span>
               </div>
               <div className="text-[10px] text-text-dim">
                 {p.start_date ? formatDate(p.start_date) : '—'} → {p.end_date ? formatDate(p.end_date) : '—'}
@@ -898,7 +898,7 @@ function NextStepsCard({ account, onChange }) {
           </div>
         ))}
         <div className="flex gap-1 mt-1">
-          <input value={text} onChange={e => setText(e.target.value)} placeholder="Add step…" className="flex-1 bg-[#0a0d11] border border-border rounded px-2 py-1 text-[10px] text-text-primary" />
+          <input value={text} onChange={e => setText(e.target.value)} placeholder="Add step…" className="flex-1 bg-[#040d1c] border border-border rounded px-2 py-1 text-[10px] text-text-primary" />
           <button onClick={add} className="text-accent-blue px-1"><Icon.Plus width={12} height={12} /></button>
         </div>
       </div>
@@ -939,7 +939,7 @@ function PrereqCard({ pov }) {
 function SePrepCard({ pov, onExpand }) {
   return (
     <Section title="SE prep notes" icon={Icon.Eye}
-      right={<span className="text-[9px] px-1.5 py-0.5 rounded bg-[#2d2200] text-accent-yellow">🔒 Private</span>}>
+      right={<span className="text-[9px] px-1.5 py-0.5 rounded bg-[#2e1d18] text-accent-yellow">🔒 Private</span>}>
       {pov && pov.se_prep_notes ? (
         <>
           <div className="text-[10px] text-text-secondary leading-snug overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical' }}>{stripMarkdown(pov.se_prep_notes)}</div>
@@ -972,7 +972,7 @@ function EditAccountModal({ account, onClose, onSave }) {
   // Re-seed from the account if it changes (e.g. loads after mount or switches).
   useEffect(() => { setForm(buildAccountForm(account)); }, [account?.id]);
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
-  const inputCls = 'w-full bg-[#0a0d11] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary focus:outline-none focus:border-accent-blue/50';
+  const inputCls = 'w-full bg-[#040d1c] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary focus:outline-none focus:border-accent-blue/50';
   return (
     <Modal title="Edit account" onClose={onClose} width="max-w-lg"
       footer={<><button onClick={onClose} className="text-[12px] text-text-muted">Cancel</button>
@@ -1016,10 +1016,10 @@ function EmailDraftModal({ accountId, online, onClose }) {
       footer={<><button onClick={onClose} className="text-[12px] text-text-muted">Close</button>
         <button onClick={generate} disabled={busy || !online} title={!online ? 'AI features require internet connection' : undefined} className="bg-accent-blue/15 text-accent-blue border border-accent-blue/30 rounded px-3 py-1.5 text-[12px] font-medium disabled:opacity-40">{busy ? 'Generating…' : 'Generate draft'}</button></>}>
       <div className="flex flex-col gap-2">
-        <select value={type} onChange={e => setType(e.target.value)} className="bg-[#0a0d11] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary">
+        <select value={type} onChange={e => setType(e.target.value)} className="bg-[#040d1c] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary">
           {EMAIL_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
-        {type === 'custom' && <input value={custom} onChange={e => setCustom(e.target.value)} placeholder="Custom instructions…" className="bg-[#0a0d11] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary" />}
+        {type === 'custom' && <input value={custom} onChange={e => setCustom(e.target.value)} placeholder="Custom instructions…" className="bg-[#040d1c] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary" />}
         {result && (
           <div className="border border-border rounded p-3 flex flex-col gap-2">
             <div className="text-[12px] text-text-primary font-medium">{result.subject}</div>
@@ -1039,7 +1039,7 @@ function TranscriptModal({ onClose, onSave }) {
       footer={<><button onClick={onClose} className="text-[12px] text-text-muted">Cancel</button>
         <button onClick={() => onSave(text)} disabled={!text.trim()} className="bg-accent-blue/15 text-accent-blue border border-accent-blue/30 rounded px-3 py-1.5 text-[12px] font-medium disabled:opacity-40">Submit</button></>}>
       <label className="text-[12px] text-text-muted block mb-1.5">Paste raw transcript text below</label>
-      <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Paste call transcript…" rows={14} className="w-full bg-[#0a0d11] border border-border rounded px-3 py-2 text-[12px] text-text-primary focus:outline-none focus:border-accent-blue/50 resize-none" autoFocus />
+      <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Paste call transcript…" rows={14} className="w-full bg-[#040d1c] border border-border rounded px-3 py-2 text-[12px] text-text-primary focus:outline-none focus:border-accent-blue/50 resize-none" autoFocus />
     </Modal>
   );
 }

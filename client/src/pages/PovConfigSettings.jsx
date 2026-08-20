@@ -53,19 +53,19 @@ function EditRow({ item, onSave, onCancel }) {
   }
 
   return (
-    <div className="flex flex-col gap-1 px-3 py-2 border border-accent-blue/30 rounded bg-[#0a1628]">
+    <div className="flex flex-col gap-1 px-3 py-2 border border-accent-blue/30 rounded bg-[#111f42]">
       <div className="flex items-center flex-wrap gap-2">
         <TablerIcon name={form.icon || 'ti-circle'} className="text-text-muted text-[15px] w-5 text-center" />
         <input value={form.label} onChange={set('label')} placeholder="Label"
-          className="flex-1 bg-[#0a0d11] border border-border rounded px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:border-accent-blue/50" />
+          className="flex-1 bg-[#040d1c] border border-border rounded px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:border-accent-blue/50" />
         <input value={form.value} onChange={set('value')} placeholder="value/slug"
-          className="w-24 bg-[#0a0d11] border border-border rounded px-2 py-1 text-[11px] text-text-muted focus:outline-none focus:border-accent-blue/50" />
+          className="w-24 bg-[#040d1c] border border-border rounded px-2 py-1 text-[11px] text-text-muted focus:outline-none focus:border-accent-blue/50" />
         <input value={form.icon} onChange={set('icon')} placeholder="ti-icon"
-          className="w-28 bg-[#0a0d11] border border-border rounded px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:border-accent-blue/50" />
+          className="w-28 bg-[#040d1c] border border-border rounded px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:border-accent-blue/50" />
         <input value={form.chroma_filters} onChange={set('chroma_filters')} placeholder="chroma slugs (a, b)" title={CHROMA_TOOLTIP}
-          className="w-36 bg-[#0a0d11] border border-border rounded px-2 py-1 text-[11px] text-accent-blue focus:outline-none focus:border-accent-blue/50" />
+          className="w-36 bg-[#040d1c] border border-border rounded px-2 py-1 text-[11px] text-accent-blue focus:outline-none focus:border-accent-blue/50" />
         <input value={form.valid_deployments} onChange={set('valid_deployments')} placeholder="deployments (a, b)" title={DEPLOY_TOOLTIP}
-          className="w-36 bg-[#0a0d11] border border-border rounded px-2 py-1 text-[11px] text-text-muted focus:outline-none focus:border-accent-blue/50" />
+          className="w-36 bg-[#040d1c] border border-border rounded px-2 py-1 text-[11px] text-text-muted focus:outline-none focus:border-accent-blue/50" />
         <button onClick={submit} disabled={saving} className="text-[11px] text-accent-green hover:underline disabled:opacity-40">{saving ? 'Saving…' : 'Save'}</button>
         <button onClick={onCancel} className="text-[11px] text-text-muted hover:text-text-primary">Cancel</button>
       </div>
@@ -117,7 +117,7 @@ function CategorySection({ category, items, reload }) {
   return (
     <div className="border border-border rounded-lg overflow-hidden">
       <button onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-4 py-2.5 bg-[#10141b] hover:bg-[#14181f] transition">
+        className="w-full flex items-center justify-between px-4 py-2.5 bg-[#111f42] hover:bg-[#111f42] transition">
         <span className="text-[12px] font-medium text-text-primary">{CATEGORY_LABELS[category]}</span>
         <span className="text-[11px] text-text-dim">{items.length} · {open ? '▾' : '▸'}</span>
       </button>
@@ -131,10 +131,10 @@ function CategorySection({ category, items, reload }) {
               <span className="text-[12px] text-text-primary flex-1 truncate">{item.label}</span>
               <span className="text-[10px] text-text-dim">{item.value}</span>
               {(item.chroma_filters || []).map(f => (
-                <span key={f} className="text-[10px] px-1.5 py-0.5 rounded bg-[#1a2744] text-accent-blue" title={CHROMA_TOOLTIP}>{f}</span>
+                <span key={f} className="text-[10px] px-1.5 py-0.5 rounded bg-[#0c295f] text-accent-blue" title={CHROMA_TOOLTIP}>{f}</span>
               ))}
               {(item.valid_deployments || []).map(d => (
-                <span key={d} className="text-[10px] px-1.5 py-0.5 rounded bg-[#1e2128] text-text-muted" title={DEPLOY_TOOLTIP}>{d}</span>
+                <span key={d} className="text-[10px] px-1.5 py-0.5 rounded bg-[#111f42] text-text-muted" title={DEPLOY_TOOLTIP}>{d}</span>
               ))}
               <div className="flex items-center gap-0.5">
                 <button onClick={() => move(i, -1)} disabled={i === 0} className="text-text-dim hover:text-text-primary disabled:opacity-30 px-1">↑</button>

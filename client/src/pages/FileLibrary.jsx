@@ -122,7 +122,7 @@ export default function FileLibrary() {
         placeholder="Search by file name, description, or account"
         value={query}
         onChange={e => setQuery(e.target.value)}
-        className="w-full bg-[#0a0d11] border border-border rounded px-3 py-2 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50 mb-3"
+        className="w-full bg-[#040d1c] border border-border rounded px-3 py-2 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50 mb-3"
       />
 
       <div className="flex flex-wrap items-center gap-1.5 mb-4">
@@ -169,7 +169,7 @@ export default function FileLibrary() {
                   </div>
                 </div>
                 {f.category && f.category !== 'other' && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#10141b] text-text-muted border border-border shrink-0">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#111f42] text-text-muted border border-border shrink-0">
                     {CATEGORY_LABELS[f.category] || f.category}
                   </span>
                 )}

@@ -54,7 +54,7 @@ export default function Drafts() {
               <div className="min-w-0 flex-1 cursor-pointer" onClick={() => resume(d)}>
                 <div className="flex items-center gap-2">
                   <span className="text-[13px] font-medium text-text-primary truncate">{d.accountName || 'New account'}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#10141b] text-text-muted border border-border shrink-0">{SOURCE_LABEL[d.source] || 'Draft'}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#111f42] text-text-muted border border-border shrink-0">{SOURCE_LABEL[d.source] || 'Draft'}</span>
                   <span className="text-[10px] text-text-dim shrink-0 ml-auto">{relativeTime(d.updatedAt)}</span>
                 </div>
                 <div className="text-[11px] text-text-muted mt-1 line-clamp-2">

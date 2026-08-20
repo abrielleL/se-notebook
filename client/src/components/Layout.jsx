@@ -5,6 +5,7 @@ import GlobalSearch from './GlobalSearch.jsx';
 import { hasApiKey } from '../lib/ai.js';
 import { useOnline } from '../lib/offline.jsx';
 import { useDrafts } from '../lib/drafts.js';
+import opswatLogo from '../assets/opswat-logo-white.svg';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: Icon.Home, end: true },
@@ -43,17 +44,23 @@ export default function Layout({ children }) {
 
   const navClass = ({ isActive }) =>
     `flex items-center gap-2.5 px-3 py-2 rounded text-[12px] transition ${
-      isActive ? 'bg-[#1a2744] text-accent-blue' : 'text-text-muted hover:text-text-primary hover:bg-[#14181f]'
+      isActive ? 'bg-[#0c295f] text-accent-blue' : 'text-text-muted hover:text-text-primary hover:bg-[#111f42]'
     }`;
 
   return (
     <div className="flex h-full">
       <aside className="w-[190px] shrink-0 bg-sidebar border-r border-border flex flex-col">
+        {/* The wordmark is the real brand SVG, never type-set in CSS. White
+            variant per the kit's guidance for dark backgrounds, with padding
+            roughly the height of the logo's "O" to respect clearspace. */}
         <div className="px-5 py-5 border-b border-border">
-          <div className="text-[15px] font-semibold tracking-tight text-text-primary">
-            <span className="text-accent-blue">SE</span><span className="text-text-muted">/</span>notebook
-          </div>
-          <div className="text-[10px] text-text-dim mt-1">technical fieldbook</div>
+          <img
+            src={opswatLogo}
+            alt="OPSWAT"
+            className="h-[18px] w-auto block"
+          />
+          <div className="text-[11px] text-text-secondary mt-2.5 font-medium">SE Notebook</div>
+          <div className="text-[10px] text-text-dim mt-0.5">technical fieldbook</div>
         </div>
         <nav className="flex-1 px-2 py-3 flex flex-col gap-1">
           {navItems.map(item => (
@@ -71,7 +78,7 @@ export default function Layout({ children }) {
           </NavLink>
           <button
             onClick={() => window.dispatchEvent(new Event('open-quick-capture'))}
-            className="flex items-center gap-2.5 px-3 py-2 rounded text-[12px] text-text-muted hover:text-text-primary hover:bg-[#14181f] transition text-left"
+            className="flex items-center gap-2.5 px-3 py-2 rounded text-[12px] text-text-muted hover:text-text-primary hover:bg-[#111f42] transition text-left"
           >
             <Icon.Plus width={14} height={14} />
             Quick capture
@@ -80,7 +87,7 @@ export default function Layout({ children }) {
         </nav>
         <div className="px-2 py-3 border-t border-border flex flex-col gap-1">
           {!online && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded text-[11px] text-accent-yellow bg-[#2d2200]/40 border border-[#3d2f00]">
+            <div className="flex items-center gap-2 px-3 py-2 rounded text-[11px] text-accent-yellow bg-[#2e1d18]/40 border border-[#5c3e2d]">
               <span className="w-2 h-2 rounded-full bg-accent-yellow animate-pulse" />
               Working offline
             </div>
@@ -109,7 +116,7 @@ export default function Layout({ children }) {
         </div>
 
         {showBanner && (
-          <div className="px-5 py-2 bg-[#2d2200]/40 border-b border-[#3d2f00] text-[12px] text-accent-yellow flex items-center justify-between">
+          <div className="px-5 py-2 bg-[#2e1d18]/40 border-b border-[#5c3e2d] text-[12px] text-accent-yellow flex items-center justify-between">
             <div>
               Anthropic API key not set. AI features will be unavailable until you add it.{' '}
               <NavLink to="/settings" className="underline">Open Settings</NavLink>

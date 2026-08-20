@@ -138,7 +138,7 @@ export default function AccountExportModal({ accountId, accountName, account = {
             onClick={() => setIncludeNonCustomer(v => !v)}
             className={`text-left px-3 py-2 rounded border text-[12px] transition ${
               includeNonCustomer
-                ? 'bg-[#2d2200]/40 border-[#3d2f00] text-accent-yellow'
+                ? 'bg-[#2e1d18]/40 border-[#5c3e2d] text-accent-yellow'
                 : 'bg-card border-border text-text-muted hover:text-text-primary'
             }`}
           >
@@ -157,7 +157,7 @@ export default function AccountExportModal({ accountId, accountName, account = {
         )}
 
         {/* Live content preview */}
-        <div className="border border-border rounded bg-[#10141b]">
+        <div className="border border-border rounded bg-[#111f42]">
           <div className="px-3 py-2 border-b border-border text-[11px] text-text-muted">
             Document preview · {selected.size} section{selected.size === 1 ? '' : 's'}
           </div>
@@ -166,7 +166,7 @@ export default function AccountExportModal({ accountId, accountName, account = {
             {blocks.map((b, i) => (
               <div key={b.s.key}>
                 {i > 0 && <div className="border-t border-border my-2.5" />}
-                <div className="pl-3 border-l-2 border-[#0066CC]">
+                <div className="pl-3 border-l-2 border-[#0D2553]">
                   {b.s.private && <div className="text-[10px] font-bold text-accent-red mb-1">INTERNAL — NOT FOR DISTRIBUTION</div>}
                   <div className="text-[10px] uppercase tracking-wide text-text-muted mb-1">{b.s.label}</div>
                   {b.lines.length

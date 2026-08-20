@@ -23,29 +23,29 @@ export function stageBarStyle(stage, currentStage) {
   const idx = STAGE_BAR.indexOf(stage);
   const curIdx = STAGE_BAR.indexOf(currentStage);
   if (stage === '8-Technical Loss' && currentStage === '8-Technical Loss') {
-    return { bg: '#2d0d0d', text: '#f85149' };           // loss = red
+    return { bg: '#290b17', text: '#ff6b66' };           // loss = red
   }
-  if (currentStage && idx === curIdx) return { bg: '#1a2744', text: '#58a6ff' }; // active = blue
-  if (currentStage && idx < curIdx) return { bg: '#0d2a1a', text: '#26a641' };   // done = green
-  return { bg: '#10141b', text: '#8b949e' };
+  if (currentStage && idx === curIdx) return { bg: '#0c295f', text: '#5c9bff' }; // active = blue
+  if (currentStage && idx < curIdx) return { bg: '#032417', text: '#4fd15c' };   // done = green
+  return { bg: '#111f42', text: '#838892' };
 }
 
 // Risk: company-exact definitions (Critical Note 7).
 export const RISK_OPTIONS = [
-  { value: 'green', label: 'Green', dot: '#3fb950', desc: 'Evaluation progressing, no detectable risk' },
-  { value: 'yellow', label: 'Yellow', dot: '#e3b341', desc: 'Risk to technical fit or timing, or struggling to differentiate against alternatives' },
-  { value: 'red', label: 'Red', dot: '#f85149', desc: 'Clear risk to technical fit or timing, or not differentiated against alternatives or "do nothing"' }
+  { value: 'green', label: 'Green', dot: '#4fd15c', desc: 'Evaluation progressing, no detectable risk' },
+  { value: 'yellow', label: 'Yellow', dot: '#ff9a4d', desc: 'Risk to technical fit or timing, or struggling to differentiate against alternatives' },
+  { value: 'red', label: 'Red', dot: '#ff6b66', desc: 'Clear risk to technical fit or timing, or not differentiated against alternatives or "do nothing"' }
 ];
 export function riskDot(risk) {
   const r = RISK_OPTIONS.find(o => o.value === risk);
-  return r ? r.dot : '#4a5568';
+  return r ? r.dot : '#616875';
 }
 
 export const ESCALATION_OPTIONS = ['Tech Blocked', 'Tech Challenged', 'Not Needed'];
 export function escalationStyle(esc) {
-  if (esc === 'Tech Blocked') return { bg: '#2d0d0d', text: '#f85149' };
-  if (esc === 'Tech Challenged') return { bg: '#2d2200', text: '#e3b341' };
-  return { bg: '#10141b', text: '#8b949e' };
+  if (esc === 'Tech Blocked') return { bg: '#290b17', text: '#ff6b66' };
+  if (esc === 'Tech Challenged') return { bg: '#2e1d18', text: '#ff9a4d' };
+  return { bg: '#111f42', text: '#838892' };
 }
 
 // 8 qualification fields, row-major for the 2x4 grid. Plain-English labels only.
@@ -62,11 +62,11 @@ export const QUAL_FIELDS = [
 
 // Contact qualification-role badges.
 export const ROLE_BADGES = {
-  decision_maker: { label: 'DM', color: '#58a6ff' },
-  champion: { label: 'CH', color: '#3fb950' },
-  technical_lead: { label: 'TL', color: '#8b949e' },
-  influencer: { label: 'IN', color: '#8b949e' },
-  procurement: { label: 'PR', color: '#e3b341' }
+  decision_maker: { label: 'DM', color: '#5c9bff' },
+  champion: { label: 'CH', color: '#4fd15c' },
+  technical_lead: { label: 'TL', color: '#838892' },
+  influencer: { label: 'IN', color: '#838892' },
+  procurement: { label: 'PR', color: '#ff9a4d' }
 };
 export const ROLE_OPTIONS = [
   { value: '', label: '— No role —' },
@@ -85,10 +85,10 @@ export const ROLE_LABELS = ROLE_OPTIONS.reduce((m, o) => {
 // account(s) they work, but their employer is their own — hence org_name.
 // Only 'customer' contacts go into customer-facing exports by default.
 export const CONTACT_TYPES = {
-  customer: { label: 'Customer', short: 'CU', color: '#58a6ff' },
-  partner: { label: 'Partner', short: 'PA', color: '#3fb950' },
-  analyst: { label: 'Analyst', short: 'AN', color: '#e3b341' },
-  internal: { label: 'OPSWAT', short: 'OP', color: '#8b949e' }
+  customer: { label: 'Customer', short: 'CU', color: '#5c9bff' },
+  partner: { label: 'Partner', short: 'PA', color: '#4fd15c' },
+  analyst: { label: 'Analyst', short: 'AN', color: '#ff9a4d' },
+  internal: { label: 'OPSWAT', short: 'OP', color: '#838892' }
 };
 export const CONTACT_TYPE_OPTIONS = Object.entries(CONTACT_TYPES)
   .map(([value, v]) => ({ value, label: v.label }));
@@ -169,20 +169,20 @@ export const EXPORT_PRESETS = {
 
 // Account aging dot color from days since last note.
 export function agingColor(days, hasNote) {
-  if (!hasNote || days == null) return '#4a5568';   // gray
-  if (days <= 7) return '#3fb950';                   // green
-  if (days <= 30) return '#e3b341';                  // amber
-  return '#f85149';                                  // red
+  if (!hasNote || days == null) return '#616875';   // gray
+  if (days <= 7) return '#4fd15c';                   // green
+  if (days <= 30) return '#ff9a4d';                  // amber
+  return '#ff6b66';                                  // red
 }
 
 // Due-date urgency color.
 export function dueColor(dueDate) {
-  if (!dueDate) return '#8b949e';
+  if (!dueDate) return '#838892';
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const d = new Date(dueDate); d.setHours(0, 0, 0, 0);
-  if (d < today) return '#f85149';   // overdue red
-  if (d.getTime() === today.getTime()) return '#e3b341'; // today amber
-  return '#8b949e';
+  if (d < today) return '#ff6b66';   // overdue red
+  if (d.getTime() === today.getTime()) return '#ff9a4d'; // today amber
+  return '#838892';
 }
 
 // POV preflight: live complexity estimate.

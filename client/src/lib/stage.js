@@ -8,7 +8,7 @@ export function initials(name = '') {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
-const PALETTE = ['#58a6ff', '#bc8cff', '#3fb950', '#e3b341', '#f0883e', '#26a641', '#f85149'];
+const PALETTE = ['#5c9bff', '#8f47e8', '#4fd15c', '#ff9a4d', '#ff9a4d', '#4fd15c', '#ff6b66'];
 
 export function colorForName(name = '') {
   let h = 0;

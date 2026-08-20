@@ -8,7 +8,7 @@ import { formatDate } from '../lib/stage.js';
 import { linkedInSearchUrl, looksLikeLinkedInUrl } from '../lib/linkedin.js';
 import { ROLE_OPTIONS, ROLE_BADGES, CONTACT_TYPES, CONTACT_TYPE_OPTIONS } from '../lib/constants.js';
 
-const FIELD = 'bg-[#0a0d11] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50 w-full';
+const FIELD = 'bg-[#040d1c] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50 w-full';
 const LABEL = 'text-[10px] uppercase tracking-wide text-text-dim mb-1';
 
 export function ContactTypeBadge({ type }) {
@@ -374,7 +374,7 @@ export default function ContactDrawer({ contactId, accounts = [], onClose, onCha
                 Paste profile text to fill in title, employer, and background →
               </button>
             ) : (
-              <div className="border border-border rounded p-2 bg-[#10141b] flex flex-col gap-1.5">
+              <div className="border border-border rounded p-2 bg-[#111f42] flex flex-col gap-1.5">
                 <div className="text-[10px] text-text-muted">
                   Open their profile, select the page, and paste it here. Nothing is
                   fetched from LinkedIn — this only reads what you paste.
@@ -468,7 +468,7 @@ export default function ContactDrawer({ contactId, accounts = [], onClose, onCha
             </div>
             <div className="flex flex-col gap-1.5">
               {(contact.accounts || []).map(a => (
-                <div key={a.account_id} className="flex items-center gap-2 px-2 py-1.5 bg-[#10141b] border border-border rounded">
+                <div key={a.account_id} className="flex items-center gap-2 px-2 py-1.5 bg-[#111f42] border border-border rounded">
                   <Link
                     to={`/accounts/${a.account_id}`}
                     className="text-[11px] text-accent-blue hover:underline truncate flex-1 min-w-0"
@@ -481,7 +481,7 @@ export default function ContactDrawer({ contactId, accounts = [], onClose, onCha
                   <select
                     value={a.role || ''}
                     onChange={e => setLinkRoleFor(a.account_id, e.target.value)}
-                    className="bg-[#0a0d11] border border-border rounded px-1.5 py-0.5 text-[10px] text-text-muted focus:outline-none focus:border-accent-blue/50 shrink-0"
+                    className="bg-[#040d1c] border border-border rounded px-1.5 py-0.5 text-[10px] text-text-muted focus:outline-none focus:border-accent-blue/50 shrink-0"
                   >
                     {ROLE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
@@ -504,7 +504,7 @@ export default function ContactDrawer({ contactId, accounts = [], onClose, onCha
                 <select
                   value={linkAccountId}
                   onChange={e => setLinkAccountId(e.target.value)}
-                  className="bg-[#0a0d11] border border-border rounded px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:border-accent-blue/50 flex-1 min-w-0"
+                  className="bg-[#040d1c] border border-border rounded px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:border-accent-blue/50 flex-1 min-w-0"
                 >
                   <option value="">Link to another account…</option>
                   {linkable.map(a => <option key={a.id} value={a.id}>{a.account_name}</option>)}
@@ -512,7 +512,7 @@ export default function ContactDrawer({ contactId, accounts = [], onClose, onCha
                 <select
                   value={linkRole}
                   onChange={e => setLinkRole(e.target.value)}
-                  className="bg-[#0a0d11] border border-border rounded px-2 py-1 text-[11px] text-text-muted focus:outline-none focus:border-accent-blue/50 shrink-0"
+                  className="bg-[#040d1c] border border-border rounded px-2 py-1 text-[11px] text-text-muted focus:outline-none focus:border-accent-blue/50 shrink-0"
                 >
                   {ROLE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
@@ -546,7 +546,7 @@ export default function ContactDrawer({ contactId, accounts = [], onClose, onCha
                 <select
                   value={noteAccount}
                   onChange={e => setNoteAccount(e.target.value)}
-                  className="bg-[#0a0d11] border border-border rounded px-2 py-1 text-[11px] text-text-muted focus:outline-none focus:border-accent-blue/50 flex-1 min-w-0"
+                  className="bg-[#040d1c] border border-border rounded px-2 py-1 text-[11px] text-text-muted focus:outline-none focus:border-accent-blue/50 flex-1 min-w-0"
                 >
                   <option value="">General (no account)</option>
                   {(contact.accounts || []).map(a => (
@@ -565,7 +565,7 @@ export default function ContactDrawer({ contactId, accounts = [], onClose, onCha
 
             <div className="flex flex-col gap-1.5">
               {(contact.notes || []).map(n => (
-                <div key={n.id} className="px-2.5 py-2 bg-[#10141b] border border-border rounded">
+                <div key={n.id} className="px-2.5 py-2 bg-[#111f42] border border-border rounded">
                   {editingNote === n.id ? (
                     <>
                       <textarea

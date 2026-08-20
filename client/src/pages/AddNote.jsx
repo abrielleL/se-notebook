@@ -104,7 +104,7 @@ export default function AddNote() {
           onChange={(d) => setDate(toISODate(d))}
           dateFormat="MMM d, yyyy"
           placeholderText="Select date"
-          className="w-full bg-[#0a0d11] border border-border rounded px-3 py-2 text-[12px] text-text-primary focus:outline-none focus:border-accent-blue/50"
+          className="w-full bg-[#040d1c] border border-border rounded px-3 py-2 text-[12px] text-text-primary focus:outline-none focus:border-accent-blue/50"
           popperPlacement="bottom-start"
         />
       </div>
@@ -116,7 +116,7 @@ export default function AddNote() {
           value={raw}
           onChange={e => setRaw(e.target.value)}
           placeholder="Type everything here. AI extracts summary, technical drivers, environment, and next steps automatically on save."
-          className="w-full bg-[#0a0d11] border border-border rounded px-3 py-2 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50 min-h-[260px] leading-relaxed"
+          className="w-full bg-[#040d1c] border border-border rounded px-3 py-2 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50 min-h-[260px] leading-relaxed"
         />
       </div>
 

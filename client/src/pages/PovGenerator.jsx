@@ -40,7 +40,7 @@ function Chip({ item, active, onClick, disabled }) {
 function ConflictBanner({ messages }) {
   if (!messages || !messages.length) return null;
   return (
-    <div className="bg-[#2d2200]/40 border border-[#3d2f00] rounded-lg p-3 text-[11px] text-accent-yellow flex flex-col gap-1">
+    <div className="bg-[#2e1d18]/40 border border-[#5c3e2d] rounded-lg p-3 text-[11px] text-accent-yellow flex flex-col gap-1">
       {messages.map((m, i) => <div key={i}>⚠ {m}</div>)}
     </div>
   );
@@ -255,7 +255,7 @@ export default function PovGenerator() {
         </div>
 
         {povId && pov && (
-          <div className="px-3 py-2 rounded bg-[#2d2200]/40 border border-[#3d2f00] text-[11px] text-accent-yellow">
+          <div className="px-3 py-2 rounded bg-[#2e1d18]/40 border border-[#5c3e2d] text-[11px] text-accent-yellow">
             Editing inputs for POV {povVersion ? `v${povVersion}` : `#${pov.id}`}. Generating will create a <strong>new version</strong> — your existing document is kept.
           </div>
         )}
@@ -274,7 +274,7 @@ export default function PovGenerator() {
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="text-[12px] font-medium text-text-primary mb-2">Products in scope</div>
           {!config ? (
-            <div className="flex flex-wrap gap-2">{[0, 1, 2, 3].map(i => <div key={i} className="w-28 h-7 rounded bg-[#1a1f2e] animate-pulse" />)}</div>
+            <div className="flex flex-wrap gap-2">{[0, 1, 2, 3].map(i => <div key={i} className="w-28 h-7 rounded bg-[#111f42] animate-pulse" />)}</div>
           ) : (
             <div className="flex flex-col gap-3">
               {(() => {
@@ -304,7 +304,7 @@ export default function PovGenerator() {
           <div className="text-[12px] font-medium text-text-primary mb-2">Deployment type</div>
           <div className="flex flex-wrap gap-2">
             {!config
-              ? [0, 1, 2].map(i => <div key={i} className="w-24 h-7 rounded bg-[#1a1f2e] animate-pulse" />)
+              ? [0, 1, 2].map(i => <div key={i} className="w-24 h-7 rounded bg-[#111f42] animate-pulse" />)
               : (config.deployment || []).map(item => {
                 const disabled = allowedDeployments != null && !allowedDeployments.has(item.value);
                 return <Chip key={item.id} item={item} active={form.selected_deployment.includes(item.value)} disabled={disabled}
@@ -319,7 +319,7 @@ export default function PovGenerator() {
             <div className="text-[12px] font-medium text-text-primary mb-2">{cat.label}</div>
             <div className="flex flex-wrap gap-2">
               {!config
-                ? [0, 1, 2].map(i => <div key={i} className="w-24 h-7 rounded bg-[#1a1f2e] animate-pulse" />)
+                ? [0, 1, 2].map(i => <div key={i} className="w-24 h-7 rounded bg-[#111f42] animate-pulse" />)
                 : (config[cat.key] || []).map(item => (
                   <Chip key={item.id} item={item} active={selectedFor(cat.key).includes(item.value)} onClick={() => toggle(cat.key, item.value, cat.multi)} />
                 ))}
@@ -332,7 +332,7 @@ export default function PovGenerator() {
           <div className="text-[12px] font-medium text-text-primary">Technologies in scope</div>
           <div className="text-[10px] text-text-muted mb-3">Evaluated through MetaDefender Core or MetaDefender Cloud</div>
           {!config ? (
-            <div className="flex flex-wrap gap-2">{[0, 1, 2].map(i => <div key={i} className="w-24 h-7 rounded bg-[#1a1f2e] animate-pulse" />)}</div>
+            <div className="flex flex-wrap gap-2">{[0, 1, 2].map(i => <div key={i} className="w-24 h-7 rounded bg-[#111f42] animate-pulse" />)}</div>
           ) : (
             <div className="flex flex-col gap-3">
               {winTiers.length > 0 && (
@@ -372,7 +372,7 @@ export default function PovGenerator() {
           <div className="text-[12px] font-medium text-text-primary mb-2">File types in scope</div>
           <div className="flex flex-wrap gap-2">
             {!config
-              ? [0, 1, 2].map(i => <div key={i} className="w-24 h-7 rounded bg-[#1a1f2e] animate-pulse" />)
+              ? [0, 1, 2].map(i => <div key={i} className="w-24 h-7 rounded bg-[#111f42] animate-pulse" />)
               : (config.file_type || []).map(item => (
                 <Chip key={item.id} item={item} active={form.selected_file_types.includes(item.value)} onClick={() => toggleMulti('selected_file_types', item.value)} />
               ))}
@@ -384,14 +384,14 @@ export default function PovGenerator() {
           <div className="text-[12px] font-medium text-text-primary mb-2">Compliance frameworks</div>
           <div className="flex flex-wrap gap-2">
             {!config
-              ? [0, 1, 2].map(i => <div key={i} className="w-24 h-7 rounded bg-[#1a1f2e] animate-pulse" />)
+              ? [0, 1, 2].map(i => <div key={i} className="w-24 h-7 rounded bg-[#111f42] animate-pulse" />)
               : (config.compliance || []).map(item => (
                 <Chip key={item.id} item={item} active={form.selected_compliance.includes(item.value)} onClick={() => toggleMulti('selected_compliance', item.value)} />
               ))}
           </div>
         </div>
 
-        <div className="bg-[#10141b] border border-border rounded-lg p-3 text-[11px] text-text-muted">
+        <div className="bg-[#111f42] border border-border rounded-lg p-3 text-[11px] text-text-muted">
           Estimated setup time: <span className="text-text-primary">{complexity.hours} hours</span> · Recommended: {complexity.recommended} · Complexity: <span className="text-text-primary">{complexity.level}</span>
           <span className="text-text-dim"> · </span>{form.selected_products.length} products · {form.selected_technologies.length + (form.metascan_windows_tier ? 1 : 0) + (form.metascan_linux_tier ? 1 : 0)} technologies · {form.selected_compliance.length} compliance
         </div>
@@ -440,7 +440,7 @@ export default function PovGenerator() {
     onExport={() => setExportOpen(true)} exportOpen={exportOpen} onCloseExport={() => setExportOpen(false)} online={online} />;
 }
 
-const inputCls = 'w-full bg-[#0a0d11] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary focus:outline-none focus:border-accent-blue/50';
+const inputCls = 'w-full bg-[#040d1c] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary focus:outline-none focus:border-accent-blue/50';
 function Labeled({ label, children }) {
   return <div><label className="text-[10px] text-text-muted block mb-1">{label}</label>{children}</div>;
 }
@@ -528,10 +528,10 @@ function PovDocument({ accountId, account, pov, version, setPov, navigate, onEdi
       {status === 'Closed' && (
         <div className="bg-card border border-border rounded-lg p-3 flex items-center gap-3">
           <span className="text-[11px] text-text-muted">Outcome:</span>
-          <select value={winLoss} onChange={e => { setWinLoss(e.target.value); }} className="bg-[#0a0d11] border border-border rounded px-2 py-1 text-[11px] text-text-primary">
+          <select value={winLoss} onChange={e => { setWinLoss(e.target.value); }} className="bg-[#040d1c] border border-border rounded px-2 py-1 text-[11px] text-text-primary">
             <option value="">—</option><option value="win">Win</option><option value="loss">Loss</option>
           </select>
-          <input value={winLossNote} onChange={e => setWinLossNote(e.target.value)} placeholder="Win/loss note" className="flex-1 bg-[#0a0d11] border border-border rounded px-2 py-1 text-[11px] text-text-primary" />
+          <input value={winLossNote} onChange={e => setWinLossNote(e.target.value)} placeholder="Win/loss note" className="flex-1 bg-[#040d1c] border border-border rounded px-2 py-1 text-[11px] text-text-primary" />
           <button onClick={() => saveStatus('Closed')} className="text-[11px] text-accent-blue hover:underline">Save outcome</button>
         </div>
       )}
@@ -546,14 +546,14 @@ function PovDocument({ accountId, account, pov, version, setPov, navigate, onEdi
                 <div className="flex items-center justify-between px-3 py-2 border-b border-border">
                   <span className="text-[12px] font-medium text-text-primary">{key}</span>
                   <div className="flex items-center gap-2">
-                    {low && <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#2d2200] text-accent-yellow">Limited docs — verify</span>}
+                    {low && <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#2e1d18] text-accent-yellow">Limited docs — verify</span>}
                     <button onClick={() => setRegen({ key, reason: '' })} disabled={!online} className="text-[10px] text-accent-blue hover:underline disabled:opacity-40">Regenerate</button>
                   </div>
                 </div>
                 {diff && diff.key === key ? (
                   <div className="p-3 flex flex-col gap-2">
-                    <div className="text-[11px] text-accent-red whitespace-pre-wrap line-through opacity-70 border border-[#2d0d0d] rounded p-2 bg-[#1a0808]">{diff.old}</div>
-                    <div className="text-[11px] text-accent-green whitespace-pre-wrap border border-[#0d2a1a] rounded p-2 bg-[#08140d]">{diff.new}</div>
+                    <div className="text-[11px] text-accent-red whitespace-pre-wrap line-through opacity-70 border border-[#290b17] rounded p-2 bg-[#290b17]">{diff.old}</div>
+                    <div className="text-[11px] text-accent-green whitespace-pre-wrap border border-[#032417] rounded p-2 bg-[#032417]">{diff.new}</div>
                     <div className="flex justify-end gap-2">
                       <button onClick={keepOriginal} className="text-[11px] text-text-muted hover:text-text-primary">Keep original</button>
                       <button onClick={acceptDiff} className="text-[11px] text-accent-green hover:underline">Accept</button>
@@ -577,7 +577,7 @@ function PovDocument({ accountId, account, pov, version, setPov, navigate, onEdi
           {/* SE prep notes (collapsible-ish, always shown) */}
           <div className="bg-card border border-border rounded-lg">
             <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-              <span className="text-[12px] font-medium text-text-primary flex items-center gap-1.5">🔒 SE prep notes <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#2d2200] text-accent-yellow">Private — not included in export</span></span>
+              <span className="text-[12px] font-medium text-text-primary flex items-center gap-1.5">🔒 SE prep notes <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#2e1d18] text-accent-yellow">Private — not included in export</span></span>
               <button onClick={saveSePrep} className="text-[10px] text-accent-blue hover:underline">Save</button>
             </div>
             <textarea value={sePrep} onChange={e => setSePrep(e.target.value)} className="w-full bg-transparent px-3 py-2 text-[11px] text-text-secondary leading-relaxed focus:outline-none resize-y" style={{ minHeight: 120 }} />
@@ -611,7 +611,7 @@ function PovDocument({ accountId, account, pov, version, setPov, navigate, onEdi
               {(pov.sources || []).map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer" className="text-[10px] text-accent-blue hover:underline truncate">{u}</a>)}
             </div>
           </div>
-          <div className="bg-[#10141b] border border-border rounded-lg p-3 text-[10px] text-text-muted">
+          <div className="bg-[#111f42] border border-border rounded-lg p-3 text-[10px] text-text-muted">
             Generated {formatDate(pov.generated_at)} · {pov.chunks_used || 0} doc chunks · {pov.model_used || 'sonnet'}
           </div>
         </div>

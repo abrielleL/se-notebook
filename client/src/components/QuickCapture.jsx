@@ -135,7 +135,7 @@ export default function QuickCapture() {
       <div className="flex flex-col gap-3">
         <div className="flex gap-2">
           <select value={accountId} onChange={e => setAccountId(e.target.value)}
-            className="flex-1 bg-[#0a0d11] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary focus:outline-none focus:border-accent-blue/50">
+            className="flex-1 bg-[#040d1c] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary focus:outline-none focus:border-accent-blue/50">
             <option value="">Select account…</option>
             {accounts.map(a => <option key={a.id} value={a.id}>{a.account_name}</option>)}
           </select>
@@ -146,7 +146,7 @@ export default function QuickCapture() {
           onChange={e => setText(e.target.value)}
           placeholder="Paste or type raw notes…"
           style={{ height: 300 }}
-          className="w-full bg-[#0a0d11] border border-border rounded px-3 py-2 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50 resize-none"
+          className="w-full bg-[#040d1c] border border-border rounded px-3 py-2 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50 resize-none"
         />
         {!online && <div className="text-[11px] text-accent-yellow">Offline — note will be saved locally and extracted when reconnected.</div>}
       </div>

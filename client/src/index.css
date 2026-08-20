@@ -3,6 +3,40 @@
 @tailwind utilities;
 
 /* ------------------------------------------------------------------ *
+ * OPSWAT brand tokens — Product UI mode, dark.
+ *
+ * Copied from the opswat-branding kit's product-ui-theme.css so the
+ * palette lives in one place. Tailwind's theme (tailwind.config.js)
+ * carries the same values for utility classes; these variables cover
+ * the plain-CSS rules further down (scrollbars, datepicker, kbd) that
+ * can't use utilities.
+ * ------------------------------------------------------------------ */
+:root {
+  --opswat-primary: #1d6bfc;
+  --opswat-primary-hover: #4c8bff;
+  --opswat-primary-text: #5c9bff;      /* accent text/links: 7.1:1 on app bg */
+  --opswat-primary-light: rgba(29, 107, 252, 0.16);
+
+  --opswat-dark-100: #273454;          /* borders */
+  --opswat-dark-200: #111f42;          /* elevated / subtle surface */
+  --opswat-dark-300: #081938;          /* card + nav surface */
+  --opswat-dark-400: #040d1c;          /* app background */
+
+  --opswat-n-1100: #f4f4f5;            /* headings */
+  --opswat-n-900: #cbd3e7;             /* body text */
+  --opswat-n-500: #838892;             /* muted */
+  --opswat-n-700: #616875;             /* dim */
+
+  --opswat-success: #4fd15c;
+  --opswat-warning: #ff9a4d;
+  --opswat-error: #ff6b66;
+  --opswat-info: #5c9bff;
+
+  --opswat-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --opswat-font-mono: 'JetBrains Mono', Consolas, ui-monospace, monospace;
+}
+
+/* ------------------------------------------------------------------ *
  * Global readability scale.
  *
  * The UI sizes type with hardcoded arbitrary utilities (text-[10px],
@@ -34,9 +68,9 @@ html, body, #root {
 }
 
 body {
-  background: #0d0f12;
-  color: #e6edf3;
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  background: var(--opswat-dark-400);
+  color: var(--opswat-n-900);
+  font-family: var(--opswat-font);
   font-size: 15px;
   -webkit-font-smoothing: antialiased;
   margin: 0;
@@ -44,27 +78,37 @@ body {
 
 * { box-sizing: border-box; }
 
+/* Note bodies, transcripts and editors stay monospace — character alignment is
+   functional there, and the brand's own token set defines a mono stack for it. */
+.font-mono, textarea, pre, code, .mono { font-family: var(--opswat-font-mono); }
+
 /* Scrollbars */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #1e2530; border-radius: 5px; }
-::-webkit-scrollbar-thumb:hover { background: #2d3441; }
+::-webkit-scrollbar-thumb { background: var(--opswat-dark-100); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: #35446a; }
 
 button { font-family: inherit; }
 input, textarea, select { font-family: inherit; font-size: inherit; }
 
 a { color: inherit; text-decoration: none; }
 
-mark { background: rgba(227, 179, 65, 0.25); color: #e3b341; padding: 0 2px; border-radius: 2px; }
+mark {
+  background: rgba(237, 103, 6, 0.25);
+  color: var(--opswat-warning);
+  padding: 0 2px;
+  border-radius: 2px;
+}
 
 .kbd {
   display: inline-block;
   padding: 2px 6px;
-  background: #1e2530;
-  border: 1px solid #2d3441;
+  background: var(--opswat-dark-200);
+  border: 1px solid var(--opswat-dark-100);
   border-radius: 4px;
   font-size: 11px;
-  color: #c9d1d9;
+  font-family: var(--opswat-font-mono);
+  color: var(--opswat-n-900);
 }
 
 /* react-datepicker — make the input wrapper full-width like a native input */
@@ -73,31 +117,31 @@ mark { background: rgba(227, 179, 65, 0.25); color: #e3b341; padding: 0 2px; bor
 
 /* react-datepicker — dark theme to match the app */
 .react-datepicker {
-  background: #0d1117;
-  border: 1px solid #1e2530;
-  color: #e6edf3;
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  background: var(--opswat-dark-300);
+  border: 1px solid var(--opswat-dark-100);
+  color: var(--opswat-n-1100);
+  font-family: var(--opswat-font);
   font-size: 12px;
 }
 .react-datepicker-popper { z-index: 210; }
 .react-datepicker__header {
-  background: #10141b;
-  border-bottom: 1px solid #1e2530;
+  background: var(--opswat-dark-200);
+  border-bottom: 1px solid var(--opswat-dark-100);
 }
 .react-datepicker__current-month,
 .react-datepicker-time__header,
-.react-datepicker__day-name { color: #c9d1d9; }
-.react-datepicker__day { color: #e6edf3; }
-.react-datepicker__day:hover { background: #1a2744; }
-.react-datepicker__day--outside-month { color: #4a5568; }
+.react-datepicker__day-name { color: var(--opswat-n-900); }
+.react-datepicker__day { color: var(--opswat-n-1100); }
+.react-datepicker__day:hover { background: var(--opswat-primary-light); }
+.react-datepicker__day--outside-month { color: var(--opswat-n-700); }
 .react-datepicker__day--selected,
 .react-datepicker__day--keyboard-selected {
-  background: #58a6ff;
-  color: #0d0f12;
+  background: var(--opswat-primary);
+  color: #ffffff;
 }
-.react-datepicker__day--today { font-weight: 600; color: #58a6ff; }
+.react-datepicker__day--today { font-weight: 600; color: var(--opswat-primary-text); }
 .react-datepicker__triangle { display: none; }
-.react-datepicker__navigation-icon::before { border-color: #8b949e; }
+.react-datepicker__navigation-icon::before { border-color: var(--opswat-n-500); }
 
 @media print {
   body { background: #fff !important; color: #111 !important; }

@@ -182,7 +182,7 @@ export default function AccountFiles({ accountId }) {
     <div className="bg-card border border-border rounded-lg">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-        <span className="text-[11px] font-medium text-text-primary font-['JetBrains_Mono',monospace]">
+        <span className="text-[11px] font-medium text-text-primary">
           Files ({files.length})
         </span>
       </div>
@@ -208,10 +208,10 @@ export default function AccountFiles({ accountId }) {
           />
           <div className="flex flex-col items-center gap-1">
             <TablerIcon name="ti-cloud-upload" className="text-[24px] text-text-muted" />
-            <span className="text-[11px] text-text-secondary font-['JetBrains_Mono',monospace]">
+            <span className="text-[11px] text-text-secondary">
               Drop files here or click to browse
             </span>
-            <span className="text-[10px] text-text-muted font-['JetBrains_Mono',monospace]">
+            <span className="text-[10px] text-text-muted">
               Diagrams, docs, screenshots, PDFs up to 25MB
             </span>
           </div>
@@ -221,10 +221,10 @@ export default function AccountFiles({ accountId }) {
         {uploading && staged && (
           <div className="flex flex-col gap-1">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-text-secondary font-['JetBrains_Mono',monospace] truncate max-w-[80%]">
+              <span className="text-[10px] text-text-secondary truncate max-w-[80%]">
                 {staged.file.name}
               </span>
-              <span className="text-[10px] text-text-muted font-['JetBrains_Mono',monospace]">
+              <span className="text-[10px] text-text-muted">
                 {uploadProgress}%
               </span>
             </div>
@@ -240,7 +240,7 @@ export default function AccountFiles({ accountId }) {
         {/* Staging Panel */}
         {staged && !uploading && (
           <div className="border border-border rounded-lg p-3 flex flex-col gap-2 bg-bg-app">
-            <span className="text-[11px] text-text-secondary font-['JetBrains_Mono',monospace] truncate">
+            <span className="text-[11px] text-text-secondary truncate">
               {staged.file.name}
             </span>
 
@@ -250,7 +250,7 @@ export default function AccountFiles({ accountId }) {
                 <button
                   key={cat}
                   onClick={() => setStaged((s) => ({ ...s, category: cat }))}
-                  className={`px-2 py-0.5 rounded text-[10px] font-['JetBrains_Mono',monospace] transition-colors ${
+                  className={`px-2 py-0.5 rounded text-[10px] transition-colors ${
                     staged.category === cat
                       ? 'bg-accent-blue text-white'
                       : 'border border-border text-text-muted hover:border-text-dim'
@@ -267,12 +267,12 @@ export default function AccountFiles({ accountId }) {
               placeholder="Description (optional)"
               value={staged.description}
               onChange={(e) => setStaged((s) => ({ ...s, description: e.target.value }))}
-              className="bg-transparent border border-border rounded px-2 py-1 text-[11px] text-text-primary font-['JetBrains_Mono',monospace] placeholder:text-text-dim outline-none focus:border-accent-blue transition-colors"
+              className="bg-transparent border border-border rounded px-2 py-1 text-[11px] text-text-primary placeholder:text-text-dim outline-none focus:border-accent-blue transition-colors"
             />
 
             {/* Upload error */}
             {uploadError && (
-              <span className="text-[10px] text-accent-red font-['JetBrains_Mono',monospace]">
+              <span className="text-[10px] text-accent-red">
                 {uploadError}
               </span>
             )}
@@ -281,13 +281,13 @@ export default function AccountFiles({ accountId }) {
             <div className="flex gap-2">
               <button
                 onClick={handleUpload}
-                className="px-3 py-1 bg-accent-blue text-white rounded text-[11px] font-['JetBrains_Mono',monospace] hover:opacity-90 transition-opacity"
+                className="px-3 py-1 bg-accent-blue text-white rounded text-[11px] hover:opacity-90 transition-opacity"
               >
                 Upload
               </button>
               <button
                 onClick={() => { setStaged(null); setUploadError(''); }}
-                className="px-3 py-1 border border-border text-text-muted rounded text-[11px] font-['JetBrains_Mono',monospace] hover:border-text-dim transition-colors"
+                className="px-3 py-1 border border-border text-text-muted rounded text-[11px] hover:border-text-dim transition-colors"
               >
                 Cancel
               </button>
@@ -297,14 +297,14 @@ export default function AccountFiles({ accountId }) {
 
         {/* File List */}
         {!loading && files.length === 0 && (
-          <p className="text-[11px] text-text-muted text-center font-['JetBrains_Mono',monospace] py-2">
+          <p className="text-[11px] text-text-muted text-center py-2">
             No files attached yet
           </p>
         )}
 
         {orderedCats.map((cat) => (
           <div key={cat} className="flex flex-col gap-1">
-            <span className="text-[10px] uppercase tracking-wider text-text-dim font-['JetBrains_Mono',monospace] px-1">
+            <span className="text-[10px] uppercase tracking-wider text-text-dim px-1">
               {CATEGORY_LABELS[cat]}
             </span>
             {groups[cat].map((file) => {
@@ -327,14 +327,14 @@ export default function AccountFiles({ accountId }) {
 
                   {/* Info */}
                   <div className="min-w-0 flex-1">
-                    <span className="text-[11px] text-text-primary font-['JetBrains_Mono',monospace] truncate block">
+                    <span className="text-[11px] text-text-primary truncate block">
                       {file.original_name || file.filename}
                     </span>
-                    <span className="text-[10px] text-text-muted font-['JetBrains_Mono',monospace]">
+                    <span className="text-[10px] text-text-muted">
                       {formatBytes(file.file_size)} · {formatDate(file.uploaded_at)}
                     </span>
                     {file.description && (
-                      <span className="text-[10px] text-text-muted italic font-['JetBrains_Mono',monospace] block truncate">
+                      <span className="text-[10px] text-text-muted italic block truncate">
                         {file.description}
                       </span>
                     )}
@@ -344,17 +344,17 @@ export default function AccountFiles({ accountId }) {
                   <div className="flex items-center gap-1 shrink-0">
                     {isConfirming ? (
                       <div className="flex items-center gap-1">
-                        <span className="text-[10px] text-text-muted font-['JetBrains_Mono',monospace]">Delete?</span>
+                        <span className="text-[10px] text-text-muted">Delete?</span>
                         <button
                           onClick={() => handleDelete(file.id)}
-                          className="text-[10px] text-accent-red hover:underline font-['JetBrains_Mono',monospace]"
+                          className="text-[10px] text-accent-red hover:underline"
                         >
                           Yes
                         </button>
                         <span className="text-[10px] text-text-dim">/</span>
                         <button
                           onClick={() => setConfirmDelete(null)}
-                          className="text-[10px] text-text-muted hover:underline font-['JetBrains_Mono',monospace]"
+                          className="text-[10px] text-text-muted hover:underline"
                         >
                           No
                         </button>
@@ -417,7 +417,7 @@ export default function AccountFiles({ accountId }) {
               alt={lightbox.original_name || lightbox.filename}
               className="max-w-[90vw] max-h-[90vh] object-contain rounded"
             />
-            <span className="text-[12px] text-white font-['JetBrains_Mono',monospace]">
+            <span className="text-[12px] text-white">
               {lightbox.original_name || lightbox.filename}
             </span>
           </div>

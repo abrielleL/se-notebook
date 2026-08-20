@@ -64,7 +64,7 @@ export default function Accounts() {
         placeholder="Search by account name or AE"
         value={query}
         onChange={e => setQuery(e.target.value)}
-        className="w-full bg-[#0a0d11] border border-border rounded px-3 py-2 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50 mb-3"
+        className="w-full bg-[#040d1c] border border-border rounded px-3 py-2 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50 mb-3"
       />
 
       <div className="flex flex-wrap gap-1.5 mb-4">
@@ -122,7 +122,7 @@ export default function Accounts() {
           <Link
             key={a.id}
             to={`/accounts/${a.id}`}
-            className={`flex items-center gap-3 px-4 py-3 bg-card border border-border rounded hover:border-accent-blue/40 hover:bg-[#11161e] transition ${isInactive(a) ? 'opacity-55 hover:opacity-100' : ''}`}
+            className={`flex items-center gap-3 px-4 py-3 bg-card border border-border rounded hover:border-accent-blue/40 hover:bg-[#111f42] transition ${isInactive(a) ? 'opacity-55 hover:opacity-100' : ''}`}
           >
             <div className="flex items-center shrink-0">
               <span
@@ -141,7 +141,7 @@ export default function Accounts() {
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-[13px] font-medium text-text-primary truncate">{a.account_name}</span>
                 {(a.tags || []).map(label => {
-                  const color = tagColor[label] || '#8b949e';
+                  const color = tagColor[label] || '#838892';
                   return (
                     <span key={label} className="text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0"
                       style={{ color, background: `${color}22`, border: `1px solid ${color}55` }}>
