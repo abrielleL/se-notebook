@@ -14,10 +14,6 @@ function fmtMoney(n) {
   if (n >= 1e3) return `$${Math.round(n / 1e3)}K`;
   return `$${n}`;
 }
-function ageColor(days) {
-  if (days == null) return '#616875';
-  return days > 30 ? '#ff6b66' : days > 14 ? '#ff9a4d' : '#838892';
-}
 
 export default function Dashboard() {
   const [accounts, setAccounts] = useState([]);
@@ -95,9 +91,6 @@ export default function Dashboard() {
                     <div className="flex items-center gap-2 mt-1 text-[10px] text-text-dim">
                       <span className="truncate flex-1 min-w-0">{a.ae_name || a.account_executive || 'No AE'}</span>
                       {fmtMoney(a.opportunity_value) && <span className="shrink-0 text-text-muted">{fmtMoney(a.opportunity_value)}</span>}
-                      <span className="shrink-0" style={{ color: ageColor(a.last_note_days_ago) }}>
-                        {a.last_note_days_ago == null ? 'no notes' : `${a.last_note_days_ago}d`}
-                      </span>
                     </div>
                     {(a.tags || []).length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1.5">
