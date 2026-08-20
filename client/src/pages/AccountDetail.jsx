@@ -115,7 +115,10 @@ export default function AccountDetail() {
   }
   useEffect(() => { setLoading(true); loadAll(); }, [id]);
 
-  // When back online, process any notes saved offline (pending_ai_extraction=1).
+  // Catch-up pass for notes flagged pending_ai_extraction=1 -- either saved
+  // while offline, or saved by a path that failed to extract at the time. The
+  // server only clears the flag once a key was actually present, so this keeps
+  // retrying until the extraction really runs.
   const pendingRan = useRef(false);
   useEffect(() => {
     if (!online || !account) return;
@@ -123,8 +126,13 @@ export default function AccountDetail() {
     if (!pending.length || pendingRan.current) return;
     pendingRan.current = true;
     runFullExtraction(id, pending[pending.length - 1].id)
-      .then(() => { loadAll(); toast('Processed notes saved offline.', 'success'); })
-      .catch(() => {})
+      .then(r => {
+        loadAll();
+        // Report what actually happened rather than assuming it worked; a
+        // missing key leaves the qualification fields empty and says so.
+        toast(extractionMessage('Caught up on unprocessed notes', r), extractionSeverity(r));
+      })
+      .catch(() => toast('Could not process unextracted notes.', 'warn'))
       .finally(() => { pendingRan.current = false; });
   }, [online, account, id]);
 

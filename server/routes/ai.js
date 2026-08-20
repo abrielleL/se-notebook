@@ -343,9 +343,15 @@ router.post('/accounts/:id/run-extraction', async (req, res, next) => {
         }
       }
 
-      // Clear pending extraction flags for this account's notes.
-      db.prepare('UPDATE notes SET pending_ai_extraction = 0 WHERE account_id = ? AND pending_ai_extraction = 1')
-        .run(req.params.id);
+      // Clear the pending flags only when a key was actually available, i.e.
+      // when the deal-intelligence pass above really ran. Clearing them on a
+      // keyless request would burn the retry and lose the qualification
+      // extraction silently -- the note would look processed but no fields
+      // would ever be filled.
+      if (key) {
+        db.prepare('UPDATE notes SET pending_ai_extraction = 0 WHERE account_id = ? AND pending_ai_extraction = 1')
+          .run(req.params.id);
+      }
     }
 
     // --- Transcript-based participant extraction (needs key) ---
