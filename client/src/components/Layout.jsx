@@ -9,6 +9,7 @@ import { useDrafts } from '../lib/drafts.js';
 const navItems = [
   { to: '/', label: 'Dashboard', icon: Icon.Home, end: true },
   { to: '/accounts', label: 'Accounts', icon: Icon.Folder },
+  { to: '/contacts', label: 'Contacts', icon: Icon.Users },
   { to: '/calendar', label: 'POV Calendar', icon: Icon.Calendar },
   { to: '/pov-library', label: 'POV Library', icon: Icon.File },
   { to: '/files', label: 'Attachment Library', icon: Icon.Paperclip },

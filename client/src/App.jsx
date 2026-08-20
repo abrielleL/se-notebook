@@ -12,6 +12,7 @@ import PovGenerator from './pages/PovGenerator.jsx';
 import CalendarPage from './pages/CalendarPage.jsx';
 import PovLibrary from './pages/PovLibrary.jsx';
 import FileLibrary from './pages/FileLibrary.jsx';
+import Contacts from './pages/Contacts.jsx';
 import Drafts from './pages/Drafts.jsx';
 import StatsPage from './pages/StatsPage.jsx';
 
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/pov-library" element={<PovLibrary />} />
         <Route path="/files" element={<FileLibrary />} />
+        <Route path="/contacts" element={<Contacts />} />
         <Route path="/drafts" element={<Drafts />} />
         <Route path="/stats" element={<StatsPage />} />
         <Route path="/settings" element={<Settings />} />

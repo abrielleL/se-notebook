@@ -28,6 +28,9 @@ export default function AccountExportModal({ accountId, accountName, account = {
   const [selected, setSelected] = useState(new Set(EXPORT_PRESETS.full));
   const [busy, setBusy] = useState(false);
   const [files, setFiles] = useState([]);
+  // Off by default: a partner's or an OPSWAT name in a customer-facing document
+  // is a leak, so including them has to be a deliberate choice.
+  const [includeNonCustomer, setIncludeNonCustomer] = useState(false);
   const toast = useToast();
 
   useEffect(() => { api.listFiles(accountId).then(setFiles).catch(() => {}); }, [accountId]);
@@ -49,7 +52,12 @@ export default function AccountExportModal({ accountId, accountName, account = {
         return (account.next_steps || []).filter(s => !s.completed).slice(0, 5)
           .map(s => `${s.text}${s.due_date ? ` — ${formatDate(s.due_date)}` : ''}`);
       case 'contacts':
-        return (account.contacts || []).slice(0, 6).map(c => `${c.name}${c.title ? ` — ${c.title}` : ''}`);
+        return (account.contacts || [])
+          .filter(c => includeNonCustomer || (c.contact_type || 'customer') === 'customer')
+          .slice(0, 6)
+          .map(c => `${c.name}${c.title ? ` — ${c.title}` : ''}${
+            includeNonCustomer && c.org_name ? ` (${c.org_name})` : ''
+          }`);
       case 'qualification':
         return QUAL_FIELDS
           .filter(f => di[f.key] && di[f.key].value && di[f.key].value.trim())
@@ -73,13 +81,18 @@ export default function AccountExportModal({ accountId, accountName, account = {
 
   const blocks = useMemo(
     () => EXPORT_SECTIONS.filter(s => selected.has(s.key)).map(s => ({ s, lines: linesFor(s.key) })),
-    [selected, account, di, snapshot, pov, files]
+    [selected, account, di, snapshot, pov, files, includeNonCustomer]
   );
+
+  const nonCustomerCount = (account.contacts || [])
+    .filter(c => (c.contact_type || 'customer') !== 'customer').length;
 
   async function exportPdf() {
     setBusy(true);
     try {
-      const { html } = await api.exportPdf(accountId, [...selected]);
+      const { html } = await api.exportPdf(accountId, [...selected], undefined, 'account', {
+        includeNonCustomerContacts: includeNonCustomer
+      });
       const w = window.open('', '_blank');
       if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 400); }
       else toast('Popup blocked — allow popups to print.', 'warn');
@@ -118,6 +131,30 @@ export default function AccountExportModal({ accountId, accountName, account = {
             );
           })}
         </div>
+
+        {/* Contacts scope. Only meaningful when the Contacts section is in. */}
+        {selected.has('contacts') && (
+          <button
+            onClick={() => setIncludeNonCustomer(v => !v)}
+            className={`text-left px-3 py-2 rounded border text-[12px] transition ${
+              includeNonCustomer
+                ? 'bg-[#2d2200]/40 border-[#3d2f00] text-accent-yellow'
+                : 'bg-card border-border text-text-muted hover:text-text-primary'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span className={`w-3 h-3 rounded-sm border ${includeNonCustomer ? 'bg-accent-yellow border-accent-yellow' : 'border-text-dim'}`} />
+              Include partner, analyst, and OPSWAT contacts
+            </div>
+            <div className="text-[10px] mt-0.5 pl-5">
+              {includeNonCustomer
+                ? 'These names will appear in the exported document. Not for customer distribution.'
+                : nonCustomerCount
+                  ? `${nonCustomerCount} non-customer contact${nonCustomerCount === 1 ? '' : 's'} will be left out.`
+                  : 'Customer contacts only.'}
+            </div>
+          </button>
+        )}
 
         {/* Live content preview */}
         <div className="border border-border rounded bg-[#10141b]">

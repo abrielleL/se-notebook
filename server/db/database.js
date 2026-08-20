@@ -51,10 +51,21 @@ addColumn('accounts', 'tags', 'TEXT DEFAULT NULL');
 // --- contacts additions ---
 // meddpicc_role: internal qualification role; never surfaced as "MEDDPICC" in UI.
 // Values: 'decision_maker' | 'champion' | 'technical_lead' | 'influencer' | 'procurement' | NULL
+// Retained as the role on the *primary* account; per-account roles now live on
+// contact_accounts.role, which is what the UI reads and writes.
 addColumn('contacts', 'meddpicc_role', 'TEXT DEFAULT NULL');
 addColumn('contacts', 'email', 'TEXT DEFAULT NULL');
 addColumn('contacts', 'phone', 'TEXT DEFAULT NULL');
 addColumn('contacts', 'auto_extracted', 'INTEGER DEFAULT 0');
+// name_key: folded dedupe key (see lib/contactNames.js). Backed by a UNIQUE
+// index with account_id, created after the migration collapses existing dupes.
+addColumn('contacts', 'name_key', 'TEXT');
+// org_name: the person's employer. Essential for partners/analysts, whose
+// company is *not* the account they're linked to.
+addColumn('contacts', 'org_name', 'TEXT DEFAULT NULL');
+// contact_type: 'customer' | 'partner' | 'analyst' | 'internal'
+addColumn('contacts', 'contact_type', "TEXT DEFAULT 'customer'");
+addColumn('contacts', 'updated_at', 'TIMESTAMP');
 
 // --- notes additions ---
 addColumn('notes', 'pending_ai_extraction', 'INTEGER DEFAULT 0');
@@ -179,6 +190,54 @@ db.exec(`
     active INTEGER DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
+
+  -- A contact belongs to many accounts (a partner SE works several deals) and
+  -- an account has many contacts. The qualification role lives here, not on the
+  -- contact: the same person can be a champion on one deal and a blocker on
+  -- another. Exactly one link per contact carries is_primary=1, mirrored into
+  -- contacts.account_id for the FTS triggers.
+  CREATE TABLE IF NOT EXISTS contact_accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contact_id TEXT NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    role TEXT,
+    is_primary INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(contact_id, account_id)
+  );
+
+  -- Free-form notes about a person. account_id is nullable so a note can be
+  -- either deal-specific ("pushed our POV internally at Acme") or about the
+  -- person generally ("prefers a call over email").
+  CREATE TABLE IF NOT EXISTS contact_notes (
+    id TEXT PRIMARY KEY,
+    contact_id TEXT NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    account_id TEXT REFERENCES accounts(id) ON DELETE SET NULL,
+    body TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP
+  );
+
+  -- Possible-duplicate pairs that are too ambiguous to merge automatically
+  -- (misspellings, first-name-only fragments). Reviewed in the directory UI.
+  -- contact_id_a/_b are stored sorted so UNIQUE prevents re-queueing a pair.
+  CREATE TABLE IF NOT EXISTS contact_merge_candidates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id TEXT,
+    contact_id_a TEXT NOT NULL,
+    contact_id_b TEXT NOT NULL,
+    reason TEXT,
+    score REAL,
+    status TEXT DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(contact_id_a, contact_id_b)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_contact_accounts_contact ON contact_accounts(contact_id);
+  CREATE INDEX IF NOT EXISTS idx_contact_accounts_account ON contact_accounts(account_id);
+  CREATE INDEX IF NOT EXISTS idx_contact_notes_contact ON contact_notes(contact_id);
+  CREATE INDEX IF NOT EXISTS idx_contacts_name_key ON contacts(name_key);
+  CREATE INDEX IF NOT EXISTS idx_merge_candidates_status ON contact_merge_candidates(status);
 
   CREATE INDEX IF NOT EXISTS idx_deal_intelligence_account ON deal_intelligence(account_id);
   CREATE INDEX IF NOT EXISTS idx_stage_gate_account ON stage_gate_progress(account_id);
@@ -381,6 +440,25 @@ const seedManaged = db.transaction((rows) => {
 seedManaged([...POV_DEPLOYMENTS, ...POV_PRODUCTS, ...POV_TECHNOLOGIES, ...POV_FILE_TYPES, ...POV_COMPLIANCE]);
 
 // ---------------------------------------------------------------------------
+// Contacts: normalize names, backfill account links, collapse duplicates.
+//
+// Must run before the UNIQUE(account_id, name_key) index below -- existing
+// databases contain duplicate keys ("Erika Pinczesi" vs "Erika Pinczesi -")
+// that would make the index creation fail. Also runs before the search-index
+// rebuild so merged-away contacts don't linger as search results.
+// ---------------------------------------------------------------------------
+require('./contactsMigration').migrateContacts(db);
+
+// Prevents a repeat of the original bug at the storage layer: two concurrent
+// extractions can no longer both insert the same person. Scoped to the primary
+// account, since the same name on two different accounts is two people.
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_account_name_key
+    ON contacts(account_id, name_key)
+    WHERE account_id IS NOT NULL AND name_key IS NOT NULL;
+`);
+
+// ---------------------------------------------------------------------------
 // Global search: extend the FTS index beyond notes/transcripts.
 //
 // schema.sql already maintains 'note' and 'transcript' rows via triggers. Here
@@ -417,19 +495,46 @@ db.exec(`
   END;
 
   -- contacts -> 'contact'
-  CREATE TRIGGER IF NOT EXISTS contacts_search_ai AFTER INSERT ON contacts BEGIN
+  -- Dropped and recreated (rather than CREATE IF NOT EXISTS) because the body
+  -- now also indexes org_name/contact_type, which older databases won't have
+  -- picked up from a pre-existing trigger definition.
+  DROP TRIGGER IF EXISTS contacts_search_ai;
+  DROP TRIGGER IF EXISTS contacts_search_au;
+  DROP TRIGGER IF EXISTS contacts_search_ad;
+  CREATE TRIGGER contacts_search_ai AFTER INSERT ON contacts BEGIN
     INSERT INTO search_index(source_type, source_id, account_id, title, body)
     VALUES ('contact', NEW.id, NEW.account_id, COALESCE(NEW.name, ''),
-      COALESCE(NEW.name,'')||' '||COALESCE(NEW.title,'')||' '||COALESCE(NEW.email,'')||' '||COALESCE(NEW.phone,''));
+      COALESCE(NEW.name,'')||' '||COALESCE(NEW.title,'')||' '||COALESCE(NEW.email,'')||' '||
+      COALESCE(NEW.phone,'')||' '||COALESCE(NEW.org_name,'')||' '||COALESCE(NEW.contact_type,''));
   END;
-  CREATE TRIGGER IF NOT EXISTS contacts_search_au AFTER UPDATE ON contacts BEGIN
+  CREATE TRIGGER contacts_search_au AFTER UPDATE ON contacts BEGIN
     DELETE FROM search_index WHERE source_type = 'contact' AND source_id = OLD.id;
     INSERT INTO search_index(source_type, source_id, account_id, title, body)
     VALUES ('contact', NEW.id, NEW.account_id, COALESCE(NEW.name, ''),
-      COALESCE(NEW.name,'')||' '||COALESCE(NEW.title,'')||' '||COALESCE(NEW.email,'')||' '||COALESCE(NEW.phone,''));
+      COALESCE(NEW.name,'')||' '||COALESCE(NEW.title,'')||' '||COALESCE(NEW.email,'')||' '||
+      COALESCE(NEW.phone,'')||' '||COALESCE(NEW.org_name,'')||' '||COALESCE(NEW.contact_type,''));
   END;
-  CREATE TRIGGER IF NOT EXISTS contacts_search_ad AFTER DELETE ON contacts BEGIN
+  CREATE TRIGGER contacts_search_ad AFTER DELETE ON contacts BEGIN
     DELETE FROM search_index WHERE source_type = 'contact' AND source_id = OLD.id;
+  END;
+
+  -- contact_notes -> 'contact_note'. Titled with the person's name so a search
+  -- hit reads as "Ron Howell" rather than an opaque note id.
+  CREATE TRIGGER IF NOT EXISTS contact_notes_search_ai AFTER INSERT ON contact_notes BEGIN
+    INSERT INTO search_index(source_type, source_id, account_id, title, body)
+    SELECT 'contact_note', NEW.id, COALESCE(NEW.account_id, c.account_id),
+      COALESCE(c.name, ''), COALESCE(c.name,'')||' '||COALESCE(NEW.body,'')
+    FROM contacts c WHERE c.id = NEW.contact_id;
+  END;
+  CREATE TRIGGER IF NOT EXISTS contact_notes_search_au AFTER UPDATE ON contact_notes BEGIN
+    DELETE FROM search_index WHERE source_type = 'contact_note' AND source_id = OLD.id;
+    INSERT INTO search_index(source_type, source_id, account_id, title, body)
+    SELECT 'contact_note', NEW.id, COALESCE(NEW.account_id, c.account_id),
+      COALESCE(c.name, ''), COALESCE(c.name,'')||' '||COALESCE(NEW.body,'')
+    FROM contacts c WHERE c.id = NEW.contact_id;
+  END;
+  CREATE TRIGGER IF NOT EXISTS contact_notes_search_ad AFTER DELETE ON contact_notes BEGIN
+    DELETE FROM search_index WHERE source_type = 'contact_note' AND source_id = OLD.id;
   END;
 
   -- deal_intelligence -> 'deal'
@@ -487,7 +592,7 @@ db.exec(`
 // on every startup is cheap at this scale and self-heals any drift; the
 // trigger-maintained 'note'/'transcript' rows are left untouched.
 const rebuildSearchIndex = db.transaction(() => {
-  db.exec("DELETE FROM search_index WHERE source_type IN ('account','contact','deal','file','attachment')");
+  db.exec("DELETE FROM search_index WHERE source_type IN ('account','contact','contact_note','deal','file','attachment')");
   db.exec(`
     INSERT INTO search_index(source_type, source_id, account_id, title, body)
     SELECT 'account', id, id, COALESCE(account_name,''),
@@ -499,8 +604,14 @@ const rebuildSearchIndex = db.transaction(() => {
 
     INSERT INTO search_index(source_type, source_id, account_id, title, body)
     SELECT 'contact', id, account_id, COALESCE(name,''),
-      COALESCE(name,'')||' '||COALESCE(title,'')||' '||COALESCE(email,'')||' '||COALESCE(phone,'')
+      COALESCE(name,'')||' '||COALESCE(title,'')||' '||COALESCE(email,'')||' '||
+      COALESCE(phone,'')||' '||COALESCE(org_name,'')||' '||COALESCE(contact_type,'')
     FROM contacts;
+
+    INSERT INTO search_index(source_type, source_id, account_id, title, body)
+    SELECT 'contact_note', cn.id, COALESCE(cn.account_id, c.account_id), COALESCE(c.name,''),
+      COALESCE(c.name,'')||' '||COALESCE(cn.body,'')
+    FROM contact_notes cn JOIN contacts c ON c.id = cn.contact_id;
 
     INSERT INTO search_index(source_type, source_id, account_id, title, body)
     SELECT 'deal', id, account_id, COALESCE(field,''), COALESCE(field,'')||' '||COALESCE(value,'')

@@ -4,6 +4,7 @@ const db = require('../db/database');
 const { callAnthropic, getKey, DEFAULT_MODEL } = require('../lib/anthropic');
 const { queryDocs } = require('../lib/chroma');
 const { getEmbedding } = require('../lib/embed');
+const { contactsForAccount } = require('../lib/contactStore');
 
 const EMBED_FAIL_BANNER = '⚠ This POV was generated without OPSWAT documentation sources. To get deployment-specific instructions and accurate prerequisites, start the embed server on your Mac and regenerate: node embed-server.js (in se-notebook folder)';
 
@@ -184,7 +185,11 @@ async function generateDraft(accountId, body, key, locals) {
     const notes = db.prepare(
       'SELECT * FROM notes WHERE account_id = ? AND deleted_at IS NULL ORDER BY date DESC'
     ).all(accountId);
-    const contacts = db.prepare('SELECT * FROM contacts WHERE account_id = ?').all(accountId);
+    // The generated POV is a customer deliverable, so partner/internal names
+    // are excluded unless the request explicitly opts in.
+    const contacts = contactsForAccount(db, accountId, {
+      customerOnly: !body.include_non_customer_contacts
+    });
 
     // 2. search query
     const query = buildSearchQuery(account, di) ||

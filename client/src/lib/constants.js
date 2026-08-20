@@ -76,6 +76,34 @@ export const ROLE_OPTIONS = [
   { value: 'influencer', label: 'Influencer' },
   { value: 'procurement', label: 'Procurement' }
 ];
+export const ROLE_LABELS = ROLE_OPTIONS.reduce((m, o) => {
+  if (o.value) m[o.value] = o.label;
+  return m;
+}, {});
+
+// Who the person is relative to us. A partner or analyst is tied to the
+// account(s) they work, but their employer is their own — hence org_name.
+// Only 'customer' contacts go into customer-facing exports by default.
+export const CONTACT_TYPES = {
+  customer: { label: 'Customer', short: 'CU', color: '#58a6ff' },
+  partner: { label: 'Partner', short: 'PA', color: '#3fb950' },
+  analyst: { label: 'Analyst', short: 'AN', color: '#e3b341' },
+  internal: { label: 'OPSWAT', short: 'OP', color: '#8b949e' }
+};
+export const CONTACT_TYPE_OPTIONS = Object.entries(CONTACT_TYPES)
+  .map(([value, v]) => ({ value, label: v.label }));
+
+// Why a pair of contacts was flagged as a possible duplicate, in plain terms.
+export const DUPE_REASONS = {
+  identical_key: 'Same name after cleanup',
+  typo_one_char: 'One-character spelling difference',
+  token_order: 'Same names in a different order',
+  spelling_variant: 'Similar spelling',
+  first_name_fragment: 'First name only vs. full name',
+  first_name_fragment_fuzzy: 'Similar first name vs. full name',
+  shortened_first_name: 'Shortened first name',
+  subset_name: 'Missing a middle name'
+};
 
 // Stage gate definitions (frontend config).
 export const STAGE_GATES = {

@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db/database');
 const { callAnthropic, getKey, extractJson, DEFAULT_MODEL } = require('../lib/anthropic');
+const { contactsForAccount } = require('../lib/contactStore');
 
 const router = express.Router();
 
@@ -27,7 +28,9 @@ router.post('/accounts/:id/email-draft', async (req, res, next) => {
     const recentNote = db.prepare(
       'SELECT * FROM notes WHERE account_id = ? AND deleted_at IS NULL ORDER BY date DESC, created_at DESC LIMIT 1'
     ).get(req.params.id);
-    const contacts = db.prepare('SELECT name, title FROM contacts WHERE account_id = ?').all(req.params.id);
+    // Customer-side only: a drafted customer email must not name our partners
+    // or internal staff.
+    const contacts = contactsForAccount(db, req.params.id, { customerOnly: true });
 
     const system = `You are an OPSWAT Solutions Engineer drafting a professional, consultative customer email. Be concise and specific to the account context. Return ONLY JSON: { "subject": "...", "body": "..." } with no markdown or extra text. The body should be ready to send, with greeting and sign-off placeholders like [Name].`;
 

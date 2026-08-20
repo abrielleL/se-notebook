@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import { api } from '../lib/api.js';
 import Icon from '../components/Icons.jsx';
@@ -10,6 +10,7 @@ import StageGateModal from '../components/StageGateModal.jsx';
 import FieldDrawer from '../components/FieldDrawer.jsx';
 import Markdown, { stripMarkdown } from '../components/Markdown.jsx';
 import AccountTagEditor from '../components/AccountTagEditor.jsx';
+import ContactDrawer, { ContactTypeBadge } from '../components/ContactDrawer.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { useOnline } from '../lib/offline.jsx';
 import { usePovJob } from '../lib/povJob.js';
@@ -19,7 +20,7 @@ import { formatDate, initials, todayISO, parseISODate, toISODate } from '../lib/
 import {
   riskDot, RISK_OPTIONS, escalationStyle, ESCALATION_OPTIONS, QUAL_FIELDS,
   ROLE_BADGES, ROLE_OPTIONS, STAGE_BAR, EXTRA_STAGES, STAGE_GATES, nextStage, stageBarStyle,
-  EMAIL_TYPES, agingColor, PRESALES_STAGES
+  EMAIL_TYPES, agingColor, PRESALES_STAGES, CONTACT_TYPE_OPTIONS
 } from '../lib/constants.js';
 
 // Accent color for a terminal stage when it is the account's current stage.
@@ -424,7 +425,10 @@ function NoteRow({ note }) {
 }
 
 const CONTACT_INPUT = 'bg-[#0a0d11] border border-border rounded px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:border-accent-blue/50 w-full';
-const emptyContactForm = () => ({ name: '', title: '', email: '', phone: '', meddpicc_role: '' });
+const emptyContactForm = () => ({
+  name: '', title: '', org_name: '', email: '', phone: '',
+  contact_type: 'customer', meddpicc_role: ''
+});
 
 function ContactFields({ form, setForm }) {
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
@@ -433,6 +437,15 @@ function ContactFields({ form, setForm }) {
       <div className="flex gap-1.5">
         <input placeholder="Name" value={form.name} onChange={set('name')} className={CONTACT_INPUT} />
         <input placeholder="Title" value={form.title} onChange={set('title')} className={CONTACT_INPUT} />
+      </div>
+      <div className="flex gap-1.5">
+        <select value={form.contact_type} onChange={set('contact_type')} className={CONTACT_INPUT}>
+          {CONTACT_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <input
+          placeholder={form.contact_type === 'customer' ? 'Organization (optional)' : 'Their employer'}
+          value={form.org_name} onChange={set('org_name')} className={CONTACT_INPUT}
+        />
       </div>
       <div className="flex gap-1.5">
         <input placeholder="Email" value={form.email} onChange={set('email')} className={CONTACT_INPUT} />
@@ -445,96 +458,215 @@ function ContactFields({ form, setForm }) {
   );
 }
 
+// Attach someone who already exists in the directory. This is how a partner
+// ends up on a second account without being retyped as a new person.
+function LinkExistingContact({ account, onDone, onCancel }) {
+  const toast = useToast();
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [role, setRole] = useState('');
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) { setResults([]); return; }
+    setSearching(true);
+    const t = setTimeout(() => {
+      api.listContacts({ q, sort: 'name' })
+        .then(rows => setResults(rows.filter(r => !r.account_ids.includes(account.id)).slice(0, 8)))
+        .catch(() => setResults([]))
+        .finally(() => setSearching(false));
+    }, 200);
+    return () => clearTimeout(t);
+  }, [query, account.id]);
+
+  async function link(c) {
+    try {
+      await api.linkContactAccount(c.id, { account_id: account.id, role: role || null });
+      toast(`${c.name} linked to ${account.account_name}`, 'success');
+      onDone();
+    } catch (e) {
+      toast(e.message || 'Link failed', 'error');
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5 border border-accent-blue/30 rounded p-2 bg-[#0a1628]">
+      <div className="text-[10px] text-text-muted">Link someone already in the directory</div>
+      <input
+        autoFocus
+        placeholder="Search name, title, or organization"
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        className={CONTACT_INPUT}
+      />
+      <select value={role} onChange={e => setRole(e.target.value)} className={CONTACT_INPUT}>
+        {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+      </select>
+      <div className="flex flex-col gap-1">
+        {results.map(c => (
+          <button
+            key={c.id}
+            onClick={() => link(c)}
+            className="flex items-center gap-2 px-1.5 py-1 rounded hover:bg-[#14181f] text-left"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block text-[11px] text-text-primary truncate">{c.name}</span>
+              <span className="block text-[9px] text-text-dim truncate">
+                {c.title || 'no title'}{c.org_name ? ` · ${c.org_name}` : ''}
+                {c.account_count ? ` · on ${c.account_count} account${c.account_count === 1 ? '' : 's'}` : ''}
+              </span>
+            </span>
+            <Icon.Link width={10} height={10} className="text-accent-blue shrink-0" />
+          </button>
+        ))}
+        {query.trim().length >= 2 && !searching && results.length === 0 && (
+          <div className="text-[10px] text-text-dim">No match. Use + to add a new person.</div>
+        )}
+      </div>
+      <div className="flex justify-end">
+        <button onClick={onCancel} className="text-[10px] text-text-muted hover:text-text-primary">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 function ContactsCard({ account, onChange }) {
   const toast = useToast();
   const [adding, setAdding] = useState(false);
+  const [linking, setLinking] = useState(false);
   const [addForm, setAddForm] = useState(emptyContactForm());
-  const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState(emptyContactForm());
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [openId, setOpenId] = useState(null);
+  const [confirmRemove, setConfirmRemove] = useState(null);
   const [removingId, setRemovingId] = useState(null);
+  const [allAccounts, setAllAccounts] = useState([]);
 
-  function openEdit(c) {
-    setAdding(false);
-    setConfirmDelete(false);
-    setEditingId(c.id);
-    setEditForm({ name: c.name || '', title: c.title || '', email: c.email || '', phone: c.phone || '', meddpicc_role: c.meddpicc_role || '' });
-  }
+  // Only needed by the drawer's "link to another account" picker.
+  useEffect(() => {
+    if (openId) api.listAccounts().then(setAllAccounts).catch(() => setAllAccounts([]));
+  }, [openId]);
+
   function openAdd() {
-    setEditingId(null);
+    setLinking(false);
     setAddForm(emptyContactForm());
     setAdding(true);
   }
 
   async function add() {
     if (!addForm.name.trim()) return;
-    await api.createContact({ account_id: account.id, ...addForm, meddpicc_role: addForm.meddpicc_role || null });
-    setAddForm(emptyContactForm());
-    setAdding(false);
-    onChange();
-    toast('Contact added', 'success');
+    try {
+      const created = await api.createContact({
+        account_id: account.id,
+        ...addForm,
+        meddpicc_role: addForm.meddpicc_role || null
+      });
+      setAddForm(emptyContactForm());
+      setAdding(false);
+      onChange();
+      toast(
+        created._merged_into_existing
+          ? `${created.name} was already here — updated instead of duplicating`
+          : 'Contact added',
+        'success'
+      );
+    } catch (e) {
+      toast(e.message || 'Could not add contact', 'error');
+    }
   }
-  async function saveEdit() {
-    if (!editForm.name.trim()) return;
-    await api.updateContact(editingId, { ...editForm, meddpicc_role: editForm.meddpicc_role || null });
-    setEditingId(null);
-    onChange();
-    toast('Saved', 'success');
-  }
-  function doDelete(c) {
+
+  // Removing from an account unlinks rather than deletes, so a partner shared
+  // with other deals survives. Only their last link deletes the person.
+  function doRemove(c) {
     setRemovingId(c.id);
     setTimeout(async () => {
-      await api.deleteContact(c.id).catch(() => {});
+      try {
+        if ((c.account_count || 1) > 1) {
+          await api.unlinkContactAccount(c.id, account.id);
+          toast(`${c.name} unlinked from this account`, 'success');
+        } else {
+          await api.deleteContact(c.id);
+          toast('Contact deleted', 'success');
+        }
+      } catch (e) {
+        toast(e.message || 'Remove failed', 'error');
+      }
       setRemovingId(null);
-      setEditingId(null);
+      setConfirmRemove(null);
       onChange();
     }, 220);
   }
 
   const contacts = account.contacts || [];
   return (
-    <Section title="Contacts" icon={Icon.Folder} right={<button onClick={openAdd} className="text-text-dim hover:text-accent-blue"><Icon.Plus width={12} height={12} /></button>}>
+    <Section
+      title="Contacts"
+      icon={Icon.Users}
+      right={
+        <span className="flex items-center gap-1.5">
+          <button onClick={() => { setAdding(false); setLinking(l => !l); }} className="text-text-dim hover:text-accent-blue" title="Link an existing contact">
+            <Icon.Link width={11} height={11} />
+          </button>
+          <button onClick={openAdd} className="text-text-dim hover:text-accent-blue" title="Add a new contact">
+            <Icon.Plus width={12} height={12} />
+          </button>
+        </span>
+      }
+    >
       <div className="flex flex-col gap-2">
         {contacts.map(c => {
           const badge = ROLE_BADGES[c.meddpicc_role];
-          const editing = editingId === c.id;
+          const shared = (c.account_count || 1) > 1;
           return (
             <div key={c.id}
               className="transition-opacity duration-200"
               style={{ opacity: removingId === c.id ? 0 : 1 }}>
-              {editing ? (
-                <div className="flex flex-col gap-1.5 border border-accent-blue/30 rounded p-2 bg-[#0a1628]">
-                  <ContactFields form={editForm} setForm={setEditForm} />
-                  <div className="flex items-center gap-2">
-                    <button onClick={saveEdit} className="text-[10px] text-accent-green hover:underline">Save</button>
-                    <button onClick={() => setEditingId(null)} className="text-[10px] text-text-muted hover:text-text-primary">Cancel</button>
-                    <span className="ml-auto">
-                      {confirmDelete ? (
-                        <span className="text-[10px] text-accent-red">Remove {editForm.name || 'contact'}? <button onClick={() => doDelete(c)} className="underline">Yes</button> / <button onClick={() => setConfirmDelete(false)} className="underline">No</button></span>
-                      ) : (
-                        <button onClick={() => setConfirmDelete(true)} className="text-[10px] text-accent-red hover:underline">Delete</button>
-                      )}
-                    </span>
+              <div className="group flex items-start gap-2">
+                <span className="w-6 h-6 rounded flex items-center justify-center text-[9px] font-semibold shrink-0 mt-0.5" style={{ background: '#1a2744', color: '#58a6ff' }}>{initials(c.name)}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] font-medium text-text-primary truncate flex items-center gap-1">
+                    {c.name}
+                    {c.auto_extracted ? <Icon.Sparkles width={9} height={9} className="text-accent-purple" /> : null}
+                    {c.contact_type && c.contact_type !== 'customer' && <ContactTypeBadge type={c.contact_type} />}
                   </div>
+                  {c.title && <div className="text-[10px] text-text-dim truncate">{c.title}</div>}
+                  {c.org_name && <div className="text-[10px] text-text-dim truncate">{c.org_name}</div>}
+                  {c.email && <div className="text-[10px] text-text-dim truncate">{c.email}</div>}
+                  {c.phone && <div className="text-[10px] text-text-dim truncate">{c.phone}</div>}
+                  {shared && (
+                    <Link to="/contacts" className="text-[9px] text-text-dim hover:text-accent-blue">
+                      also on {c.account_count - 1} other account{c.account_count - 1 === 1 ? '' : 's'}
+                    </Link>
+                  )}
+                  {confirmRemove === c.id && (
+                    <div className="text-[10px] text-accent-red mt-1">
+                      {shared ? 'Unlink' : 'Delete'} {c.name}?{' '}
+                      <button onClick={() => doRemove(c)} className="underline">Yes</button>
+                      {' / '}
+                      <button onClick={() => setConfirmRemove(null)} className="underline">No</button>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="group flex items-start gap-2">
-                  <span className="w-6 h-6 rounded flex items-center justify-center text-[9px] font-semibold shrink-0 mt-0.5" style={{ background: '#1a2744', color: '#58a6ff' }}>{initials(c.name)}</span>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[11px] font-medium text-text-primary truncate flex items-center gap-1">{c.name}{c.auto_extracted ? <Icon.Sparkles width={9} height={9} className="text-accent-purple" /> : null}</div>
-                    {c.title && <div className="text-[10px] text-text-dim truncate">{c.title}</div>}
-                    {c.email && <div className="text-[10px] text-text-dim truncate">{c.email}</div>}
-                    {c.phone && <div className="text-[10px] text-text-dim truncate">{c.phone}</div>}
-                  </div>
-                  {badge && <span className="text-[9px] px-1.5 py-0.5 rounded shrink-0" style={{ background: `${badge.color}22`, color: badge.color }}>{badge.label}</span>}
-                  <button onClick={() => openEdit(c)} className="text-text-dim hover:text-accent-blue shrink-0 opacity-0 group-hover:opacity-100 transition"><Icon.Edit width={11} height={11} /></button>
-                </div>
-              )}
+                {badge && <span className="text-[9px] px-1.5 py-0.5 rounded shrink-0" style={{ background: `${badge.color}22`, color: badge.color }}>{badge.label}</span>}
+                <button onClick={() => setOpenId(c.id)} className="text-text-dim hover:text-accent-blue shrink-0 opacity-0 group-hover:opacity-100 transition" title="Open contact">
+                  <Icon.Edit width={11} height={11} />
+                </button>
+                <button onClick={() => setConfirmRemove(c.id)} className="text-text-dim hover:text-accent-red shrink-0 opacity-0 group-hover:opacity-100 transition" title={shared ? 'Unlink from this account' : 'Delete contact'}>
+                  <Icon.X width={11} height={11} />
+                </button>
+              </div>
             </div>
           );
         })}
 
-        {contacts.length === 0 && !adding && <div className="text-[10px] text-text-dim">No contacts.</div>}
+        {contacts.length === 0 && !adding && !linking && <div className="text-[10px] text-text-dim">No contacts.</div>}
+
+        {linking && (
+          <LinkExistingContact
+            account={account}
+            onDone={() => { setLinking(false); onChange(); }}
+            onCancel={() => setLinking(false)}
+          />
+        )}
 
         {adding && (
           <div className="flex flex-col gap-1.5 border border-border rounded p-2">
@@ -546,6 +678,15 @@ function ContactsCard({ account, onChange }) {
           </div>
         )}
       </div>
+
+      {openId && (
+        <ContactDrawer
+          contactId={openId}
+          accounts={allAccounts}
+          onClose={() => setOpenId(null)}
+          onChange={onChange}
+        />
+      )}
     </Section>
   );
 }

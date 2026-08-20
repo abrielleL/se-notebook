@@ -43,9 +43,39 @@ export const api = {
   noteVersions: (id) => request(`/api/notes/${id}/versions`),
 
   // contacts
+  listContacts: (params = {}) => {
+    const clean = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== '' && v != null));
+    const q = new URLSearchParams(clean).toString();
+    return request(`/api/contacts${q ? `?${q}` : ''}`);
+  },
+  contactStats: () => request('/api/contacts/stats'),
+  getContact: (id) => request(`/api/contacts/${id}`),
   createContact: (body) => request('/api/contacts', { method: 'POST', body: json(body) }),
   updateContact: (id, body) => request(`/api/contacts/${id}`, { method: 'PUT', body: json(body) }),
   deleteContact: (id) => request(`/api/contacts/${id}`, { method: 'DELETE' }),
+
+  // contact <-> account links (a partner can be tied to several accounts)
+  linkContactAccount: (id, body) =>
+    request(`/api/contacts/${id}/accounts`, { method: 'POST', body: json(body) }),
+  updateContactAccount: (id, accountId, body) =>
+    request(`/api/contacts/${id}/accounts/${accountId}`, { method: 'PUT', body: json(body) }),
+  unlinkContactAccount: (id, accountId) =>
+    request(`/api/contacts/${id}/accounts/${accountId}`, { method: 'DELETE' }),
+
+  // notes about a person
+  createContactNote: (id, body) =>
+    request(`/api/contacts/${id}/notes`, { method: 'POST', body: json(body) }),
+  updateContactNote: (id, noteId, body) =>
+    request(`/api/contacts/${id}/notes/${noteId}`, { method: 'PUT', body: json(body) }),
+  deleteContactNote: (id, noteId) =>
+    request(`/api/contacts/${id}/notes/${noteId}`, { method: 'DELETE' }),
+
+  // duplicate review queue
+  contactMergeCandidates: () => request('/api/contacts/merge-candidates'),
+  dismissMergeCandidate: (id) =>
+    request(`/api/contacts/merge-candidates/${id}/dismiss`, { method: 'POST' }),
+  mergeContacts: (keeperId, loserId) =>
+    request('/api/contacts/merge', { method: 'POST', body: json({ keeper_id: keeperId, loser_id: loserId }) }),
 
   // next steps
   listNextSteps: (accountId) => request(`/api/next-steps/${accountId}`),
@@ -134,13 +164,24 @@ export const api = {
 
   // export (pov_id optional — targets a specific POV draft, else the latest)
   // kind: 'account' (full selectable summary) or 'pov' (fixed branded POV doc)
-  exportPdf: (accountId, sections, povId, kind = 'account') =>
-    request(`/api/accounts/${accountId}/export`, { method: 'POST', body: json({ format: 'pdf', sections, pov_id: povId, kind }) }),
-  exportDocx: async (accountId, sections, povId, kind = 'account') => {
+  // opts.includeNonCustomerContacts adds partner/analyst/internal people to the
+  // Contacts section; off by default so they stay out of customer deliverables.
+  exportPdf: (accountId, sections, povId, kind = 'account', opts = {}) =>
+    request(`/api/accounts/${accountId}/export`, {
+      method: 'POST',
+      body: json({
+        format: 'pdf', sections, pov_id: povId, kind,
+        include_non_customer_contacts: Boolean(opts.includeNonCustomerContacts)
+      })
+    }),
+  exportDocx: async (accountId, sections, povId, kind = 'account', opts = {}) => {
     const res = await fetch(`/api/accounts/${accountId}/export`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: json({ format: 'docx', sections, pov_id: povId, kind })
+      body: json({
+        format: 'docx', sections, pov_id: povId, kind,
+        include_non_customer_contacts: Boolean(opts.includeNonCustomerContacts)
+      })
     });
     if (!res.ok) throw new Error(`Export failed: ${res.status}`);
     const blob = await res.blob();

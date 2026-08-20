@@ -9,6 +9,7 @@ const TYPE_LABEL = {
   note: 'Note',
   transcript: 'Transcript',
   contact: 'Contact',
+  contact_note: 'Contact note',
   deal: 'Deal',
   file: 'File',
   attachment: 'File'

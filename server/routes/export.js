@@ -2,6 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const db = require('../db/database');
+const { contactsForAccount } = require('../lib/contactStore');
 
 const router = express.Router();
 
@@ -79,7 +80,10 @@ function escapeHtml(s) {
 
 // Build a normalized model for the requested sections.
 // Each item: { key, title, internal, paragraphs?, table?, subsections?, sources? }
-function assemble(account, sectionKeys, povId) {
+// `includeNonCustomer` controls whether partner / analyst / internal contacts
+// appear in the Contacts section. Defaults to false so a partner's name never
+// lands in a customer-facing document unless it was asked for explicitly.
+function assemble(account, sectionKeys, povId, includeNonCustomer = false) {
   const id = account.id;
   const items = [];
 
@@ -95,12 +99,20 @@ function assemble(account, sectionKeys, povId) {
       const steps = db.prepare('SELECT text, completed FROM next_steps WHERE account_id = ? ORDER BY created_at').all(id);
       items.push({ key, title, paragraphs: steps.length ? steps.map(s => `${s.completed ? '[x]' : '[ ]'} ${s.text}`) : ['(none)'] });
     } else if (key === 'contacts') {
-      const rows = db.prepare('SELECT name, title, meddpicc_role, email FROM contacts WHERE account_id = ? ORDER BY created_at').all(id);
+      const rows = contactsForAccount(db, id, { customerOnly: !includeNonCustomer });
+      // The Organization column only earns its place when non-customer
+      // contacts are in play -- for customer-only exports every row would
+      // just repeat the account name.
+      const headers = includeNonCustomer
+        ? ['Name', 'Title', 'Organization', 'Role', 'Email']
+        : ['Name', 'Title', 'Role', 'Email'];
       items.push({
         key, title,
         table: {
-          headers: ['Name', 'Title', 'Role', 'Email'],
-          rows: rows.map(c => [c.name || '', c.title || '', c.meddpicc_role || '', c.email || ''])
+          headers,
+          rows: rows.map(c => includeNonCustomer
+            ? [c.name || '', c.title || '', c.org_name || (c.contact_type === 'customer' ? account.account_name : ''), c.meddpicc_role || '', c.email || '']
+            : [c.name || '', c.title || '', c.meddpicc_role || '', c.email || ''])
         }
       });
     } else if (key === 'qualification') {
@@ -697,8 +709,9 @@ router.post('/accounts/:id/export', async (req, res, next) => {
     const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.id);
     if (!account) return res.status(404).json({ error: 'Account not found' });
 
-    const { format, sections, pov_id, kind } = req.body || {};
+    const { format, sections, pov_id, kind, include_non_customer_contacts } = req.body || {};
     const sectionKeys = Array.isArray(sections) && sections.length ? sections : Object.keys(SECTION_TITLES);
+    const includeNonCustomer = Boolean(include_non_customer_contacts);
 
     // Two export kinds share this endpoint:
     //   'pov'     — the fixed, branded POV document (no section picker)
@@ -716,14 +729,14 @@ router.post('/accounts/:id/export', async (req, res, next) => {
         return res.send(buffer);
       }
       // Full account summary across the selected sections.
-      const items = assemble(account, sectionKeys, pov_id);
+      const items = assemble(account, sectionKeys, pov_id, includeNonCustomer);
       const buffer = await renderAccountDocx(account, items);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
       res.setHeader('Content-Disposition', `attachment; filename="${accountFilename(account)}"`);
       return res.send(buffer);
     }
     // default: pdf -> HTML for client-side print (section model, both kinds)
-    const items = assemble(account, sectionKeys, pov_id);
+    const items = assemble(account, sectionKeys, pov_id, includeNonCustomer);
     return res.json({ html: renderHtml(account, items) });
   } catch (err) {
     next(err);

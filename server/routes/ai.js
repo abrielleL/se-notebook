@@ -1,7 +1,8 @@
 const express = require('express');
-const { v4: uuid } = require('uuid');
 const db = require('../db/database');
 const { callAnthropic, getKey, extractJson, DEFAULT_MODEL } = require('../lib/anthropic');
+const { normalizeName, nameKey, tokenCount } = require('../lib/contactNames');
+const { upsertContact } = require('../lib/contactStore');
 const dealIntel = require('./dealIntelligence');
 
 const router = express.Router();
@@ -71,8 +72,11 @@ function parseAttendees(noteContent) {
     if (!t) continue;
     if (mode === 'customer' || mode === 'opswat') {
       const c = splitNameTitle(t);
-      // Require a full name (>= 2 words) to avoid stray single-token lines.
-      if (c.name && c.name.length <= 80 && c.name.split(/\s+/).length >= 2) {
+      // Single-token attendees ("Paul") are kept rather than dropped: the
+      // contact store folds them into the matching full name on this account,
+      // or skips them when there's no unambiguous match. Anything without a
+      // leading capitalized word isn't a name at all.
+      if (c.name && c.name.length <= 80 && /^[A-Z][A-Za-z'’.\-]*/.test(c.name)) {
         (mode === 'customer' ? customerContacts : opswatContacts).push(c);
       }
     }
@@ -92,78 +96,134 @@ function customerNameCounts(notes) {
   return counts;
 }
 
-// Insert or update a single customer contact. Returns a result row or null.
-function upsertContact(accountId, parsed, counts) {
-  if (!parsed) return null;
-  const name = (parsed.name || '').trim();
-  if (!name || name.length > 80) return null;
-  const title = (parsed.title || '').trim();
+// Write a batch of parsed contacts through the shared store.
+//
+// Deduping the batch by name_key first matters: a single note or transcript
+// routinely mentions the same person more than once ("Paul Lospinuso" in the
+// attendee list, "Paul" in the body). Collapsing here means the store sees one
+// entry per person and the richest variant wins.
+function writeContactBatch(accountId, parsedContacts, counts) {
+  const byKey = new Map();
+  for (const c of parsedContacts) {
+    if (!c || !c.name) continue;
+    const name = normalizeName(c.name);
+    if (!name) continue;
+    const key = nameKey(name);
+    if (!key) continue;
 
-  const existing = db.prepare(
-    'SELECT * FROM contacts WHERE account_id = ? AND LOWER(name) = LOWER(?)'
-  ).get(accountId, name);
+    const candidate = {
+      name,
+      title: (c.title || '').trim(),
+      org_name: (c.company || c.org_name || '').trim(),
+      tokens: tokenCount(name)
+    };
+    const existing = byKey.get(key);
+    // Prefer the fuller name and the more specific title.
+    if (!existing) {
+      byKey.set(key, candidate);
+    } else {
+      if (candidate.tokens > existing.tokens) existing.name = candidate.name;
+      if (candidate.title.length > existing.title.length) existing.title = candidate.title;
+      if (!existing.org_name && candidate.org_name) existing.org_name = candidate.org_name;
+    }
+  }
 
-  if (!existing) {
-    const id = uuid();
-    const role = resolveRole(title, name, counts);
-    db.prepare(`
-      INSERT INTO contacts (id, account_id, name, title, meddpicc_role, auto_extracted)
-      VALUES (?, ?, ?, ?, ?, 1)
-    `).run(id, accountId, name, title || null, role);
-    console.log('[contacts] Created:', name, title);
-    return { name, title, role, created: true };
+  // Longer names first, so "Paul Lospinuso" is created before a bare "Paul"
+  // shows up and can be folded into it rather than the other way round.
+  const ordered = [...byKey.values()].sort((a, b) => b.tokens - a.tokens);
+
+  const results = [];
+  for (const c of ordered) {
+    const r = upsertContact(db, {
+      account_id: accountId,
+      name: c.name,
+      title: c.title,
+      org_name: c.org_name,
+      role: resolveRole(c.title, c.name, counts),
+      contact_type: 'customer',
+      auto_extracted: 1
+    });
+    if (!r || !r.contact) {
+      if (r) console.log(`[contacts] skipped "${c.name}" (${r.reason})`);
+      continue;
+    }
+    if (r.action === 'unchanged') continue;
+    console.log(`[contacts] ${r.action}: ${r.contact.name}${r.reason ? ` (${r.reason})` : ''}`);
+    results.push({
+      name: r.contact.name,
+      title: r.contact.title || '',
+      role: r.contact.meddpicc_role || null,
+      created: r.created,
+      action: r.action
+    });
   }
-  // Update only when the new title is more specific (longer) than the existing.
-  if (title && title.length > (existing.title || '').length) {
-    const role = existing.meddpicc_role || resolveRole(title, name, counts);
-    db.prepare('UPDATE contacts SET title = ?, meddpicc_role = ? WHERE id = ?')
-      .run(title, role, existing.id);
-    console.log('[contacts] Updated:', name, 'title changed');
-    return { name, title, role, created: false };
-  }
-  return null;
+  return results;
 }
 
 // Extract + upsert customer contacts from a structured note.
 function extractContacts(accountId, raw, allNotes) {
   const { customerContacts } = parseAttendees(raw);
-  const counts = customerNameCounts(allNotes);
-  const results = [];
-  for (const c of customerContacts) {
-    const r = upsertContact(accountId, c, counts);
-    if (r) results.push(r);
+  return writeContactBatch(accountId, customerContacts, customerNameCounts(allNotes));
+}
+
+// How much transcript to hand the model. Transcripts here run ~28k chars on
+// average and up to ~64k; the previous 2,000-char window saw only the opening
+// greetings, which is exactly where people are introduced by first name only
+// ("Hey Paul") -- a direct cause of the fragment rows this replaces.
+const TRANSCRIPT_HEAD_CHARS = 30000;
+
+// Collect distinct "Speaker:" labels across the whole transcript, so a
+// participant who only speaks in the final third still gets seen even when the
+// body is truncated.
+function speakerLabels(content) {
+  const labels = new Set();
+  for (const line of String(content || '').split('\n')) {
+    const m = line.match(/^\s*([A-Z][A-Za-z'’.\- ]{1,40}?)\s*(?:\(\d{1,2}:\d{2}\))?\s*:/);
+    if (m) labels.add(m[1].trim());
   }
-  return results;
+  return [...labels].slice(0, 60);
 }
 
 // Extract customer participants from a free-form transcript via Anthropic.
 async function extractTranscriptContacts(accountId, content, key, allNotes) {
-  const system = `Extract all meeting participants from this transcript. Return JSON only:
+  const system = `Extract the meeting participants from this call transcript. Return JSON only:
 {
-  contacts: [
-    { name: string, title: string, company: string, is_customer: boolean }
+  "contacts": [
+    { "name": string, "title": string, "company": string, "is_customer": boolean }
   ]
 }
-Include only people who are explicitly identified in the transcript. If title/company unknown, use empty string. is_customer: true if they appear to be from the customer company, false if OPSWAT.`;
+
+Rules:
+- Give each person's FULL name (first and last) whenever it appears anywhere in the transcript. Speaker labels are often first-name-only; if the full name appears elsewhere, use the full name.
+- If you only ever see a first name for someone, still return it, but do not invent a last name.
+- Return each person EXACTLY ONCE. Do not output both "Paul" and "Paul Lospinuso" -- pick the fuller name.
+- Write names as "First Last", never "Last, First".
+- Do not include titles, honorifics, credentials, or parentheticals in the name field.
+- title/company: empty string if unknown. Never guess.
+- is_customer: true for the customer's own staff; false for OPSWAT employees, resellers, and partners.
+No explanation, JSON only.`;
+
+  const body = String(content || '');
+  const head = body.slice(0, TRANSCRIPT_HEAD_CHARS);
+  const labels = speakerLabels(body);
+  const userContent = head +
+    (body.length > TRANSCRIPT_HEAD_CHARS ? '\n\n[transcript truncated]' : '') +
+    (labels.length ? `\n\nSpeaker labels seen across the full transcript: ${labels.join(', ')}` : '');
+
   let parsed = {};
   try {
     const text = await callAnthropic({
-      key, model: DEFAULT_MODEL, max_tokens: 800, system,
-      messages: [{ role: 'user', content: String(content || '').slice(0, 2000) }]
+      key, model: DEFAULT_MODEL, max_tokens: 1200, system,
+      messages: [{ role: 'user', content: userContent }]
     });
     parsed = extractJson(text);
   } catch (e) {
     console.warn('[contacts] transcript participant extraction failed:', e.message);
     return [];
   }
-  const counts = customerNameCounts(allNotes);
-  const results = [];
-  for (const c of (parsed && parsed.contacts) || []) {
-    if (!c || !c.is_customer || !c.name) continue;
-    const r = upsertContact(accountId, { name: c.name, title: c.title || '' }, counts);
-    if (r) results.push(r);
-  }
-  return results;
+
+  const customerOnly = ((parsed && parsed.contacts) || []).filter(c => c && c.is_customer && c.name);
+  return writeContactBatch(accountId, customerOnly, customerNameCounts(allNotes));
 }
 
 // Dev-only self-test of the attendee parser (runs once at startup).
@@ -179,15 +239,40 @@ Mike Johnson, SE
 
 Follow-up: Send documentation`;
   const result = parseAttendees(testNote);
-  console.log('[contacts-test] Customer:', result.customerContacts);
-  console.log('[contacts-test] OPSWAT:', result.opswatContacts);
-  const ok =
+  const parseOk =
     result.customerContacts.length === 2 &&
     result.customerContacts[0].name === 'John Smith' && result.customerContacts[0].title === 'CISO' &&
     result.customerContacts[1].name === 'Jane Doe' && result.customerContacts[1].title === 'IT Manager' &&
     result.opswatContacts.length === 1 &&
     result.opswatContacts[0].name === 'Mike Johnson' && result.opswatContacts[0].title === 'SE';
-  console.log(`[contacts-test] ${ok ? 'PASS' : 'FAIL'}`);
+
+  // Guard the name-collapsing rules that the duplicate-contact bug came from.
+  // These are pure functions, so they can be checked without touching the DB.
+  const { compareNames } = require('../lib/contactNames');
+  const sameConfident = (a, b) => {
+    const c = compareNames(a, b);
+    return Boolean(c && c.confident);
+  };
+  const sameQueued = (a, b) => {
+    const c = compareNames(a, b);
+    return Boolean(c && !c.confident);
+  };
+  const dedupeOk =
+    nameKey('Erika Pinczesi -') === nameKey('Erika Pinczesi') &&
+    nameKey('Ahmad, Tasneem') === nameKey('Tasneem Ahmad') &&
+    nameKey('Dr. Jane Doe  ') === nameKey('Jane Doe') &&
+    nameKey('Ron Howell (Guidepoint)') === nameKey('Ron Howell') &&
+    sameConfident('Magdy Michael', 'Magdy Michaeel') &&
+    sameQueued('Nima', 'Nima Gharehdaghi') &&
+    !compareNames('Brian Candage', 'Brian Smith') &&
+    !compareNames('Scott Carter', 'Scott Sipkens') &&
+    tokenCount('Paul') === 1 && tokenCount('Paul Lospinuso') === 2;
+
+  const ok = parseOk && dedupeOk;
+  console.log(`[contacts-test] parser ${parseOk ? 'PASS' : 'FAIL'}, dedupe ${dedupeOk ? 'PASS' : 'FAIL'}`);
+  if (!ok) {
+    console.warn('[contacts-test] customer:', result.customerContacts, 'opswat:', result.opswatContacts);
+  }
 }
 if (process.env.NODE_ENV !== 'production') {
   try { runParserSelfTest(); } catch (e) { console.warn('[contacts-test] error:', e.message); }

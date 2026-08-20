@@ -2,6 +2,7 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const db = require('../db/database');
 const { PRESALES_STAGES } = require('../lib/stages');
+const { contactsForAccount } = require('../lib/contactStore');
 
 const router = express.Router();
 
@@ -71,7 +72,9 @@ router.get('/:id', (req, res) => {
   const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.id);
   if (!account) return res.status(404).json({ error: 'Account not found' });
 
-  account.contacts = db.prepare('SELECT * FROM contacts WHERE account_id = ? ORDER BY created_at').all(account.id);
+  // Via the join table, so partner contacts shared with other accounts appear
+  // here too -- not just the ones whose primary account is this one.
+  account.contacts = contactsForAccount(db, account.id);
   account.next_steps = db.prepare('SELECT * FROM next_steps WHERE account_id = ? ORDER BY created_at').all(account.id);
   account.todos = db.prepare('SELECT * FROM todos WHERE account_id = ? ORDER BY created_at').all(account.id);
   account.notes = db.prepare(`
