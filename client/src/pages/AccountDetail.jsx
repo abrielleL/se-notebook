@@ -96,6 +96,15 @@ export default function AccountDetail() {
 
   const activePov = povs[0] || null;
 
+  // Most recent transcript upload, for the history header. The API already
+  // orders transcripts newest-first, but this reduces over created_at rather
+  // than trusting position, so it stays correct if that ordering ever changes
+  // (it sorts by call_date first, which can differ from upload order).
+  const lastTranscriptUpload = useMemo(() => {
+    const dates = (account?.transcripts || []).map(t => t.created_at).filter(Boolean);
+    return dates.length ? dates.reduce((a, b) => (a > b ? a : b)) : null;
+  }, [account]);
+
   // Persistent indicator for a background POV job started elsewhere — resumes
   // from localStorage so it stays visible after navigating away and back.
   const { generating: povGenerating } = usePovJob(id, {
@@ -368,6 +377,19 @@ export default function AccountDetail() {
               </div>
             </Section>
 
+            <Section
+              title={`Transcript history (${(account.transcripts || []).length})`}
+              icon={Icon.Mic}
+              right={lastTranscriptUpload && (
+                <span className="text-[10px] text-text-dim shrink-0">Last upload · {formatDate(lastTranscriptUpload)}</span>
+              )}
+            >
+              <div className="flex flex-col gap-2">
+                {(account.transcripts || []).length === 0 && <div className="text-[11px] text-text-dim">No transcripts yet.</div>}
+                {(account.transcripts || []).map(t => <TranscriptRow key={t.id} transcript={t} />)}
+              </div>
+            </Section>
+
             <AccountFiles accountId={id} />
           </div>
 
@@ -429,6 +451,47 @@ function NoteRow({ note }) {
         <span className="ml-auto text-text-dim text-[10px]">{open ? '▾' : '▸'}</span>
       </button>
       {open && <div className="px-2.5 py-2 text-[11px] text-text-secondary whitespace-pre-wrap leading-relaxed">{note.raw_notes || <span className="text-text-dim">empty</span>}</div>}
+    </div>
+  );
+}
+
+// Where a transcript came from, in plain words.
+const TRANSCRIPT_SOURCES = {
+  file_upload: 'File',
+  clari_copilot: 'Clari',
+  paste: 'Pasted'
+};
+
+function TranscriptRow({ transcript: t }) {
+  const [open, setOpen] = useState(false);
+  const uploaded = (t.created_at || '').slice(0, 10);
+  // The call date is the useful one; surface the upload date only when it
+  // differs, since for a file upload the two are usually the same day.
+  const showUploaded = uploaded && t.call_date && uploaded !== t.call_date;
+  return (
+    <div className="border border-border rounded">
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-2 px-2.5 py-1.5 bg-[#111f42] text-left">
+        <span className="text-[11px] text-text-primary shrink-0">{formatDate(t.call_date || t.created_at)}</span>
+        <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#0c295f] text-accent-blue shrink-0">
+          {TRANSCRIPT_SOURCES[t.source] || t.source || 'Transcript'}
+        </span>
+        {t.title && <span className="text-[10px] text-text-muted truncate min-w-0">{t.title}</span>}
+        <span className="ml-auto text-text-dim text-[10px] shrink-0">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <div className="px-2.5 py-2">
+          <div className="text-[9px] text-text-dim mb-1.5">
+            {showUploaded ? `Uploaded ${formatDate(t.created_at)} · ` : ''}
+            {t.duration_minutes ? `${t.duration_minutes} min · ` : ''}
+            {(t.content || '').length.toLocaleString()} characters
+          </div>
+          {/* Transcripts run tens of thousands of characters, so unlike a note
+              this is capped and scrolled rather than expanded inline. */}
+          <div className="text-[11px] text-text-secondary whitespace-pre-wrap leading-relaxed font-mono overflow-y-auto border border-border-inset rounded bg-[#040d1c] px-2 py-1.5" style={{ maxHeight: 280 }}>
+            {t.content || <span className="text-text-dim">empty</span>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
