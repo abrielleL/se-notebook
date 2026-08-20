@@ -309,27 +309,10 @@ ${SECTION_SPEC}`;
       else sectionTexts['Notice'] = EMBED_FAIL_BANNER;
     }
 
-    // 8. SE prep notes (separate call)
-    let sePrep = '';
-    try {
-      sePrep = await callAnthropic({
-        key, model: POV_MODEL, max_tokens: 1500,
-        system: 'You are an expert OPSWAT Solutions Engineer writing private internal preparation notes.',
-        messages: [{ role: 'user', content:
-`Based on this account context and POV, generate private SE preparation notes covering: (1) anticipated customer objections and how to address them, (2) technical gotchas for this specific product/deployment combination, (3) 3-5 questions to ask at kickoff, (4) suggested demo flow sequence. Be specific to this customer's environment. Format as four labeled sections.
-
-ACCOUNT: ${account.account_name} | Industry: ${account.industry || 'n/a'}
-Products: ${labelsFor('product', body.selected_products, maps).join(', ')}
-Deployment: ${labelsFor('deployment', body.selected_deployment, maps).join(', ')}
-Business pain: ${di.business_pain || 'n/a'}
-Competitive landscape: ${di.competitive_landscape || 'n/a'}
-
-POV DOCUMENT:
-${povText.slice(0, 6000)}` }]
-      });
-    } catch (e) {
-      console.warn('[pov] SE prep notes generation failed:', e.message);
-    }
+    // SE prep notes were removed from the product. The column is retained so
+    // existing notes on old drafts are not destroyed, but nothing generates or
+    // displays them now -- which also drops an extra Anthropic call per POV.
+    const sePrep = '';
 
     // 9. persist
     const color = POV_COLORS[db.prepare('SELECT COUNT(*) AS n FROM pov_drafts').get().n % POV_COLORS.length];
@@ -353,7 +336,7 @@ ${povText.slice(0, 6000)}` }]
       user_count: body.user_count || null,
       endpoint_count: body.endpoint_count || null,
       // Private SE planning notes — stored for the record, never sent to the AI
-      // and never included in exports (export reads section_texts + se_prep_notes only).
+      // and never included in exports (export reads section_texts only).
       se_notes: body.se_notes || null
     };
     const info = db.prepare(`
@@ -518,7 +501,7 @@ router.put('/accounts/:id/pov/:povId', (req, res) => {
     .get(req.params.povId, req.params.id);
   if (!draft) return res.status(404).json({ error: 'POV draft not found' });
 
-  const allowed = ['status', 'win_loss', 'win_loss_note', 'start_date', 'end_date', 'se_prep_notes'];
+  const allowed = ['status', 'win_loss', 'win_loss_note', 'start_date', 'end_date'];
   const updates = [];
   const values = [];
   for (const f of allowed) {

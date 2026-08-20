@@ -66,7 +66,6 @@ const SECTION_TITLES = {
   notes: 'Note History',
   crm_snapshot: 'CRM Snapshot',
   active_pov: 'Active POV',
-  se_prep_notes: 'SE Prep Notes',
   attachments: 'Attachments'
 };
 
@@ -147,9 +146,6 @@ function assemble(account, sectionKeys, povId, includeNonCustomer = false) {
         subsections: Object.entries(sections).map(([h, t]) => ({ heading: h, paragraphs: [t] })),
         sources
       });
-    } else if (key === 'se_prep_notes') {
-      const pov = getPov(id, povId);
-      items.push({ key, title: `${title} — ${INTERNAL_LABEL}`, internal: true, paragraphs: [pov && pov.se_prep_notes ? pov.se_prep_notes : '(none)'] });
     } else if (key === 'attachments') {
       const files = accountFiles(id);
       items.push({
@@ -474,11 +470,6 @@ async function renderDocx(account, pov, selectedKeys) {
   }
 
   // SE PREP NOTES (only if explicitly selected) — internal label.
-  if (Array.isArray(selectedKeys) && selectedKeys.includes('se_prep_notes') && pov && pov.se_prep_notes) {
-    children.push(new Paragraph({ spacing: { before: 280, after: 60 }, children: [run('INTERNAL — NOT FOR DISTRIBUTION', { bold: true, color: C.internal, size: half(PT.body) })] }));
-    children.push(sectionHeading('', 'SE Prep Notes'));
-    children.push(...parseBody(pov.se_prep_notes));
-  }
 
   // ATTACHMENTS (only if explicitly selected): table + inline images.
   if (Array.isArray(selectedKeys) && selectedKeys.includes('attachments')) {

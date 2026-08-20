@@ -73,7 +73,6 @@ export default function AccountExportModal({ accountId, accountName, account = {
         if (cc) out.push(`Success criteria: ${cc.met}/${cc.total} met`);
         return out;
       }
-      case 'se_prep_notes': return pov && pov.se_prep_notes ? [trunc(pov.se_prep_notes, 200)] : [];
       case 'attachments': return files.map(f => f.original_name);
       default: return [];
     }

@@ -59,7 +59,6 @@ app.use('/api', require('./routes/povConfig'));
 app.use('/api', require('./routes/tags'));
 app.use('/api', require('./routes/ai'));
 app.use('/api', require('./routes/pov'));
-app.use('/api', require('./routes/email'));
 app.use('/api', require('./routes/export'));
 app.use('/api', require('./routes/files'));
 app.use('/api/auth/microsoft', require('./routes/auth'));

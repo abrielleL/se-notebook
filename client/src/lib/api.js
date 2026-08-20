@@ -165,9 +165,6 @@ export const api = {
   runExtraction: (accountId, body = {}) =>
     request(`/api/accounts/${accountId}/run-extraction`, { method: 'POST', headers: aiHeaders(), body: json(body) }),
 
-  // email draft
-  emailDraft: (accountId, body) =>
-    request(`/api/accounts/${accountId}/email-draft`, { method: 'POST', headers: aiHeaders(), body: json(body) }),
 
   // export (pov_id optional — targets a specific POV draft, else the latest)
   // kind: 'account' (full selectable summary) or 'pov' (fixed branded POV doc)

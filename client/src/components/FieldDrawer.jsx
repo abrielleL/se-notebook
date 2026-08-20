@@ -3,7 +3,7 @@ import Drawer from './Drawer.jsx';
 import Markdown from './Markdown.jsx';
 
 // Right-side drawer for expanding/editing a truncated field (AI summary,
-// drivers, environment, the 8 qualification fields, SE prep notes).
+// drivers, environment, the 8 qualification fields).
 // `history` is an array of { when, what } describing AI appends.
 // Shows the content rendered by default; "Edit" reveals the raw textarea.
 export default function FieldDrawer({ title, value, history = [], footNote, onSave, onClose }) {

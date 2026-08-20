@@ -131,13 +131,7 @@ export const STAGE_GATES = {
   ]
 };
 
-export const EMAIL_TYPES = [
-  { value: 'pov-followup', label: 'POV follow-up after check-in' },
-  { value: 'pre-kickoff', label: 'Pre-kickoff prep email' },
-  { value: 'technical-escalation', label: 'Technical escalation' },
-  { value: 'closeout-summary', label: 'Close-out summary' },
-  { value: 'custom', label: 'Custom prompt…' }
-];
+
 
 
 export const NOTE_TYPES = [
@@ -159,7 +153,6 @@ export const EXPORT_SECTIONS = [
   { key: 'notes', label: 'Note history' },
   { key: 'crm_snapshot', label: 'CRM snapshot' },
   { key: 'active_pov', label: 'Active POV' },
-  { key: 'se_prep_notes', label: 'SE prep notes', private: true },
   { key: 'attachments', label: 'Attachments' }
 ];
 export const EXPORT_PRESETS = {

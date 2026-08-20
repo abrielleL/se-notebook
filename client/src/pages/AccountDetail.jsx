@@ -21,7 +21,7 @@ import { linkedInSearchUrl } from '../lib/linkedin.js';
 import {
   riskDot, RISK_OPTIONS, escalationStyle, ESCALATION_OPTIONS, QUAL_FIELDS,
   ROLE_BADGES, ROLE_OPTIONS, STAGE_BAR, EXTRA_STAGES, STAGE_GATES, nextStage, stageBarStyle,
-  EMAIL_TYPES, agingColor, PRESALES_STAGES, CONTACT_TYPE_OPTIONS
+  agingColor, PRESALES_STAGES, CONTACT_TYPE_OPTIONS
 } from '../lib/constants.js';
 
 // Accent color for a terminal stage when it is the account's current stage.
@@ -86,7 +86,6 @@ export default function AccountDetail() {
   const [exportOpen, setExportOpen] = useState(false);
   const [gateTarget, setGateTarget] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
-  const [emailOpen, setEmailOpen] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [tagCatalog, setTagCatalog] = useState([]);
   useEffect(() => { api.listTags().then(setTagCatalog).catch(() => {}); }, []);
@@ -396,13 +395,7 @@ export default function AccountDetail() {
           {/* RIGHT */}
           <div className="flex flex-col gap-3 min-w-0">
             <NextStepsCard account={account} onChange={loadAll} />
-            <Section title="Email draft" icon={Icon.Note}>
-              <button onClick={() => setEmailOpen(true)} disabled={!online} title={!online ? 'AI features require internet connection' : undefined}
-                className="w-full text-[10px] py-1.5 rounded bg-accent-blue/15 text-accent-blue border border-accent-blue/30 hover:bg-accent-blue/25 disabled:opacity-40">Draft an email…</button>
-            </Section>
             <PrereqCard pov={activePov} />
-            <SePrepCard pov={activePov}
-              onExpand={() => activePov && openFieldDrawer({ title: 'SE prep notes (Private)', value: activePov.se_prep_notes, footNote: 'Private — never exported unless selected', save: (t) => api.updatePov(id, activePov.id, { se_prep_notes: t }).then(() => loadAll()) })} />
           </div>
         </div>
       </div>
@@ -412,7 +405,6 @@ export default function AccountDetail() {
       {exportOpen && <AccountExportModal accountId={id} accountName={account.account_name} account={account} di={di} snapshot={snapshots[0]} pov={activePov} onClose={() => setExportOpen(false)} />}
       {gateTarget && <StageGateModal accountId={id} targetStage={gateTarget} onAdvance={advanceStage} onClose={() => setGateTarget(null)} />}
       {editOpen && <EditAccountModal account={account} onClose={() => setEditOpen(false)} onSave={async (b) => { const ok = await patchAccount(b); if (ok) setEditOpen(false); }} />}
-      {emailOpen && <EmailDraftModal accountId={id} online={online} onClose={() => setEmailOpen(false)} />}
       {transcriptOpen && <TranscriptModal onClose={() => setTranscriptOpen(false)} onSave={(t) => processTranscript({ text: t })} />}
     </div>
   );
@@ -1007,20 +999,6 @@ function PrereqCard({ pov }) {
   );
 }
 
-function SePrepCard({ pov, onExpand }) {
-  return (
-    <Section title="SE prep notes" icon={Icon.Eye}
-      right={<span className="text-[9px] px-1.5 py-0.5 rounded bg-[#2e1d18] text-accent-yellow">🔒 Private</span>}>
-      {pov && pov.se_prep_notes ? (
-        <>
-          <div className="text-[10px] text-text-secondary leading-snug overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical' }}>{stripMarkdown(pov.se_prep_notes)}</div>
-          <button onClick={onExpand} className="text-[10px] text-accent-blue hover:underline mt-1">Edit</button>
-        </>
-      ) : <div className="text-[10px] text-text-dim">Generate a POV to get SE prep notes. Never included in customer exports.</div>}
-    </Section>
-  );
-}
-
 function buildAccountForm(account) {
   return {
     account_name: account.account_name || '',
@@ -1068,39 +1046,6 @@ function EditAccountModal({ account, onClose, onSave }) {
 
 function Field({ label, children, wide }) {
   return <div className={wide ? 'col-span-2' : ''}><label className="text-[10px] text-text-muted block mb-1">{label}</label>{children}</div>;
-}
-
-function EmailDraftModal({ accountId, online, onClose }) {
-  const [type, setType] = useState('pov-followup');
-  const [custom, setCustom] = useState('');
-  const [result, setResult] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const toast = useToast();
-  async function generate() {
-    setBusy(true);
-    try { setResult(await api.emailDraft(accountId, { email_type: type, custom_prompt: custom })); }
-    catch (e) { toast(e.message, 'error'); }
-    finally { setBusy(false); }
-  }
-  return (
-    <Modal title="Draft email" onClose={onClose} width="max-w-xl"
-      footer={<><button onClick={onClose} className="text-[12px] text-text-muted">Close</button>
-        <button onClick={generate} disabled={busy || !online} title={!online ? 'AI features require internet connection' : undefined} className="bg-accent-blue/15 text-accent-blue border border-accent-blue/30 rounded px-3 py-1.5 text-[12px] font-medium disabled:opacity-40">{busy ? 'Generating…' : 'Generate draft'}</button></>}>
-      <div className="flex flex-col gap-2">
-        <select value={type} onChange={e => setType(e.target.value)} className="bg-[#040d1c] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary">
-          {EMAIL_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-        </select>
-        {type === 'custom' && <input value={custom} onChange={e => setCustom(e.target.value)} placeholder="Custom instructions…" className="bg-[#040d1c] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary" />}
-        {result && (
-          <div className="border border-border rounded p-3 flex flex-col gap-2">
-            <div className="text-[12px] text-text-primary font-medium">{result.subject}</div>
-            <Markdown className="text-[11px] text-text-secondary">{result.body}</Markdown>
-            <button onClick={() => { navigator.clipboard?.writeText(`${result.subject}\n\n${result.body}`); toast('Copied', 'success'); }} className="self-end text-[11px] text-accent-blue hover:underline">Copy</button>
-          </div>
-        )}
-      </div>
-    </Modal>
-  );
 }
 
 function TranscriptModal({ onClose, onSave }) {

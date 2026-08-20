@@ -448,7 +448,6 @@ function Labeled({ label, children }) {
 function PovDocument({ accountId, account, pov, version, setPov, navigate, onEditInputs, onExport, exportOpen, onCloseExport, online }) {
   const toast = useToast();
   const [sections, setSections] = useState(pov.section_texts || {});
-  const [sePrep, setSePrep] = useState(pov.se_prep_notes || '');
   const [regen, setRegen] = useState(null);   // { key, reason } modal state
   const [diff, setDiff] = useState(null);      // { key, old, new }
   const [revisions, setRevisions] = useState(null);
@@ -459,7 +458,7 @@ function PovDocument({ accountId, account, pov, version, setPov, navigate, onEdi
   const [winLossNote, setWinLossNote] = useState(pov.win_loss_note || '');
   const timers = useRef({});
 
-  useEffect(() => { setSections(pov.section_texts || {}); setSePrep(pov.se_prep_notes || ''); }, [pov.id]);
+  useEffect(() => { setSections(pov.section_texts || {}); }, [pov.id]);
 
   function editSection(key, text) {
     setSections(s => ({ ...s, [key]: text }));
@@ -484,7 +483,6 @@ function PovDocument({ accountId, account, pov, version, setPov, navigate, onEdi
     setDiff(null);
   }
 
-  async function saveSePrep() { await api.updatePov(accountId, pov.id, { se_prep_notes: sePrep }).catch(() => {}); toast('SE prep notes saved', 'success'); }
 
   async function saveStatus(next) {
     setStatus(next);
@@ -573,15 +571,6 @@ function PovDocument({ accountId, account, pov, version, setPov, navigate, onEdi
               </div>
             );
           })}
-
-          {/* SE prep notes (collapsible-ish, always shown) */}
-          <div className="bg-card border border-border rounded-lg">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-              <span className="text-[12px] font-medium text-text-primary flex items-center gap-1.5">🔒 SE prep notes <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#2e1d18] text-accent-yellow">Private — not included in export</span></span>
-              <button onClick={saveSePrep} className="text-[10px] text-accent-blue hover:underline">Save</button>
-            </div>
-            <textarea value={sePrep} onChange={e => setSePrep(e.target.value)} className="w-full bg-transparent px-3 py-2 text-[11px] text-text-secondary leading-relaxed focus:outline-none resize-y" style={{ minHeight: 120 }} />
-          </div>
 
           {/* Revision history */}
           <div className="bg-card border border-border rounded-lg">
