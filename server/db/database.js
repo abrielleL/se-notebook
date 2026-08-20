@@ -2,7 +2,16 @@ const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
 
-const DB_PATH = path.join(__dirname, 'se-notebook.db');
+// The SQLite file lives outside the repo by default in Docker
+// (SE_NOTEBOOK_DB_DIR=/data), because this project directory is inside a
+// OneDrive-synced folder. OneDrive rewriting or rehydrating the file while
+// SQLite holds it open corrupted the database on 2026-08-20 -- a well-known
+// SQLite-on-cloud-sync failure mode. Keep the data dir off any sync client.
+//
+// schema.sql stays next to this file: it is code, shipped in the image, and
+// must not be shadowed by the data mount.
+const DB_DIR = process.env.SE_NOTEBOOK_DB_DIR || __dirname;
+const DB_PATH = path.join(DB_DIR, 'se-notebook.db');
 const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
 
 const db = new Database(DB_PATH);

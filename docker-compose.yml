@@ -6,9 +6,16 @@ services:
       # bind to localhost only — not reachable from the network
       - "127.0.0.1:3001:3001"
     volumes:
-      # persists your SQLite file and uploads on the host
-      - ./server/db:/app/server/db
+      # The SQLite file lives OUTSIDE this project directory on purpose: the
+      # project is inside a OneDrive-synced folder, and OneDrive syncing an
+      # open SQLite file corrupted the database once already. Keep this path
+      # out of OneDrive/Dropbox/iCloud.
+      - ${HOME}/se-notebook-data:/data
+      # Uploads are inert files (no open handles, no page structure), so they
+      # are safe to leave in the synced folder and get cloud backup for free.
       - ./server/uploads:/app/server/uploads
+    environment:
+      - SE_NOTEBOOK_DB_DIR=/data
     env_file:
       - .env
     restart: always

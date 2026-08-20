@@ -40,3 +40,6 @@ __pycache__/
 # skill at ~/.claude/skills/opswat-branding/ instead. The logo SVGs the app
 # actually renders are committed under client/src/assets/.
 opswat-branding.skill
+
+# Corrupt DB copies kept for forensics after the 2026-08-20 OneDrive corruption.
+server/db/*.CORRUPT-*
