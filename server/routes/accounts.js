@@ -55,8 +55,16 @@ router.get('/', (_req, res) => {
   res.json(accounts.map(withTags));
 });
 
+// Risk is the only account color surfaced in the UI (the dot on each dashboard
+// card). New accounts start green -- "evaluation progressing, no detectable
+// risk" is the right resting state -- and stay that way until someone changes
+// it. The edit dropdown still offers a blank option, so clearing it remains a
+// deliberate choice rather than something a new account falls into.
+const RISK_VALUES = ['green', 'yellow', 'red'];
+const DEFAULT_RISK = 'green';
+
 router.post('/', (req, res) => {
-  const { account_name, account_executive, industry, opportunity_stage, presales_stage } = req.body;
+  const { account_name, account_executive, industry, opportunity_stage, presales_stage, risk } = req.body;
   if (!account_name) return res.status(400).json({ error: 'account_name required' });
   if (presales_stage && !PRESALES_STAGES.includes(presales_stage)) {
     return res.status(400).json({ error: `Invalid presales_stage: ${presales_stage}` });
@@ -66,10 +74,13 @@ router.post('/', (req, res) => {
   const count = db.prepare('SELECT COUNT(*) AS n FROM accounts').get().n;
   const color = ACCOUNT_COLORS[count % ACCOUNT_COLORS.length];
 
+  // An explicit risk in the payload wins; anything else falls back to green.
+  const initialRisk = RISK_VALUES.includes(risk) ? risk : DEFAULT_RISK;
+
   db.prepare(`
-    INSERT INTO accounts (id, account_name, account_executive, industry, opportunity_stage, presales_stage, color)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id, account_name, account_executive || null, industry || null, opportunity_stage || null, presales_stage || null, color);
+    INSERT INTO accounts (id, account_name, account_executive, industry, opportunity_stage, presales_stage, color, risk)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, account_name, account_executive || null, industry || null, opportunity_stage || null, presales_stage || null, color, initialRisk);
 
   const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(id);
   res.status(201).json(withTags(account));
