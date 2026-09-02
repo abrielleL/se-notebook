@@ -10,6 +10,7 @@ import StageGateModal from '../components/StageGateModal.jsx';
 import FieldDrawer from '../components/FieldDrawer.jsx';
 import Markdown, { stripMarkdown } from '../components/Markdown.jsx';
 import AccountTagEditor from '../components/AccountTagEditor.jsx';
+import AccountLinkEditor from '../components/AccountLinkEditor.jsx';
 import ContactDrawer, { ContactTypeBadge } from '../components/ContactDrawer.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { useOnline } from '../lib/offline.jsx';
@@ -89,6 +90,9 @@ export default function AccountDetail() {
   const [extracting, setExtracting] = useState(false);
   const [tagCatalog, setTagCatalog] = useState([]);
   useEffect(() => { api.listTags().then(setTagCatalog).catch(() => {}); }, []);
+  // Candidates for the partner-link picker: every other account, split by type.
+  const [allAccounts, setAllAccounts] = useState([]);
+  useEffect(() => { api.listAccounts().then(setAllAccounts).catch(() => {}); }, []);
 
   const [noteText, setNoteText] = useState('');
   const [transcriptOpen, setTranscriptOpen] = useState(false);
@@ -151,6 +155,24 @@ export default function AccountDetail() {
       emitAccountUpdated(updated);                // accounts list / dashboard update live
       return true;
     } catch (e) { toast(e.message, 'error'); return false; }
+  }
+
+  // Partner links, saved from whichever side of the relation this account is
+  // on. Both endpoints return the fresh list, so state comes from the server
+  // rather than being patched optimistically.
+  async function savePartnerLinks(ids) {
+    try {
+      const { partners } = await api.setAccountPartners(id, ids);
+      setAccount(a => ({ ...a, partners }));
+      emitAccountUpdated({ id, partners });
+    } catch (e) { toast(e.message, 'error'); }
+  }
+  async function saveLinkedAccounts(ids) {
+    try {
+      const { linked_accounts } = await api.setPartnerAccounts(id, ids);
+      setAccount(a => ({ ...a, linked_accounts }));
+      emitAccountUpdated({ id, linked_accounts });
+    } catch (e) { toast(e.message, 'error'); }
   }
 
   async function advanceStage(stage) {
@@ -216,6 +238,14 @@ export default function AccountDetail() {
 
   if (loading || !account) return <div className="p-8 text-[12px] text-text-muted">Loading account…</div>;
 
+  // Partners have no presales stage (we sell through them, not to them), so the
+  // stage badge, stage bar and gate checklist are all customer-only.
+  const isPartner = accountType(account) === 'partner';
+
+  // Link candidates always come from the *other* type, minus this account.
+  const partnerCandidates = allAccounts.filter(a => a.id !== id && accountType(a) === 'partner');
+  const customerCandidates = allAccounts.filter(a => a.id !== id && accountType(a) === 'customer');
+
   return (
     <div className="flex flex-col h-full">
       {/* TOPBAR */}
@@ -231,7 +261,7 @@ export default function AccountDetail() {
                 Partner
               </span>
             )}
-            {account.presales_stage && <span className="text-[10px] px-2 py-0.5 rounded bg-[#0c295f] text-accent-blue shrink-0">{account.presales_stage}</span>}
+            {!isPartner && account.presales_stage && <span className="text-[10px] px-2 py-0.5 rounded bg-[#0c295f] text-accent-blue shrink-0">{account.presales_stage}</span>}
             {account.escalation && account.escalation !== 'Not Needed' && (
               <span className="text-[10px] px-2 py-0.5 rounded shrink-0" style={{ background: escalationStyle(account.escalation).bg, color: escalationStyle(account.escalation).text }}>{account.escalation}</span>
             )}
@@ -252,7 +282,8 @@ export default function AccountDetail() {
         </div>
       </div>
 
-      {/* STAGE BAR */}
+      {/* STAGE BAR — customer accounts only */}
+      {!isPartner && (
       <div className="px-5 py-2 border-b border-border flex items-center gap-1 overflow-x-auto">
         {STAGE_BAR.map(stage => {
           const st = stageBarStyle(stage, account.presales_stage);
@@ -279,6 +310,7 @@ export default function AccountDetail() {
           );
         })}
       </div>
+      )}
 
       {/* THREE COLUMNS */}
       <div className="flex-1 overflow-auto p-3">
@@ -303,8 +335,35 @@ export default function AccountDetail() {
               </div>
             </Section>
 
+            {/* Same relation, shown from whichever end this account sits on:
+                a customer lists the partners on the deal, a partner lists the
+                deals it's working. */}
+            {isPartner ? (
+              <Section title="Accounts" icon={Icon.Folder}>
+                <AccountLinkEditor
+                  linked={account.linked_accounts || []}
+                  candidates={customerCandidates}
+                  onChange={saveLinkedAccounts}
+                  addLabel="Link account"
+                  emptyHint="Not linked to any accounts yet."
+                  color={ACCOUNT_TYPES.customer.color}
+                />
+              </Section>
+            ) : (
+              <Section title="Partners" icon={Icon.Folder}>
+                <AccountLinkEditor
+                  linked={account.partners || []}
+                  candidates={partnerCandidates}
+                  onChange={savePartnerLinks}
+                  addLabel="Link partner"
+                  emptyHint="No partners on this deal."
+                  color={ACCOUNT_TYPES.partner.color}
+                />
+              </Section>
+            )}
+
             <ContactsCard account={account} onChange={loadAll} />
-            <StageGateCard account={account} onAdvance={(s) => setGateTarget(s)} />
+            {!isPartner && <StageGateCard account={account} onAdvance={(s) => setGateTarget(s)} />}
 
             <CrmSnapshotCard account={account} snapshot={snapshots[0]} onChange={loadAll} />
 
@@ -1041,7 +1100,10 @@ function EditAccountModal({ account, onClose, onSave }) {
         <Field label="Close date"><DatePicker selected={parseISODate(form.close_date)} onChange={(d) => setForm(f => ({ ...f, close_date: toISODate(d) }))} dateFormat="MMM d, yyyy" placeholderText="Select date" className={inputCls} popperPlacement="bottom-start" /></Field>
         <Field label="Opportunity value"><input type="number" className={inputCls} value={form.opportunity_value} onChange={set('opportunity_value')} /></Field>
         <Field label="Risk"><select className={inputCls} value={form.risk} onChange={set('risk')}><option value="">—</option>{RISK_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}</select></Field>
-        <Field label="Presales stage"><select className={inputCls} value={form.presales_stage} onChange={set('presales_stage')}><option value="">—</option>{PRESALES_STAGES.map(s => <option key={s} value={s}>{s}</option>)}</select></Field>
+        {/* Stage follows the type picked in this same form, so switching to
+            Partner hides it immediately rather than after a save. */}
+        {form.account_type !== 'partner' &&
+          <Field label="Presales stage"><select className={inputCls} value={form.presales_stage} onChange={set('presales_stage')}><option value="">—</option>{PRESALES_STAGES.map(s => <option key={s} value={s}>{s}</option>)}</select></Field>}
         <Field label="Escalation"><select className={inputCls} value={form.escalation} onChange={set('escalation')}><option value="">—</option>{ESCALATION_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}</select></Field>
         <Field label="Jira ticket URL"><input className={inputCls} value={form.jira_ticket_url} onChange={set('jira_ticket_url')} /></Field>
         <Field label="POV success plan URL" wide><input className={inputCls} value={form.pov_success_plan_url} onChange={set('pov_success_plan_url')} /></Field>

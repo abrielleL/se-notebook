@@ -30,6 +30,37 @@ const ACCOUNT_TYPES = ['customer', 'partner'];
 const DEFAULT_ACCOUNT_TYPE = 'customer';
 const normalizeAccountType = (v) => (ACCOUNT_TYPES.includes(v) ? v : DEFAULT_ACCOUNT_TYPE);
 
+// Partners don't move through the presales stages -- we sell *through* them, so
+// there's no POV to run against a reseller. The field is hidden for partners in
+// the UI and cleared here, so a stage can't linger out of sight and reappear
+// (or skew stage stats) if the account is later switched back to a customer.
+const stageAppliesTo = (type) => type !== 'partner';
+
+// Partner links, both directions. account_id is always the customer side.
+const partnersFor = (accountId) => db.prepare(`
+  SELECT a.id, a.account_name, a.account_type
+  FROM account_partners ap JOIN accounts a ON a.id = ap.partner_id
+  WHERE ap.account_id = ? ORDER BY a.account_name
+`).all(accountId);
+
+const linkedAccountsFor = (partnerId) => db.prepare(`
+  SELECT a.id, a.account_name, a.account_type, a.presales_stage
+  FROM account_partners ap JOIN accounts a ON a.id = ap.account_id
+  WHERE ap.partner_id = ? ORDER BY a.account_name
+`).all(partnerId);
+
+// Replace every link on one side of the relation in a single transaction.
+// `side` is the column holding the id we're anchored to.
+function replaceLinks(side, anchorId, otherIds) {
+  const other = side === 'account_id' ? 'partner_id' : 'account_id';
+  const del = db.prepare(`DELETE FROM account_partners WHERE ${side} = ?`);
+  const ins = db.prepare(`INSERT OR IGNORE INTO account_partners (${side}, ${other}) VALUES (?, ?)`);
+  db.transaction(() => {
+    del.run(anchorId);
+    for (const id of otherIds) ins.run(anchorId, id);
+  })();
+}
+
 // tags is stored as a JSON-array TEXT column; expose it to clients as an array.
 function withTags(account) {
   if (!account) return account;
@@ -58,7 +89,32 @@ router.get('/', (_req, res) => {
     FROM accounts a
     ORDER BY a.created_at DESC
   `).all();
-  res.json(accounts.map(withTags));
+
+  // Partner links for the whole list in one query rather than two per row --
+  // the Accounts list and the Dashboard partner cards both need the names.
+  const links = db.prepare(`
+    SELECT ap.account_id, ap.partner_id, c.account_name AS account_name, p.account_name AS partner_name
+    FROM account_partners ap
+    JOIN accounts c ON c.id = ap.account_id
+    JOIN accounts p ON p.id = ap.partner_id
+  `).all();
+  const partnersByAccount = new Map();
+  const accountsByPartner = new Map();
+  const push = (map, key, value) => {
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(value);
+  };
+  for (const l of links) {
+    push(partnersByAccount, l.account_id, { id: l.partner_id, account_name: l.partner_name });
+    push(accountsByPartner, l.partner_id, { id: l.account_id, account_name: l.account_name });
+  }
+  const byName = (a, b) => a.account_name.localeCompare(b.account_name);
+
+  res.json(accounts.map(a => ({
+    ...withTags(a),
+    partners: (partnersByAccount.get(a.id) || []).sort(byName),
+    linked_accounts: (accountsByPartner.get(a.id) || []).sort(byName)
+  })));
 });
 
 // Risk is the only account color surfaced in the UI (the dot on each dashboard
@@ -89,12 +145,14 @@ router.post('/', (req, res) => {
   // Tags may be set at creation time (the New Note form offers them alongside
   // the account type), so they don't need a follow-up PUT.
   const tags = sanitizeTags(req.body.tags);
+  const type = normalizeAccountType(account_type);
+  const stage = stageAppliesTo(type) ? (presales_stage || null) : null;
 
   db.prepare(`
     INSERT INTO accounts (id, account_name, account_executive, industry, opportunity_stage, presales_stage, color, risk, account_type, tags)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, account_name, account_executive || null, industry || null, opportunity_stage || null, presales_stage || null, color, initialRisk,
-         normalizeAccountType(account_type), tags.length ? JSON.stringify(tags) : null);
+  `).run(id, account_name, account_executive || null, industry || null, opportunity_stage || null, stage, color, initialRisk,
+         type, tags.length ? JSON.stringify(tags) : null);
 
   const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(id);
   res.status(201).json(withTags(account));
@@ -107,6 +165,12 @@ router.get('/:id', (req, res) => {
   // Via the join table, so partner contacts shared with other accounts appear
   // here too -- not just the ones whose primary account is this one.
   account.contacts = contactsForAccount(db, account.id);
+  // Both directions, always: `partners` are the partners on this deal,
+  // `linked_accounts` the deals this account works as a partner. Which one the
+  // UI shows follows account_type, but a mistyped account still returns its
+  // links so nothing is silently orphaned.
+  account.partners = partnersFor(account.id);
+  account.linked_accounts = linkedAccountsFor(account.id);
   account.next_steps = db.prepare('SELECT * FROM next_steps WHERE account_id = ? ORDER BY created_at').all(account.id);
   account.todos = db.prepare('SELECT * FROM todos WHERE account_id = ? ORDER BY created_at').all(account.id);
   account.notes = db.prepare(`
@@ -158,13 +222,23 @@ router.put('/:id', (req, res) => {
     });
   }
 
+  // Switching to partner clears the stage; staying a partner ignores any stage
+  // in the payload rather than writing one the UI won't show.
+  const effType = normalizeAccountType('account_type' in req.body ? req.body.account_type : existing.account_type);
+  const clearStage = !stageAppliesTo(effType);
+
   const updates = [];
   const values = [];
   for (const f of EDITABLE_FIELDS) {
+    if (f === 'presales_stage' && clearStage) continue;
     if (f in req.body) {
       updates.push(`${f} = ?`);
       values.push(req.body[f]);
     }
+  }
+  if (clearStage && existing.presales_stage != null) {
+    updates.push('presales_stage = ?');
+    values.push(null);
   }
   // account_type is kept out of EDITABLE_FIELDS so an empty/unknown value
   // normalizes to 'customer' rather than writing a NULL the tabs can't read.
@@ -185,8 +259,66 @@ router.put('/:id', (req, res) => {
   res.json(withTags(account));
 });
 
+// ---------------------------------------------------------------------------
+// Partner links. Both endpoints replace the full set for the account named in
+// the path, which keeps the client simple: send the list you want, get the
+// list back. Each validates the *other* side's type so a customer can't be
+// linked in as a partner (or vice versa) and end up invisible on both pages.
+// ---------------------------------------------------------------------------
+
+// Resolve + type-check the ids on the far side of the link.
+function resolveLinkIds(ids, expectedType, selfId) {
+  if (!Array.isArray(ids)) return { error: 'Expected an array of account ids' };
+  const unique = [...new Set(ids.filter(v => typeof v === 'string' && v))];
+  if (unique.includes(selfId)) return { error: 'An account cannot be linked to itself' };
+  if (!unique.length) return { ids: [] };
+
+  const rows = db.prepare(
+    `SELECT id, account_name, account_type FROM accounts WHERE id IN (${unique.map(() => '?').join(',')})`
+  ).all(...unique);
+  if (rows.length !== unique.length) return { error: 'One or more accounts no longer exist' };
+
+  const wrong = rows.filter(r => normalizeAccountType(r.account_type) !== expectedType);
+  if (wrong.length) {
+    return { error: `Not ${expectedType === 'partner' ? 'a partner' : 'a customer'} account: ${wrong.map(r => r.account_name).join(', ')}` };
+  }
+  return { ids: unique };
+}
+
+// The partners working this account.
+router.put('/:id/partners', (req, res) => {
+  const account = db.prepare('SELECT id FROM accounts WHERE id = ?').get(req.params.id);
+  if (!account) return res.status(404).json({ error: 'Account not found' });
+
+  const { ids, error } = resolveLinkIds(req.body?.partner_ids, 'partner', account.id);
+  if (error) return res.status(400).json({ error });
+
+  replaceLinks('account_id', account.id, ids);
+  res.json({ partners: partnersFor(account.id) });
+});
+
+// The accounts this partner is working -- the same relation from the other end.
+router.put('/:id/linked-accounts', (req, res) => {
+  const partner = db.prepare('SELECT id, account_type FROM accounts WHERE id = ?').get(req.params.id);
+  if (!partner) return res.status(404).json({ error: 'Account not found' });
+  if (normalizeAccountType(partner.account_type) !== 'partner') {
+    return res.status(400).json({ error: 'Only a partner account can be linked to accounts this way.' });
+  }
+
+  const { ids, error } = resolveLinkIds(req.body?.account_ids, 'customer', partner.id);
+  if (error) return res.status(400).json({ error });
+
+  replaceLinks('partner_id', partner.id, ids);
+  res.json({ linked_accounts: linkedAccountsFor(partner.id) });
+});
+
 router.delete('/:id', (req, res) => {
-  db.prepare('DELETE FROM accounts WHERE id = ?').run(req.params.id);
+  // foreign_keys is ON, so the partner links have to go first (from either
+  // side) or the account delete fails on a constraint.
+  db.transaction(() => {
+    db.prepare('DELETE FROM account_partners WHERE account_id = ? OR partner_id = ?').run(req.params.id, req.params.id);
+    db.prepare('DELETE FROM accounts WHERE id = ?').run(req.params.id);
+  })();
   res.json({ ok: true });
 });
 

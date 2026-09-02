@@ -142,7 +142,7 @@ export default function NewNote() {
         account_name: form.account_name.trim(),
         account_executive: form.account_executive.trim() || null,
         industry: form.industry.trim() || null,
-        presales_stage: form.presales_stage || null,
+        presales_stage: form.account_type === 'partner' ? null : (form.presales_stage || null),
         account_type: form.account_type || 'customer',
         tags: form.tags || []
       };
@@ -291,13 +291,17 @@ export default function NewNote() {
             <Label>Industry</Label>
             <input className={inputCls} value={form.industry} onChange={e => setForm(f => ({ ...f, industry: e.target.value }))} />
           </div>
-          <div>
-            <Label>Presales stage</Label>
-            <select className={inputCls} value={form.presales_stage} onChange={e => setForm(f => ({ ...f, presales_stage: e.target.value }))}>
-              <option value="">—</option>
-              {PRESALES_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
+          {/* Partners don't run through the presales stages, so the field is
+              hidden for them (and dropped on save below). */}
+          {form.account_type !== 'partner' && (
+            <div>
+              <Label>Presales stage</Label>
+              <select className={inputCls} value={form.presales_stage} onChange={e => setForm(f => ({ ...f, presales_stage: e.target.value }))}>
+                <option value="">—</option>
+                {PRESALES_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          )}
           <div>
             <Label hint={form.date === todayISO() ? 'Auto-filled · today' : ''}>Date</Label>
             <DatePicker selected={parseISODate(form.date)} onChange={(d) => setForm(f => ({ ...f, date: toISODate(d) }))} dateFormat="MMM d, yyyy" placeholderText="Select date" className={inputCls} popperPlacement="bottom-start" />

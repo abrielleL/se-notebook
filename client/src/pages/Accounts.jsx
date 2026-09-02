@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { initials, colorForName } from '../lib/stage.js';
-import { agingColor, accountType } from '../lib/constants.js';
+import { agingColor, accountType, ACCOUNT_TYPES } from '../lib/constants.js';
 import { stageBadgeClass } from '../lib/stages.js';
 import { useAccountUpdates } from '../lib/accountStore.js';
 import AccountTypeTabs from '../components/AccountTypeTabs.jsx';
+
+const PARTNER_COLOR = ACCOUNT_TYPES.partner.color;
 
 export default function Accounts() {
   const [accounts, setAccounts] = useState([]);
@@ -66,11 +68,15 @@ export default function Accounts() {
       if (aeFilter !== 'All' && (a.account_executive || '') !== aeFilter) return false;
       if (tagFilter !== 'All' && !(a.tags || []).includes(tagFilter)) return false;
       if (!q) return true;
+      // Linked names are searchable in both directions, so "Presidio" finds
+      // the accounts Presidio is on, and vice versa.
+      const linked = typeTab === 'partner' ? (a.linked_accounts || []) : (a.partners || []);
       return (a.account_name || '').toLowerCase().includes(q) ||
              (a.account_executive || '').toLowerCase().includes(q) ||
-             (a.tags || []).some(t => t.toLowerCase().includes(q));
+             (a.tags || []).some(t => t.toLowerCase().includes(q)) ||
+             linked.some(l => (l.account_name || '').toLowerCase().includes(q));
     });
-  }, [byType, query, aeFilter, tagFilter]);
+  }, [byType, query, aeFilter, tagFilter, typeTab]);
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
@@ -174,6 +180,18 @@ export default function Accounts() {
                     </span>
                   );
                 })}
+                {/* Partners on this deal, in the partner green used everywhere
+                    else. Capped so a heavily-partnered account can't push the
+                    name row onto three lines. */}
+                {typeTab === 'customer' && (a.partners || []).slice(0, 2).map(p => (
+                  <span key={p.id} className="text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0"
+                    style={{ color: PARTNER_COLOR, background: `${PARTNER_COLOR}1f`, border: `1px solid ${PARTNER_COLOR}59` }}>
+                    {p.account_name}
+                  </span>
+                ))}
+                {typeTab === 'customer' && (a.partners || []).length > 2 && (
+                  <span className="text-[10px] text-text-dim shrink-0">+{a.partners.length - 2}</span>
+                )}
               </div>
               <div className="text-[11px] text-text-muted truncate">
                 {(a.ae_name || a.account_executive) ? `AE: ${a.ae_name || a.account_executive}` : 'No AE'}
@@ -185,9 +203,17 @@ export default function Accounts() {
                 {a.transcript_count} transcripts
               </div>
             </div>
-            {a.presales_stage
-              ? <span className={`text-[11px] px-2 py-0.5 rounded shrink-0 font-medium ${stageBadgeClass(a.presales_stage)}`}>{a.presales_stage}</span>
-              : <span className="text-[11px] text-text-dim shrink-0">No stage</span>}
+            {/* Partners have no stage, so the trailing slot shows how many
+                accounts they're on instead. */}
+            {typeTab === 'partner'
+              ? <span className="text-[11px] text-text-dim shrink-0">
+                  {(a.linked_accounts || []).length
+                    ? `${a.linked_accounts.length} account${a.linked_accounts.length === 1 ? '' : 's'}`
+                    : 'No accounts'}
+                </span>
+              : a.presales_stage
+                ? <span className={`text-[11px] px-2 py-0.5 rounded shrink-0 font-medium ${stageBadgeClass(a.presales_stage)}`}>{a.presales_stage}</span>
+                : <span className="text-[11px] text-text-dim shrink-0">No stage</span>}
           </Link>
         ))}
       </div>

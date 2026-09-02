@@ -187,6 +187,21 @@ db.exec(`
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
 
+  -- Which partners are working which accounts. Many-to-many: a partner serves
+  -- several accounts, an account can involve several partners. Both sides are
+  -- rows in the accounts table (account_id is the customer, partner_id the
+  -- partner), so this is a self-join, not a separate table of partner records.
+  CREATE TABLE IF NOT EXISTS account_partners (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id TEXT NOT NULL REFERENCES accounts(id),
+    partner_id TEXT NOT NULL REFERENCES accounts(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(account_id, partner_id)
+  );
+  -- UNIQUE above indexes (account_id, partner_id); this covers the reverse
+  -- lookup ("which accounts does this partner work?").
+  CREATE INDEX IF NOT EXISTS idx_account_partners_partner ON account_partners(partner_id);
+
   CREATE TABLE IF NOT EXISTS pov_jobs (
     id TEXT PRIMARY KEY,
     account_id TEXT NOT NULL REFERENCES accounts(id),
@@ -488,6 +503,17 @@ if (partnerTagNeedsMigration) {
     if (n) console.log(`[migration] account_type: ${n} account(s) moved from the "Partner" tag to account_type='partner'`);
   });
   migratePartnerTag();
+}
+
+// A partner has no presales stage -- we sell through partners, not to them, so
+// there's no POV to run against one. The API refuses to write a stage onto a
+// partner; this clears any that predate that rule (or arrive by another path),
+// keeping the invariant true rather than merely enforced going forward.
+{
+  const cleared = db.prepare(
+    "UPDATE accounts SET presales_stage = NULL WHERE account_type = 'partner' AND presales_stage IS NOT NULL"
+  ).run().changes;
+  if (cleared) console.log(`[migration] cleared presales_stage on ${cleared} partner account(s)`);
 }
 
 // ---------------------------------------------------------------------------

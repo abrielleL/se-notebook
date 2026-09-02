@@ -34,6 +34,7 @@ export default function Dashboard() {
   }, [accounts]);
 
   const visible = useMemo(() => accounts.filter(a => accountType(a) === typeTab), [accounts, typeTab]);
+  const isPartnerTab = typeTab === 'partner';
 
   // Group accounts by presales stage (accounts with no/unknown stage bucket last).
   const groups = useMemo(() => {
@@ -54,7 +55,7 @@ export default function Dashboard() {
       <div className="flex items-end justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold text-text-primary">
-            {typeTab === 'partner' ? 'Partners by stage' : 'Accounts by stage'}
+            {isPartnerTab ? 'Partners' : 'Accounts by stage'}
           </h1>
           <div className="text-[12px] text-text-muted mt-1">
             {visible.length} {typeTab === 'partner' ? 'partner' : 'account'}{visible.length === 1 ? '' : 's'}
@@ -63,7 +64,8 @@ export default function Dashboard() {
         <AccountTypeTabs value={typeTab} onChange={setTypeTab} counts={counts} />
       </div>
 
-      {/* Per-stage counts */}
+      {/* Per-stage counts — the stage board is customer-only */}
+      {!isPartnerTab && (
       <div className="flex flex-wrap gap-2">
         {STAGE_ORDER.map(s => {
           const count = groups[s].length;
@@ -81,11 +83,43 @@ export default function Dashboard() {
           );
         })}
       </div>
+      )}
 
       {/* Accounts as a stage board (one column per stage) */}
       {visible.length === 0 ? (
         <div className="text-center py-12 text-text-dim text-[12px] border border-dashed border-border rounded-lg">
           No {typeTab === 'partner' ? 'partners' : 'accounts'} yet. <Link to="/new" className="text-accent-blue underline">Create one</Link>.
+        </div>
+      ) : isPartnerTab ? (
+        // Partners have no stage to group by, so they get a flat grid showing
+        // the accounts each one is working — the thing you actually want to
+        // know when you open a partner.
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
+          {visible.map(p => {
+            const linked = p.linked_accounts || [];
+            return (
+              <Link key={p.id} to={`/accounts/${p.id}`}
+                className="flex flex-col gap-2 bg-card border border-border rounded-lg px-3 py-2.5 hover:border-accent-blue/40 hover:bg-[#111f42] transition">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: riskDot(p.risk) }} title={`Risk: ${p.risk || 'none'}`} />
+                  <span className="text-[12px] font-medium text-text-primary truncate flex-1 min-w-0">{p.account_name}</span>
+                  <span className="text-[10px] text-text-dim shrink-0">{p.note_count} {p.note_count === 1 ? 'entry' : 'entries'}</span>
+                </div>
+                <div className="text-[10px] text-text-dim">
+                  {linked.length ? `${linked.length} linked account${linked.length === 1 ? '' : 's'}` : 'No linked accounts'}
+                </div>
+                {linked.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {linked.map(l => (
+                      <span key={l.id} className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#111f42] text-text-muted border border-border truncate max-w-[120px]">
+                        {l.account_name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </Link>
+            );
+          })}
         </div>
       ) : (
         <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>

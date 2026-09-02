@@ -29,6 +29,11 @@ export const api = {
   getAccount: (id) => request(`/api/accounts/${id}`),
   createAccount: (body) => request('/api/accounts', { method: 'POST', body: json(body) }),
   updateAccount: (id, body) => request(`/api/accounts/${id}`, { method: 'PUT', body: json(body) }),
+  // Partner links, one relation from either end. Each call replaces the full set.
+  setAccountPartners: (id, partner_ids) =>
+    request(`/api/accounts/${id}/partners`, { method: 'PUT', body: json({ partner_ids }) }),
+  setPartnerAccounts: (id, account_ids) =>
+    request(`/api/accounts/${id}/linked-accounts`, { method: 'PUT', body: json({ account_ids }) }),
 
   // notes
   listNotes: (params = {}) => {
