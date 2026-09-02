@@ -25,7 +25,7 @@ router.post('/', (req, res) => {
 router.put('/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM next_steps WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Next step not found' });
-  const fields = ['text', 'completed', 'source', 'due_date'];
+  const fields = ['text', 'completed', 'source', 'due_date', 'resolved_reason', 'resolved_note'];
   const updates = [];
   const values = [];
   for (const f of fields) {
@@ -33,6 +33,12 @@ router.put('/:id', (req, res) => {
       updates.push(`${f} = ?`);
       values.push(f === 'completed' ? (req.body[f] ? 1 : 0) : req.body[f]);
     }
+  }
+  // Re-opening a step by hand clears the machine's explanation for closing it,
+  // so a reinstated step doesn't still claim it was done or merged.
+  if ('completed' in req.body && !req.body.completed && !('resolved_reason' in req.body)) {
+    updates.push('resolved_reason = ?', 'resolved_note = ?');
+    values.push(null, null);
   }
   if (!updates.length) return res.json(existing);
   values.push(req.params.id);

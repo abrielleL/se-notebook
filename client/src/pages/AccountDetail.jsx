@@ -18,7 +18,7 @@ import { useToast } from '../components/Toast.jsx';
 import { useOnline } from '../lib/offline.jsx';
 import { usePovJob } from '../lib/povJob.js';
 import { emitAccountUpdated } from '../lib/accountStore.js';
-import { runFullExtraction, generateCRMSnapshot, CRM_SNAPSHOT_MAX } from '../lib/ai.js';
+import { runFullExtraction, generateCRMSnapshot, consolidateNextSteps, CRM_SNAPSHOT_MAX } from '../lib/ai.js';
 import { formatDate, initials, todayISO, parseISODate, toISODate } from '../lib/stage.js';
 import { linkedInSearchUrl } from '../lib/linkedin.js';
 import {
@@ -39,6 +39,17 @@ function extractionMessage(prefix, r) {
   const updated = (r.contacts || []).filter(c => !c.created).length;
   if (created) parts.push(`${created} contact${created > 1 ? 's' : ''} extracted`);
   else if (updated) parts.push(`${updated} contact${updated > 1 ? 's' : ''} updated`);
+  // Report reconciliation explicitly: steps disappearing off the list is
+  // exactly the kind of change that should never happen quietly.
+  const closed = (r.stepsClosed || []).length;
+  const addedSteps = (r.stepsAdded || []).length;
+  if (closed) {
+    const doneN = r.stepsClosed.filter(c => c.reason === 'done').length;
+    const mergedN = closed - doneN;
+    const how = [doneN && `${doneN} done`, mergedN && `${mergedN} merged`].filter(Boolean).join(', ');
+    parts.push(`${closed} next step${closed > 1 ? 's' : ''} closed (${how})`);
+  }
+  if (addedSteps) parts.push(`${addedSteps} new next step${addedSteps > 1 ? 's' : ''}`);
   if (!r.hasKey) parts.push('AI summary skipped — no API key set (add it in Settings)');
   else if (r.summaryError) parts.push(`AI summary failed: ${r.summaryError}`);
   return parts.join(' · ');
@@ -1054,23 +1065,115 @@ function ActivePovCard({ povs = [], accountId, navigate, generating, onChange })
   );
 }
 
+// Why a step was closed by the machine rather than by hand.
+const RESOLUTION_LABEL = {
+  done: 'the notes show this was done',
+  duplicate: 'merged into another step'
+};
+
 function NextStepsCard({ account, onChange }) {
+  const toast = useToast();
+  const online = useOnline();
   const [text, setText] = useState('');
+  const [showDone, setShowDone] = useState(false);
+  const [consolidating, setConsolidating] = useState(false);
+
+  const steps = account.next_steps || [];
+  const open = steps.filter(s => !s.completed);
+  const done = steps.filter(s => s.completed);
+
   async function toggle(s) { await api.updateNextStep(s.id, { completed: !s.completed }); onChange(); }
   async function add() {
     if (!text.trim()) return;
     await api.createNextStep({ account_id: account.id, text, source: 'manual' });
     setText(''); onChange();
   }
+
+  // Re-reads the notes and closes steps that have since been done or that
+  // restate one another, without rewriting the AI summary.
+  async function consolidate() {
+    setConsolidating(true);
+    try {
+      const { closed } = await consolidateNextSteps(account.id);
+      onChange();
+      if (!closed.length) {
+        toast('Nothing to consolidate — every open step still looks outstanding.', 'info');
+      } else {
+        const d = closed.filter(c => c.reason === 'done').length;
+        const m = closed.filter(c => c.reason === 'duplicate').length;
+        const parts = [];
+        if (d) parts.push(`${d} done`);
+        if (m) parts.push(`${m} merged`);
+        toast(`Closed ${closed.length} step${closed.length === 1 ? '' : 's'} — ${parts.join(', ')}`, 'success');
+        setShowDone(true);   // so the change is visible, not just a number
+      }
+    } catch (e) {
+      toast(`Consolidate failed: ${e.message}`, 'error');
+    } finally {
+      setConsolidating(false);
+    }
+  }
+
   return (
-    <Section title="Next steps" icon={Icon.Check}>
+    <Section
+      title="Next steps"
+      icon={Icon.Check}
+      right={open.length > 1 && online && (
+        <button
+          onClick={consolidate}
+          disabled={consolidating}
+          title="Re-read the notes: close steps that have been done, merge ones that say the same thing"
+          className="flex items-center gap-1 text-[10px] text-text-dim hover:text-accent-blue disabled:opacity-50"
+        >
+          <Icon.Sync width={10} height={10} />
+          {consolidating ? 'Checking…' : 'Consolidate'}
+        </button>
+      )}
+    >
       <div className="flex flex-col gap-1.5">
-        {(account.next_steps || []).map(s => (
+        {open.length === 0 && done.length === 0 && (
+          <div className="text-[10px] text-text-dim">No next steps yet.</div>
+        )}
+        {open.map(s => (
           <div key={s.id} className="flex items-start gap-2">
-            <button onClick={() => toggle(s)} className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${s.completed ? 'bg-accent-green border-accent-green' : 'border-text-dim'}`}>{s.completed && <Icon.Check width={9} height={9} className="text-black" />}</button>
-            <div className={`text-[10px] flex-1 ${s.completed ? 'line-through text-text-dim' : 'text-text-secondary'}`}>{s.text} {s.source === 'ai' && <Icon.Sparkles width={8} height={8} className="inline text-accent-purple" />}</div>
+            <button onClick={() => toggle(s)} className="w-3.5 h-3.5 rounded-full border border-text-dim flex items-center justify-center shrink-0 mt-0.5" />
+            <div className="text-[10px] flex-1 text-text-secondary">{s.text} {s.source === 'ai' && <Icon.Sparkles width={8} height={8} className="inline text-accent-purple" />}</div>
           </div>
         ))}
+
+        {/* Completed steps are folded away rather than deleted: off the working
+            list, but still there when the machine's judgement needs checking. */}
+        {done.length > 0 && (
+          <button
+            onClick={() => setShowDone(v => !v)}
+            className="flex items-center gap-1 text-[10px] text-text-dim hover:text-text-primary mt-0.5 self-start"
+          >
+            <Icon.Check width={9} height={9} />
+            {done.length} done
+            <span className="opacity-60">{showDone ? '▾' : '▸'}</span>
+          </button>
+        )}
+        {showDone && done.map(s => (
+          <div key={s.id} className="flex items-start gap-2">
+            <button onClick={() => toggle(s)} className="w-3.5 h-3.5 rounded-full border bg-accent-green border-accent-green flex items-center justify-center shrink-0 mt-0.5" title="Reopen this step">
+              <Icon.Check width={9} height={9} className="text-black" />
+            </button>
+            {/* line-through sits on the text span, not the row: a decoration
+                set on an ancestor is painted through its descendants and can't
+                be cancelled by the child, so the reason line was struck out
+                too. */}
+            <div className="text-[10px] flex-1 text-text-dim">
+              <span className="line-through">{s.text}</span>
+              {s.resolved_reason && (
+                <span className="block text-[9px] text-text-dim/80 mt-0.5"
+                      title={s.resolved_note || ''}>
+                  ↳ {RESOLUTION_LABEL[s.resolved_reason] || s.resolved_reason}
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+
         <div className="flex gap-1 mt-1">
           <input value={text} onChange={e => setText(e.target.value)} placeholder="Add step…" className="flex-1 bg-[#040d1c] border border-border rounded px-2 py-1 text-[10px] text-text-primary" />
           <button onClick={add} className="text-accent-blue px-1"><Icon.Plus width={12} height={12} /></button>

@@ -89,14 +89,98 @@ async function compressSnapshot(text) {
   return generateText({ system, user: text, maxTokens: 256 });
 }
 
+// The next-steps half of this contract is a reconciliation, not an append.
+//
+// Extraction used to only ever ADD steps, de-duplicated by exact text. Because
+// it re-reads the whole corpus each run, it re-proposed the same actions in
+// slightly different words every time and the exact-text check never caught
+// them, so accounts accumulated dozens of copies of the same handful of items
+// (one account reached 44 open steps, mostly six actions restated six ways).
+// It also never noticed when a later note showed a step had been carried out.
+//
+// So the model is handed the currently-open steps under short handles and asked
+// to sort them into: still open (say nothing), done, or a reworded duplicate of
+// another — and to propose only genuinely new work.
 const SYSTEM_PROMPT = `You are a solutions engineering assistant. Analyze the following account notes and call transcripts. Extract and return a JSON object with exactly these fields:
 {
   "summary": "concise bullet-point summary covering deal status, key stakeholder, competitive risk, blockers, and momentum",
   "technical_drivers": "bullet list of key technical requirements and drivers",
   "environment": "description of current technical environment and architecture",
-  "next_steps": ["array", "of", "action items as strings"]
+  "next_steps": ["array", "of", "NEW action items as strings"],
+  "completed_steps": [{ "id": "s1", "evidence": "the note text that shows it was done" }],
+  "duplicate_steps": [{ "id": "s2", "duplicate_of": "s1" }]
 }
+
+RECONCILING NEXT STEPS — read the "Currently open next steps" list below, if present:
+- "completed_steps": open steps the notes or transcripts show have since been carried out. Quote the specific evidence. Be conservative: only when the notes actually show it happened, not when it merely seems likely or overdue.
+- "duplicate_steps": open steps that restate another open step in different words. Point "duplicate_of" at the id of the one worth keeping (prefer the clearest, most specific wording). Only for genuinely the same action.
+- "next_steps": action items NOT already on that list. Do not restate an open step in new words — if the work is already listed, leave it out entirely, even if you would phrase it better.
+- Leave anything you are unsure about alone: omit it from all three and it stays open.
+
 Be concise and technical. In summary, technical_drivers, and environment, use simple '- ' bullet points, one per line. Do not use bold ('**'), italic ('*'), headings ('#'), or tables. Return only valid JSON, no other text.`;
+
+// Open steps, numbered s1..sN, plus the handle->real-id map. Short handles
+// rather than UUIDs: cheaper in tokens and far less prone to the model
+// inventing or mangling an identifier.
+function openStepHandles(account) {
+  const open = (account.next_steps || []).filter(s => !s.completed);
+  const byHandle = new Map();
+  open.forEach((s, i) => byHandle.set(`s${i + 1}`, s));
+  return { open, byHandle };
+}
+
+function renderOpenSteps(byHandle) {
+  if (!byHandle.size) return '';
+  const lines = [...byHandle.entries()].map(([h, s]) => `${h}: ${s.text}`);
+  return `\n\n## Currently open next steps\n${lines.join('\n')}`;
+}
+
+// Apply the model's reconciliation. Returns what actually changed so the
+// caller can report it instead of silently rewriting someone's list.
+async function applyStepReconciliation(accountId, byHandle, parsed) {
+  const resolve = (h) => byHandle.get(String(h || '').trim());
+  const closed = [];
+
+  // Completed: the notes show the work happened.
+  for (const entry of asArray(parsed.completed_steps)) {
+    const step = resolve(entry && entry.id);
+    if (!step || step.completed) continue;
+    await api.updateNextStep(step.id, {
+      completed: 1,
+      resolved_reason: 'done',
+      resolved_note: String((entry && entry.evidence) || '').slice(0, 500) || null
+    });
+    closed.push({ text: step.text, reason: 'done' });
+  }
+
+  // Duplicates: a reworded restatement of another open step. Guard against the
+  // three ways this could quietly destroy real work — a step duplicating
+  // itself, a step that's also named as the survivor of another pair (closing
+  // both directions would drop the action entirely), and one already closed
+  // above as done.
+  const alreadyClosed = new Set(
+    asArray(parsed.completed_steps).map(e => resolve(e && e.id)).filter(Boolean).map(s => s.id)
+  );
+  const survivors = new Set(
+    asArray(parsed.duplicate_steps).map(e => resolve(e && e.duplicate_of)).filter(Boolean).map(s => s.id)
+  );
+  for (const entry of asArray(parsed.duplicate_steps)) {
+    const step = resolve(entry && entry.id);
+    const keep = resolve(entry && entry.duplicate_of);
+    if (!step || !keep || step.id === keep.id) continue;
+    if (step.completed || alreadyClosed.has(step.id) || survivors.has(step.id)) continue;
+    await api.updateNextStep(step.id, {
+      completed: 1,
+      resolved_reason: 'duplicate',
+      resolved_note: `Merged into: ${keep.text}`.slice(0, 500)
+    });
+    closed.push({ text: step.text, reason: 'duplicate' });
+  }
+
+  return closed;
+}
+
+function asArray(v) { return Array.isArray(v) ? v : []; }
 
 function buildCorpus(account) {
   const noteBlocks = (account.notes || []).map(n =>
@@ -133,12 +217,15 @@ export async function runAIExtraction(accountId) {
   if (!corpus.trim()) {
     throw new Error('No notes or transcripts to analyze yet.');
   }
+  // The open steps travel with the corpus so the model can reconcile against
+  // them rather than re-proposing work that's already recorded.
+  const stepHandles = openStepHandles(account);
 
   const body = {
     model: ANTHROPIC_MODEL,
     max_tokens: 4096,
     system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: corpus }]
+    messages: [{ role: 'user', content: corpus + renderOpenSteps(stepHandles.byHandle) }]
   };
 
   const res = await fetch(ANTHROPIC_URL, {
@@ -167,17 +254,54 @@ export async function runAIExtraction(accountId) {
     ai_summary_updated_at: now
   });
 
-  const existingSteps = account.next_steps || [];
-  const existingTexts = new Set(existingSteps.map(s => s.text.trim().toLowerCase()));
-  const aiSteps = Array.isArray(parsed.next_steps) ? parsed.next_steps : [];
-  for (const step of aiSteps) {
+  // Close out what the notes show is done or restated, then add only what's
+  // genuinely new. Closing first means a step the model both closed and
+  // re-proposed can't come back as a fresh row.
+  const closedSteps = await applyStepReconciliation(accountId, stepHandles.byHandle, parsed);
+
+  const existingTexts = new Set(
+    (account.next_steps || []).map(s => s.text.trim().toLowerCase())
+  );
+  const addedSteps = [];
+  for (const step of asArray(parsed.next_steps)) {
     const t = (typeof step === 'string' ? step : String(step || '')).trim();
     if (!t) continue;
+    // Exact-text guard is only a backstop now; the prompt does the real work of
+    // not restating an open step.
     if (existingTexts.has(t.toLowerCase())) continue;
+    existingTexts.add(t.toLowerCase());
     await api.createNextStep({ account_id: accountId, text: t, source: 'ai' });
+    addedSteps.push(t);
   }
 
-  return api.getAccount(accountId);
+  const updated = await api.getAccount(accountId);
+  updated._stepChanges = { closed: closedSteps, added: addedSteps };
+  return updated;
+}
+
+// Reconcile next steps without touching the AI summary — what the
+// "Consolidate" button on the account page runs. Same contract as the full
+// extraction; the summary fields that come back are simply ignored.
+export async function consolidateNextSteps(accountId) {
+  const key = getApiKey();
+  if (!key) throw new Error('Anthropic API key not set. Add it in Settings.');
+
+  const account = await api.getAccount(accountId);
+  const stepHandles = openStepHandles(account);
+  if (!stepHandles.open.length) return { closed: [], added: [], openBefore: 0 };
+
+  const corpus = buildCorpus(account);
+  if (!corpus.trim()) return { closed: [], added: [], openBefore: stepHandles.open.length };
+
+  const text = await generateText({
+    system: SYSTEM_PROMPT,
+    user: corpus + renderOpenSteps(stepHandles.byHandle),
+    maxTokens: 4096
+  });
+  const parsed = extractJson(text);
+
+  const closed = await applyStepReconciliation(accountId, stepHandles.byHandle, parsed);
+  return { closed, added: [], openBefore: stepHandles.open.length };
 }
 
 export const CRM_SNAPSHOT_MAX = 255;
@@ -306,9 +430,16 @@ export async function runFullExtraction(accountId, noteId, transcriptId) {
   // of silently looking like success (the toast otherwise reports only the
   // server-side fields, which succeed independently of the summary).
   let summaryError = null;
+  let stepChanges = { closed: [], added: [] };
   const aiTasks = [];
   if (key) {
-    aiTasks.push(runAIExtraction(accountId).catch(e => {
+    aiTasks.push(runAIExtraction(accountId).then(acct => {
+      // Reconciliation happens inside runAIExtraction; carry the outcome out so
+      // the toast can say what was closed rather than leaving the list to
+      // change silently.
+      if (acct && acct._stepChanges) stepChanges = acct._stepChanges;
+      return acct;
+    }).catch(e => {
       console.warn('AI extraction failed:', e);
       summaryError = e.message || String(e);
       return null;
@@ -321,6 +452,8 @@ export async function runFullExtraction(accountId, noteId, transcriptId) {
     fieldsUpdated: serverRes ? (serverRes.fields_updated || []) : [],
     contacts: serverRes ? (serverRes.contacts || []) : [],
     hasKey: Boolean(key),
-    summaryError
+    summaryError,
+    stepsClosed: stepChanges.closed,
+    stepsAdded: stepChanges.added
   };
 }

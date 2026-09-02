@@ -113,6 +113,13 @@ addColumn('notes', 'note_type', 'TEXT DEFAULT NULL');
 // --- next_steps additions ---
 // Due date powers the inbox/dashboard urgency coloring (overdue/today/future).
 addColumn('next_steps', 'due_date', 'DATE DEFAULT NULL');
+// Why a step stopped being open, when it wasn't a human ticking the box:
+// 'done' (the notes show it happened) or 'duplicate' (a later extraction
+// reworded an existing step instead of recognising it). Lets the completed
+// list explain itself rather than looking like the AI ate someone's work.
+// NULL means a person closed it by hand.
+addColumn('next_steps', 'resolved_reason', 'TEXT DEFAULT NULL');
+addColumn('next_steps', 'resolved_note', 'TEXT DEFAULT NULL');
 
 // --- pov_drafts additions ---
 // Persist the preflight selections (products/deployment/os/use_cases/
