@@ -8,6 +8,7 @@ import TablerIcon from '../components/TablerIcon.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { formatDate } from '../lib/stage.js';
 import { emitAccountUpdated } from '../lib/accountStore.js';
+import { currentQuarter, quarterRangeLabel, workedInQuarter } from '../lib/quarter.js';
 
 const NO_STAGE = 'No stage';
 const STAGE_ORDER = [...PRESALES_STAGES, NO_STAGE];
@@ -30,6 +31,10 @@ export default function Dashboard() {
   // Snoozed accounts are hidden from the board but never gone: this reveals
   // them in place, dimmed, so nothing disappears without a way back.
   const [showSnoozed, setShowSnoozed] = useState(false);
+  // 'quarter' | 'all'. Opens on the quarter so the board is what you're
+  // actually working, with everything one click away.
+  const [scope, setScope] = useState('quarter');
+  const quarter = useMemo(() => currentQuarter(), []);
   const toast = useToast();
 
   useEffect(() => {
@@ -66,12 +71,23 @@ export default function Dashboard() {
 
   const isPartnerTab = typeTab === 'partner';
   const ofType = useMemo(() => accounts.filter(a => accountType(a) === typeTab), [accounts, typeTab]);
-  // Snoozed count is per-tab, so the chip matches what you're looking at.
-  const snoozedCount = useMemo(() => ofType.filter(a => a.is_snoozed).length, [ofType]);
-  const visible = useMemo(
-    () => (showSnoozed ? ofType : ofType.filter(a => !a.is_snoozed)),
-    [ofType, showSnoozed]
+  // Filters compose: account type -> snooze -> quarter scope. Snoozed and
+  // out-of-quarter are separate ideas, so revealing snoozed accounts doesn't
+  // drag in stale ones and vice versa.
+  const inScope = useMemo(
+    () => (scope === 'quarter' ? ofType.filter(a => workedInQuarter(a, quarter)) : ofType),
+    [ofType, scope, quarter]
   );
+  const snoozedCount = useMemo(() => inScope.filter(a => a.is_snoozed).length, [inScope]);
+  const visible = useMemo(
+    () => (showSnoozed ? inScope : inScope.filter(a => !a.is_snoozed)),
+    [inScope, showSnoozed]
+  );
+  // Toggle labels need both totals, ignoring the snooze reveal.
+  const scopeCounts = useMemo(() => {
+    const live = ofType.filter(a => !a.is_snoozed);
+    return { quarter: live.filter(a => workedInQuarter(a, quarter)).length, all: live.length };
+  }, [ofType, quarter]);
 
   // Group accounts by presales stage (accounts with no/unknown stage bucket last).
   const groups = useMemo(() => {
@@ -97,6 +113,7 @@ export default function Dashboard() {
           <div className="text-[12px] text-text-muted mt-1 flex items-center gap-2">
             <span>
               {visible.length} {typeTab === 'partner' ? 'partner' : 'account'}{visible.length === 1 ? '' : 's'}
+              {scope === 'quarter' && <span className="text-text-dim"> · {quarterRangeLabel(quarter)}</span>}
             </span>
             {snoozedCount > 0 && (
               <button
@@ -114,7 +131,37 @@ export default function Dashboard() {
             )}
           </div>
         </div>
-        <AccountTypeTabs value={typeTab} onChange={setTypeTab} counts={counts} />
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Scope: what you're working this quarter vs the whole book.
+              "Working" means a note dated inside the quarter — see quarter.js
+              for why activity rather than close date. */}
+          <div className="inline-flex items-center gap-1 p-1 bg-card border border-border rounded-lg">
+            {[
+              { value: 'quarter', label: quarter.label, n: scopeCounts.quarter,
+                title: `Accounts with a note dated in ${quarter.label} (${quarterRangeLabel(quarter)})` },
+              { value: 'all', label: 'All', n: scopeCounts.all,
+                title: 'Every account, however long since the last note' }
+            ].map(o => {
+              const active = scope === o.value;
+              return (
+                <button
+                  key={o.value}
+                  onClick={() => setScope(o.value)}
+                  title={o.title}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition ${
+                    active
+                      ? 'bg-accent-blue/15 text-accent-blue shadow-[inset_0_0_0_1px_rgba(92,155,255,0.35)]'
+                      : 'text-text-dim hover:text-text-primary'
+                  }`}
+                >
+                  {o.label}
+                  <span className={`text-[11px] tabular-nums ${active ? 'opacity-70' : 'text-text-dim'}`}>{o.n}</span>
+                </button>
+              );
+            })}
+          </div>
+          <AccountTypeTabs value={typeTab} onChange={setTypeTab} counts={counts} />
+        </div>
       </div>
 
       {/* Per-stage counts — the stage board is customer-only */}
@@ -141,7 +188,20 @@ export default function Dashboard() {
       {/* Accounts as a stage board (one column per stage) */}
       {visible.length === 0 ? (
         <div className="text-center py-12 text-text-dim text-[12px] border border-dashed border-border rounded-lg">
-          No {typeTab === 'partner' ? 'partners' : 'accounts'} yet. <Link to="/new" className="text-accent-blue underline">Create one</Link>.
+          {/* Distinguish "nothing here" from "the quarter filter hid it all" --
+              otherwise an empty board reads as lost data. */}
+          {scope === 'quarter' && scopeCounts.all > 0 ? (
+            <>
+              No {typeTab === 'partner' ? 'partners' : 'accounts'} worked in {quarter.label}.{' '}
+              <button onClick={() => setScope('all')} className="text-accent-blue underline">
+                Show all {scopeCounts.all}
+              </button>.
+            </>
+          ) : (
+            <>
+              No {typeTab === 'partner' ? 'partners' : 'accounts'} yet. <Link to="/new" className="text-accent-blue underline">Create one</Link>.
+            </>
+          )}
         </div>
       ) : isPartnerTab ? (
         // Partners have no stage to group by, so they get a flat grid showing
