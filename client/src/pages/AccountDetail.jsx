@@ -305,6 +305,15 @@ export default function AccountDetail() {
             <AccountTagEditor tags={account.tags || []} catalog={tagCatalog} onChange={(tags) => patchAccount({ tags })} />
           </div>
         </div>
+        {/* Hand-written status note, sat next to Snooze. Fills the gap between
+            the account identity and the action buttons; expands over the stage
+            bar while focused so the header never reflows. */}
+        <StatusNote
+          value={account.status_note}
+          updatedAt={account.status_note_updated_at}
+          onSave={(status_note) => patchAccount({ status_note })}
+        />
+
         <div className="flex items-center gap-2 shrink-0">
           <div className="bg-card border border-border rounded px-3 py-1.5">
             <SnoozeMenu account={account} onSnooze={snooze} onUnsnooze={unsnooze} />
@@ -343,13 +352,6 @@ export default function AccountDetail() {
         })}
       </div>
       )}
-
-      {/* STATUS NOTE — hand-written, pinned above everything else */}
-      <StatusNote
-        value={account.status_note}
-        updatedAt={account.status_note_updated_at}
-        onSave={(status_note) => patchAccount({ status_note })}
-      />
 
       {/* THREE COLUMNS */}
       <div className="flex-1 overflow-auto p-3">

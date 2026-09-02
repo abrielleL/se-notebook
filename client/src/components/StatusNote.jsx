@@ -1,24 +1,32 @@
 import { useEffect, useRef, useState } from 'react';
 import TablerIcon from './TablerIcon.jsx';
 
-// The account's "what's going on right now" note: a hand-written line or two
-// pinned to the top of the account page — why it's parked, who we're waiting
-// on, what to say if it comes up.
+const COLLAPSED_H = 32;   // one line, sized to sit level with the header buttons
+const EXPANDED_H = 96;    // ~4 lines once you're actually typing
+
+// The account's status note: a text box in the account header, next to Snooze,
+// for "what's going on right now" — why it's parked, who we're waiting on.
 //
-// Click to edit, save on blur. Cmd/Ctrl+Enter saves and closes, Escape
-// reverts. Deliberately NOT markdown-rendered: this is a user-typed note, so
-// per the project convention it stays raw (whitespace preserved so short
-// bullet-ish lines survive).
+// Never written by AI. The extraction path only ever sends the four ai_* keys,
+// and the API accepts status_note through its own explicit branch, so nothing
+// in the summary pipeline can reach this field.
+//
+// It lives in a fixed-height slot so the header never reflows: collapsed it's
+// a one-line box, and clicking swaps in a taller textarea that overlays the
+// stage bar below. Collapsed has to be a div rather than a short textarea —
+// a textarea still line-breaks on \n regardless of white-space, so a
+// multi-line note bled past the bottom border.
 export default function StatusNote({ value, updatedAt, onSave }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value || '');
   const [saving, setSaving] = useState(false);
   const ref = useRef(null);
-  // Guards the blur handler when Escape closes the editor, so reverting
-  // doesn't immediately get saved by the blur that follows.
+  // Set when Escape reverts, so the blur that follows doesn't re-save the
+  // text we just threw away.
   const cancelled = useRef(false);
 
-  // Re-seed when the account changes underneath us (navigation, refetch).
+  // Re-seed when the account changes underneath us (navigation, refetch),
+  // but never while the user is mid-edit.
   useEffect(() => { if (!editing) setDraft(value || ''); }, [value, editing]);
 
   useEffect(() => {
@@ -29,17 +37,13 @@ export default function StatusNote({ value, updatedAt, onSave }) {
   }, [editing]);
 
   async function commit() {
-    const next = draft.trim();
     setEditing(false);
-    if (next === (value || '').trim()) return;   // nothing changed
+    if (cancelled.current) { cancelled.current = false; return; }
+    const next = draft.trim();
+    if (next === (value || '').trim()) return;   // nothing actually changed
     setSaving(true);
     await onSave(next);
     setSaving(false);
-  }
-
-  function onBlur() {
-    if (cancelled.current) { cancelled.current = false; return; }
-    commit();
   }
 
   function onKeyDown(e) {
@@ -55,77 +59,72 @@ export default function StatusNote({ value, updatedAt, onSave }) {
   }
 
   const hasNote = (value || '').trim() !== '';
+  // Collapsed, the whole note is folded onto one line so a multi-line note
+  // still reads as more than just its first sentence.
+  const oneLine = hasNote ? value.split('\n').map(s => s.trim()).filter(Boolean).join(' · ') : '';
+  const tooltip = hasNote
+    ? (updatedAt ? `${value}\n\n(updated ${timeAgo(updatedAt)})` : value)
+    : "Status note — why it's parked, what you're waiting on. Never touched by AI.";
 
   return (
-    <div className="px-5 py-2.5 border-b border-border bg-[#040d1c]/40">
-      <div className="flex items-start gap-2.5">
-        <TablerIcon name="ti-pin" className="text-text-muted mt-0.5 shrink-0" />
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-baseline gap-2 mb-1">
-            <span className="text-[10px] uppercase tracking-wide text-text-dim">Status</span>
-            {updatedAt && !editing && (
-              <span className="text-[10px] text-text-dim">updated {timeAgo(updatedAt)}</span>
-            )}
-            {saving && <span className="text-[10px] text-text-dim">saving…</span>}
-            {editing && (
-              <span className="text-[10px] text-text-dim">
-                {navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl+'}Enter to save · Esc to cancel
-              </span>
-            )}
-          </div>
-
-          {editing ? (
+    <div className="relative flex-1 min-w-0 max-w-[460px]" style={{ height: COLLAPSED_H }}>
+      {editing ? (
+        <div className="absolute left-0 top-0 w-full z-40">
+          <div className="relative">
+            <TablerIcon name="ti-pin" className="absolute left-2 top-[9px] text-text-muted pointer-events-none z-10" />
             <textarea
               ref={ref}
               value={draft}
               onChange={e => setDraft(e.target.value)}
-              onBlur={onBlur}
+              onBlur={commit}
               onKeyDown={onKeyDown}
-              rows={3}
               placeholder="What's happening with this account right now?"
-              className="w-full bg-[#040d1c] border border-accent-blue/40 rounded px-2.5 py-1.5 text-[12px] text-text-primary placeholder-text-dim leading-relaxed focus:outline-none resize-y"
+              className="w-full bg-[#040d1c] border border-accent-blue/50 rounded-t pl-7 pr-2 py-1.5 text-[12px] text-text-primary placeholder-text-dim leading-[1.35] resize-none focus:outline-none shadow-2xl"
+              style={{ height: EXPANDED_H }}
             />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              title="Click to edit"
-              className="w-full text-left group"
-            >
-              {hasNote ? (
-                // whitespace-pre-wrap: raw text, but line breaks the SE typed
-                // are the structure, so they have to survive.
-                <span className="block text-[12px] text-text-secondary leading-relaxed whitespace-pre-wrap group-hover:text-text-primary transition">
-                  {value}
-                </span>
-              ) : (
-                <span className="block text-[12px] text-text-dim italic group-hover:text-text-muted transition">
-                  Add a status note — why it's parked, what you're waiting on, where it stands.
-                </span>
-              )}
-            </button>
-          )}
+          </div>
+          <div className="flex items-center justify-between gap-2 bg-card border border-t-0 border-accent-blue/50 rounded-b px-2 py-1 shadow-2xl">
+            <span className="text-[10px] text-text-dim">
+              {isMac() ? '⌘' : 'Ctrl+'}Enter to save · Esc to cancel
+            </span>
+            {updatedAt && <span className="text-[10px] text-text-dim shrink-0">updated {timeAgo(updatedAt)}</span>}
+          </div>
         </div>
-
-        {!editing && (
-          <button
-            onClick={() => setEditing(true)}
-            className="text-text-dim hover:text-accent-blue shrink-0 mt-0.5"
-            title={hasNote ? 'Edit status note' : 'Add status note'}
-          >
-            <TablerIcon name={hasNote ? 'ti-pencil' : 'ti-plus'} />
-          </button>
-        )}
-      </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          title={tooltip}
+          className="w-full h-full flex items-center gap-2 bg-[#040d1c] border border-border hover:border-text-dim rounded pl-7 pr-2 text-left relative transition-colors group"
+        >
+          <TablerIcon
+            name="ti-pin"
+            className={`absolute left-2 ${hasNote ? 'text-text-muted' : 'text-text-dim'}`}
+          />
+          <span className={`flex-1 min-w-0 truncate text-[12px] ${
+            hasNote ? 'text-text-secondary group-hover:text-text-primary' : 'text-text-dim'
+          }`}>
+            {hasNote ? oneLine : 'Status note…'}
+          </span>
+          {saving
+            ? <span className="shrink-0 text-[10px] text-text-dim">saving…</span>
+            : hasNote && updatedAt && <span className="shrink-0 text-[10px] text-text-dim">{timeAgo(updatedAt)}</span>}
+        </button>
+      )}
     </div>
   );
 }
 
-// Coarse relative time — this only ever labels a note someone typed, so
-// day-level precision is plenty.
+const isMac = () => typeof navigator !== 'undefined' && navigator.platform.startsWith('Mac');
+
+// Coarse relative time — this only ever labels a note someone typed by hand,
+// so day-level precision is plenty.
 function timeAgo(ts) {
-  const then = new Date(String(ts).replace(' ', 'T') + (String(ts).endsWith('Z') ? '' : 'Z'));
+  if (!ts) return '';
+  const raw = String(ts);
+  // SQLite CURRENT_TIMESTAMP is "YYYY-MM-DD HH:MM:SS" in UTC with no zone
+  // marker; ISO strings from the API already carry one.
+  const then = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z');
   if (Number.isNaN(then.getTime())) return '';
   const mins = Math.floor((Date.now() - then.getTime()) / 60000);
   if (mins < 1) return 'just now';
