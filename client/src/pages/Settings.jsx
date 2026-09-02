@@ -3,6 +3,7 @@ import { ANTHROPIC_KEY_STORAGE } from '../lib/ai.js';
 import Card from '../components/Card.jsx';
 import PovConfigSettings from './PovConfigSettings.jsx';
 import TagSettings from './TagSettings.jsx';
+import BackupSettings from './BackupSettings.jsx';
 
 export default function Settings() {
   const [value, setValue] = useState(localStorage.getItem(ANTHROPIC_KEY_STORAGE) || '');
@@ -43,6 +44,8 @@ export default function Settings() {
           </button>
         )}
       </Card>
+
+      <BackupSettings />
 
       <TagSettings />
 

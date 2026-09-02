@@ -11,6 +11,8 @@
     "start": "node server/index.js",
     "install:all": "npm install && npm install --prefix server && npm install --prefix client",
     "import:onenote": "node scripts/import-onenote.js",
+    "backup:install": "bash scripts/install-backup.sh",
+    "backup:now": "node scripts/backup-runner.js --force",
     "service:install": "bash scripts/service.sh install",
     "service:uninstall": "bash scripts/service.sh uninstall",
     "service:start": "bash scripts/service.sh start",

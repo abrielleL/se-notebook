@@ -228,6 +228,14 @@ db.exec(`
   -- lookup ("which accounts does this partner work?").
   CREATE INDEX IF NOT EXISTS idx_account_partners_partner ON account_partners(partner_id);
 
+  -- Generic key/value app settings. JSON in the value column so a setting can
+  -- grow fields without a migration. Currently holds the backup schedule.
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS pov_jobs (
     id TEXT PRIMARY KEY,
     account_id TEXT NOT NULL REFERENCES accounts(id),

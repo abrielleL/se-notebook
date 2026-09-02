@@ -94,6 +94,9 @@ export const api = {
     request('/api/contacts/merge', { method: 'POST', body: json({ keeper_id: keeperId, loser_id: loserId }) }),
 
   // next steps
+  getBackupSettings: () => request('/api/settings/backup'),
+  saveBackupSettings: (body) => request('/api/settings/backup', { method: 'PUT', body: json(body) }),
+  runBackupNow: () => request('/api/settings/backup/run', { method: 'POST' }),
   listNextSteps: (accountId) => request(`/api/next-steps/${accountId}`),
   createNextStep: (body) => request('/api/next-steps', { method: 'POST', body: json(body) }),
   updateNextStep: (id, body) => request(`/api/next-steps/${id}`, { method: 'PUT', body: json(body) }),

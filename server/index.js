@@ -46,6 +46,7 @@ app.use('/api/accounts', require('./routes/accounts'));
 app.use('/api/notes', require('./routes/notes'));
 app.use('/api/contacts', require('./routes/contacts'));
 app.use('/api/next-steps', require('./routes/nextSteps'));
+app.use('/api/settings', require('./routes/settings'));
 app.use('/api/todos', require('./routes/todos'));
 app.use('/api/transcripts', require('./routes/transcripts'));
 app.use('/api/attachments', require('./routes/attachments'));
