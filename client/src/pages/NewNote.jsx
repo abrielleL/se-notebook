@@ -5,8 +5,10 @@ import { api } from '../lib/api.js';
 import { runFullExtraction } from '../lib/ai.js';
 import { todayISO, initials, colorForName, parseISODate, toISODate } from '../lib/stage.js';
 import { PRESALES_STAGES } from '../lib/stages.js';
+import { ACCOUNT_TYPE_TABS, accountType } from '../lib/constants.js';
 import Card, { CardHeader } from '../components/Card.jsx';
 import Icon from '../components/Icons.jsx';
+import AccountTagEditor from '../components/AccountTagEditor.jsx';
 import { upsertDraft, deleteDraft, getDraft, newDraftId } from '../lib/drafts.js';
 
 const emptyContact = () => ({ name: '', title: '' });
@@ -16,6 +18,8 @@ const emptyForm = () => ({
   account_executive: '',
   industry: '',
   presales_stage: '',
+  account_type: 'customer',
+  tags: [],
   date: todayISO(),
   raw_notes: '',
   contacts: [emptyContact()]
@@ -26,6 +30,7 @@ export default function NewNote() {
   const [params] = useSearchParams();
   const resumeId = params.get('draft');
   const [allAccounts, setAllAccounts] = useState([]);
+  const [tagCatalog, setTagCatalog] = useState([]);
   // Draft id for this editing session — resumed from ?draft, else new.
   const [draftId] = useState(() => resumeId || newDraftId());
   const [form, setForm] = useState(() => {
@@ -55,6 +60,7 @@ export default function NewNote() {
   }
 
   useEffect(() => { api.listAccounts().then(setAllAccounts); }, []);
+  useEffect(() => { api.listTags().then(setTagCatalog).catch(() => {}); }, []);
 
   // Autosave to the drafts store as you type (only once there's note content),
   // debounced so it doesn't thrash on every keystroke.
@@ -103,7 +109,12 @@ export default function NewNote() {
       account_name: a.account_name,
       account_executive: a.account_executive || f.account_executive,
       industry: a.industry || f.industry,
-      presales_stage: a.presales_stage || f.presales_stage
+      presales_stage: a.presales_stage || f.presales_stage,
+      // An existing account already has a type and labels — show them rather
+      // than the blank defaults, so saving can't silently downgrade a partner
+      // back to a customer or wipe its tags.
+      account_type: accountType(a),
+      tags: a.tags || []
     }));
     setShowSuggestions(false);
   }
@@ -127,22 +138,20 @@ export default function NewNote() {
     if (!form.raw_notes.trim() && !transcriptFile) { setErr('Add notes or drop a transcript file'); return; }
     setErr(''); setSaving(true);
     try {
+      const accountFields = {
+        account_name: form.account_name.trim(),
+        account_executive: form.account_executive.trim() || null,
+        industry: form.industry.trim() || null,
+        presales_stage: form.presales_stage || null,
+        account_type: form.account_type || 'customer',
+        tags: form.tags || []
+      };
       let accountId = form.account_id;
       if (!accountId) {
-        const account = await api.createAccount({
-          account_name: form.account_name.trim(),
-          account_executive: form.account_executive.trim() || null,
-          industry: form.industry.trim() || null,
-          presales_stage: form.presales_stage || null
-        });
+        const account = await api.createAccount(accountFields);
         accountId = account.id;
       } else {
-        await api.updateAccount(accountId, {
-          account_name: form.account_name.trim(),
-          account_executive: form.account_executive.trim() || null,
-          industry: form.industry.trim() || null,
-          presales_stage: form.presales_stage || null
-        });
+        await api.updateAccount(accountId, accountFields);
       }
 
       // See AddNote: pending_ai_extraction=1 is cleared server-side once the
@@ -253,6 +262,28 @@ export default function NewNote() {
             )}
           </div>
           <div>
+            <Label hint={form.account_id ? 'from existing account' : ''}>Account type</Label>
+            <div className="flex items-center gap-1 p-1 bg-[#040d1c] border border-border rounded">
+              {ACCOUNT_TYPE_TABS.map(t => {
+                const active = (form.account_type || 'customer') === t.value;
+                return (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, account_type: t.value }))}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1 rounded text-[12px] font-medium transition"
+                    style={active
+                      ? { background: `${t.color}1f`, color: t.color, boxShadow: `inset 0 0 0 1px ${t.color}59` }
+                      : { color: '#838892' }}
+                  >
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: active ? t.color : '#3a4460' }} />
+                    {t.singular}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
             <Label>Account Executive</Label>
             <input className={inputCls} value={form.account_executive} onChange={e => setForm(f => ({ ...f, account_executive: e.target.value }))} />
           </div>
@@ -271,6 +302,14 @@ export default function NewNote() {
             <Label hint={form.date === todayISO() ? 'Auto-filled · today' : ''}>Date</Label>
             <DatePicker selected={parseISODate(form.date)} onChange={(d) => setForm(f => ({ ...f, date: toISODate(d) }))} dateFormat="MMM d, yyyy" placeholderText="Select date" className={inputCls} popperPlacement="bottom-start" />
           </div>
+        </div>
+        <div className="mt-4 pt-4 border-t border-border">
+          <Label hint="saved on the account">Labels</Label>
+          <AccountTagEditor
+            tags={form.tags || []}
+            catalog={tagCatalog}
+            onChange={(tags) => setForm(f => ({ ...f, tags }))}
+          />
         </div>
       </Card>
 

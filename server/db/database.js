@@ -56,6 +56,13 @@ addColumn('accounts', 'pov_success_plan_url', 'TEXT DEFAULT NULL');
 addColumn('accounts', 'color', 'TEXT DEFAULT NULL');
 // tags: JSON array of tag labels chosen from the managed tag_catalog.
 addColumn('accounts', 'tags', 'TEXT DEFAULT NULL');
+// account_type: 'customer' | 'partner'. Mirrors contacts.contact_type. "Partner"
+// started life as a tag_catalog label, which mixed an account's *type* in with
+// segment/status tags; promoting it to a column gives the Accounts/Dashboard
+// tabs one source of truth. The one-time backfill below runs only on the
+// migration pass that adds the column.
+const partnerTagNeedsMigration = !columnExists('accounts', 'account_type');
+addColumn('accounts', 'account_type', "TEXT DEFAULT 'customer'");
 
 // --- contacts additions ---
 // meddpicc_role: internal qualification role; never surfaced as "MEDDPICC" in UI.
@@ -451,6 +458,37 @@ const seedManaged = db.transaction((rows) => {
   }
 });
 seedManaged([...POV_DEPLOYMENTS, ...POV_PRODUCTS, ...POV_TECHNOLOGIES, ...POV_FILE_TYPES, ...POV_COMPLIANCE]);
+
+// ---------------------------------------------------------------------------
+// Partner tag -> accounts.account_type (one-time, on the pass that adds the
+// column). Every account tagged "Partner" becomes a partner, the label is
+// stripped from accounts.tags, and the catalog row is retired so the tag can't
+// come back and disagree with the column. Other tags on those accounts (an OT
+// partner, say) are left alone. Runs here rather than beside the addColumn
+// above because tag_catalog is created in the CREATE TABLE block in between.
+// ---------------------------------------------------------------------------
+if (partnerTagNeedsMigration) {
+  const PARTNER_LABEL = 'Partner';
+  const parseTagList = (json) => {
+    try { const a = JSON.parse(json || '[]'); return Array.isArray(a) ? a.filter(t => typeof t === 'string') : []; }
+    catch { return []; }
+  };
+  const migratePartnerTag = db.transaction(() => {
+    const rows = db.prepare('SELECT id, tags FROM accounts WHERE tags IS NOT NULL').all();
+    const setPartner = db.prepare("UPDATE accounts SET account_type = 'partner', tags = ? WHERE id = ?");
+    let n = 0;
+    for (const r of rows) {
+      const tags = parseTagList(r.tags);
+      if (!tags.includes(PARTNER_LABEL)) continue;
+      const rest = tags.filter(t => t !== PARTNER_LABEL);
+      setPartner.run(rest.length ? JSON.stringify(rest) : null, r.id);
+      n++;
+    }
+    db.prepare('DELETE FROM tag_catalog WHERE lower(label) = lower(?)').run(PARTNER_LABEL);
+    if (n) console.log(`[migration] account_type: ${n} account(s) moved from the "Partner" tag to account_type='partner'`);
+  });
+  migratePartnerTag();
+}
 
 // ---------------------------------------------------------------------------
 // Contacts: normalize names, backfill account links, collapse duplicates.

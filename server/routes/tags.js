@@ -35,6 +35,13 @@ const syncAccountTags = (fn) => {
   tx();
 };
 
+// "Partner" is no longer a tag — it's accounts.account_type, which drives the
+// Customers/Partners tabs. Blocked here so a re-added tag can't drift from the
+// column and split partners across two sources of truth.
+const RESERVED_LABELS = ['partner', 'partners', 'customer', 'customers'];
+const reservedLabel = (label) => RESERVED_LABELS.includes(label.toLowerCase());
+const RESERVED_MESSAGE = 'Customer and Partner are set by the account type, not a tag. Change it in Edit account.';
+
 // GET catalog, ordered for display.
 router.get('/tags', (_req, res) => {
   const rows = db.prepare('SELECT * FROM tag_catalog ORDER BY sort_order ASC, label ASC').all();
@@ -45,6 +52,7 @@ router.get('/tags', (_req, res) => {
 router.post('/tags', (req, res) => {
   const label = (req.body?.label || '').trim();
   if (!label) return res.status(400).json({ error: 'label required' });
+  if (reservedLabel(label)) return res.status(400).json({ error: RESERVED_MESSAGE });
   const dupe = db.prepare('SELECT id FROM tag_catalog WHERE lower(label) = lower(?)').get(label);
   if (dupe) return res.status(409).json({ error: 'A tag with that label already exists.' });
 
@@ -70,6 +78,7 @@ router.put('/tags/:id', (req, res) => {
   if ('label' in req.body) {
     const label = (req.body.label || '').trim();
     if (!label) return res.status(400).json({ error: 'label cannot be empty' });
+    if (reservedLabel(label)) return res.status(400).json({ error: RESERVED_MESSAGE });
     const dupe = db.prepare('SELECT id FROM tag_catalog WHERE lower(label) = lower(?) AND id != ?').get(label, existing.id);
     if (dupe) return res.status(409).json({ error: 'A tag with that label already exists.' });
     if (label !== existing.label) renameTo = label;

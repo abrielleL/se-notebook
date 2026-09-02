@@ -84,6 +84,19 @@ export const ROLE_LABELS = ROLE_OPTIONS.reduce((m, o) => {
 // Who the person is relative to us. A partner or analyst is tied to the
 // account(s) they work, but their employer is their own — hence org_name.
 // Only 'customer' contacts go into customer-facing exports by default.
+// Account type: a customer we're selling to vs. a partner/reseller we sell
+// through. Drives the tabs on Accounts and the Dashboard. Colors deliberately
+// match the customer/partner contact types below so "partner" reads the same
+// wherever it appears.
+export const ACCOUNT_TYPES = {
+  customer: { label: 'Customers', singular: 'Customer', color: '#5c9bff' },
+  partner: { label: 'Partners', singular: 'Partner', color: '#4fd15c' }
+};
+export const ACCOUNT_TYPE_TABS = Object.entries(ACCOUNT_TYPES)
+  .map(([value, v]) => ({ value, ...v }));
+// Rows written before the account_type migration can be missing the field.
+export const accountType = (a) => (a?.account_type === 'partner' ? 'partner' : 'customer');
+
 export const CONTACT_TYPES = {
   customer: { label: 'Customer', short: 'CU', color: '#5c9bff' },
   partner: { label: 'Partner', short: 'PA', color: '#4fd15c' },

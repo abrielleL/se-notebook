@@ -21,7 +21,7 @@ import { linkedInSearchUrl } from '../lib/linkedin.js';
 import {
   riskDot, RISK_OPTIONS, escalationStyle, ESCALATION_OPTIONS, QUAL_FIELDS,
   ROLE_BADGES, ROLE_OPTIONS, STAGE_BAR, EXTRA_STAGES, STAGE_GATES, nextStage, stageBarStyle,
-  agingColor, PRESALES_STAGES, CONTACT_TYPE_OPTIONS
+  agingColor, PRESALES_STAGES, CONTACT_TYPE_OPTIONS, ACCOUNT_TYPES, ACCOUNT_TYPE_TABS, accountType
 } from '../lib/constants.js';
 
 // Accent color for a terminal stage when it is the account's current stage.
@@ -225,6 +225,12 @@ export default function AccountDetail() {
             <button onClick={() => navigate('/accounts')} className="text-text-dim hover:text-text-primary"><Icon.Back width={16} height={16} /></button>
             <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: riskDot(account.risk) }} />
             <span className="text-[15px] font-semibold text-text-primary truncate">{account.account_name}</span>
+            {accountType(account) === 'partner' && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0"
+                style={{ color: ACCOUNT_TYPES.partner.color, background: `${ACCOUNT_TYPES.partner.color}1f`, border: `1px solid ${ACCOUNT_TYPES.partner.color}59` }}>
+                Partner
+              </span>
+            )}
             {account.presales_stage && <span className="text-[10px] px-2 py-0.5 rounded bg-[#0c295f] text-accent-blue shrink-0">{account.presales_stage}</span>}
             {account.escalation && account.escalation !== 'Not Needed' && (
               <span className="text-[10px] px-2 py-0.5 rounded shrink-0" style={{ background: escalationStyle(account.escalation).bg, color: escalationStyle(account.escalation).text }}>{account.escalation}</span>
@@ -1002,6 +1008,7 @@ function PrereqCard({ pov }) {
 function buildAccountForm(account) {
   return {
     account_name: account.account_name || '',
+    account_type: accountType(account),
     industry: account.industry || '',
     // Existing accounts store the AE in the legacy `account_executive` column;
     // fall back to it (same as the detail view) so the field pre-fills.
@@ -1028,6 +1035,7 @@ function EditAccountModal({ account, onClose, onSave }) {
         <button onClick={() => onSave({ ...form, opportunity_value: form.opportunity_value === '' ? null : Number(form.opportunity_value) })} className="bg-accent-blue/15 text-accent-blue border border-accent-blue/30 rounded px-3 py-1.5 text-[12px] font-medium">Save</button></>}>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Account name" wide><input className={inputCls} value={form.account_name} onChange={set('account_name')} /></Field>
+        <Field label="Account type"><select className={inputCls} value={form.account_type} onChange={set('account_type')}>{ACCOUNT_TYPE_TABS.map(t => <option key={t.value} value={t.value}>{t.singular}</option>)}</select></Field>
         <Field label="Industry"><input className={inputCls} value={form.industry} onChange={set('industry')} /></Field>
         <Field label="AE"><input className={inputCls} value={form.ae_name} onChange={set('ae_name')} /></Field>
         <Field label="Close date"><DatePicker selected={parseISODate(form.close_date)} onChange={(d) => setForm(f => ({ ...f, close_date: toISODate(d) }))} dateFormat="MMM d, yyyy" placeholderText="Select date" className={inputCls} popperPlacement="bottom-start" /></Field>

@@ -24,13 +24,19 @@ const EDITABLE_FIELDS = [
   'opportunity_value', 'ae_name', 'pov_success_plan_url', 'color'
 ];
 
+// account_type: 'customer' | 'partner'. Anything else (including the NULL that
+// a row written before the migration could carry) reads as a customer.
+const ACCOUNT_TYPES = ['customer', 'partner'];
+const DEFAULT_ACCOUNT_TYPE = 'customer';
+const normalizeAccountType = (v) => (ACCOUNT_TYPES.includes(v) ? v : DEFAULT_ACCOUNT_TYPE);
+
 // tags is stored as a JSON-array TEXT column; expose it to clients as an array.
 function withTags(account) {
   if (!account) return account;
   let tags = [];
   try { const a = JSON.parse(account.tags || '[]'); if (Array.isArray(a)) tags = a.filter(t => typeof t === 'string'); }
   catch { tags = []; }
-  return { ...account, tags };
+  return { ...account, tags, account_type: normalizeAccountType(account.account_type) };
 }
 // Keep only labels that exist in the managed catalog, de-duped, preserving order.
 function sanitizeTags(input) {
@@ -64,10 +70,13 @@ const RISK_VALUES = ['green', 'yellow', 'red'];
 const DEFAULT_RISK = 'green';
 
 router.post('/', (req, res) => {
-  const { account_name, account_executive, industry, opportunity_stage, presales_stage, risk } = req.body;
+  const { account_name, account_executive, industry, opportunity_stage, presales_stage, risk, account_type } = req.body;
   if (!account_name) return res.status(400).json({ error: 'account_name required' });
   if (presales_stage && !PRESALES_STAGES.includes(presales_stage)) {
     return res.status(400).json({ error: `Invalid presales_stage: ${presales_stage}` });
+  }
+  if (account_type && !ACCOUNT_TYPES.includes(account_type)) {
+    return res.status(400).json({ error: `Invalid account_type: ${account_type}` });
   }
 
   const id = uuid();
@@ -77,10 +86,15 @@ router.post('/', (req, res) => {
   // An explicit risk in the payload wins; anything else falls back to green.
   const initialRisk = RISK_VALUES.includes(risk) ? risk : DEFAULT_RISK;
 
+  // Tags may be set at creation time (the New Note form offers them alongside
+  // the account type), so they don't need a follow-up PUT.
+  const tags = sanitizeTags(req.body.tags);
+
   db.prepare(`
-    INSERT INTO accounts (id, account_name, account_executive, industry, opportunity_stage, presales_stage, color, risk)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, account_name, account_executive || null, industry || null, opportunity_stage || null, presales_stage || null, color, initialRisk);
+    INSERT INTO accounts (id, account_name, account_executive, industry, opportunity_stage, presales_stage, color, risk, account_type, tags)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, account_name, account_executive || null, industry || null, opportunity_stage || null, presales_stage || null, color, initialRisk,
+         normalizeAccountType(account_type), tags.length ? JSON.stringify(tags) : null);
 
   const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(id);
   res.status(201).json(withTags(account));
@@ -127,6 +141,13 @@ router.put('/:id', (req, res) => {
     }
   }
 
+  if ('account_type' in req.body) {
+    const at = req.body.account_type;
+    if (at && !ACCOUNT_TYPES.includes(at)) {
+      return res.status(400).json({ error: `Invalid account_type: ${at}` });
+    }
+  }
+
   // Validate escalation <-> Jira ticket requirement against the resulting state.
   const effEscalation = ('escalation' in req.body) ? req.body.escalation : existing.escalation;
   const effJira = ('jira_ticket_url' in req.body) ? req.body.jira_ticket_url : existing.jira_ticket_url;
@@ -144,6 +165,12 @@ router.put('/:id', (req, res) => {
       updates.push(`${f} = ?`);
       values.push(req.body[f]);
     }
+  }
+  // account_type is kept out of EDITABLE_FIELDS so an empty/unknown value
+  // normalizes to 'customer' rather than writing a NULL the tabs can't read.
+  if ('account_type' in req.body) {
+    updates.push('account_type = ?');
+    values.push(normalizeAccountType(req.body.account_type));
   }
   // tags: validate against the managed catalog, store as JSON (or NULL if empty).
   if ('tags' in req.body) {

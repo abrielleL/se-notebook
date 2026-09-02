@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { initials, colorForName } from '../lib/stage.js';
-import { agingColor } from '../lib/constants.js';
+import { agingColor, accountType } from '../lib/constants.js';
 import { stageBadgeClass } from '../lib/stages.js';
 import { useAccountUpdates } from '../lib/accountStore.js';
+import AccountTypeTabs from '../components/AccountTypeTabs.jsx';
 
 export default function Accounts() {
   const [accounts, setAccounts] = useState([]);
@@ -13,6 +14,9 @@ export default function Accounts() {
   const [query, setQuery] = useState(params.get('q') || '');
   const [aeFilter, setAeFilter] = useState('All');
   const [tagFilter, setTagFilter] = useState('All');
+  // Which tab is open. Shareable via ?type=partner so a partner list can be
+  // linked to; anything else falls back to customers.
+  const [typeTab, setTypeTab] = useState(params.get('type') === 'partner' ? 'partner' : 'customer');
 
   useEffect(() => { api.listAccounts().then(setAccounts); }, []);
   useEffect(() => { api.listTags().then(setTagCatalog).catch(() => {}); }, []);
@@ -29,18 +33,36 @@ export default function Accounts() {
   }, []));
 
   useEffect(() => {
-    if (query) setParams({ q: query }); else setParams({});
-  }, [query, setParams]);
+    const next = {};
+    if (query) next.q = query;
+    if (typeTab === 'partner') next.type = 'partner';
+    setParams(next, { replace: true });
+  }, [query, typeTab, setParams]);
+
+  const counts = useMemo(() => {
+    const c = { customer: 0, partner: 0 };
+    accounts.forEach(a => { c[accountType(a)]++; });
+    return c;
+  }, [accounts]);
+
+  // Everything below the tabs — AE chips, search, tag chips, the list — works
+  // within the open tab, so a filter never shows a count from the other side.
+  const byType = useMemo(() => accounts.filter(a => accountType(a) === typeTab), [accounts, typeTab]);
 
   const aes = useMemo(() => {
     const s = new Set();
-    accounts.forEach(a => a.account_executive && s.add(a.account_executive));
+    byType.forEach(a => a.account_executive && s.add(a.account_executive));
     return ['All', ...Array.from(s).sort()];
-  }, [accounts]);
+  }, [byType]);
+
+  // Drop an AE/tag filter that has no matches in the tab we just switched to.
+  useEffect(() => {
+    if (aeFilter !== 'All' && !aes.includes(aeFilter)) setAeFilter('All');
+  }, [aes, aeFilter]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return accounts.filter(a => {
+    return byType.filter(a => {
       if (aeFilter !== 'All' && (a.account_executive || '') !== aeFilter) return false;
       if (tagFilter !== 'All' && !(a.tags || []).includes(tagFilter)) return false;
       if (!q) return true;
@@ -48,20 +70,23 @@ export default function Accounts() {
              (a.account_executive || '').toLowerCase().includes(q) ||
              (a.tags || []).some(t => t.toLowerCase().includes(q));
     });
-  }, [accounts, query, aeFilter, tagFilter]);
+  }, [byType, query, aeFilter, tagFilter]);
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
-      <div className="flex items-end justify-between mb-5">
+      <div className="flex items-end justify-between gap-4 mb-4">
         <div>
           <h1 className="text-xl font-semibold text-text-primary">Accounts</h1>
-          <div className="text-[12px] text-text-muted mt-1">{accounts.length} accounts total · {filtered.length} shown</div>
+          <div className="text-[12px] text-text-muted mt-1">
+            {counts[typeTab]} {typeTab === 'partner' ? 'partner' : 'customer'}{counts[typeTab] === 1 ? '' : 's'} · {filtered.length} shown
+          </div>
         </div>
+        <AccountTypeTabs value={typeTab} onChange={setTypeTab} counts={counts} />
       </div>
 
       <input
         type="text"
-        placeholder="Search by account name or AE"
+        placeholder={typeTab === 'partner' ? 'Search by partner name or AE' : 'Search by account name or AE'}
         value={query}
         onChange={e => setQuery(e.target.value)}
         className="w-full bg-[#040d1c] border border-border rounded px-3 py-2 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50 mb-3"

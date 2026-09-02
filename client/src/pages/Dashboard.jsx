@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
-import { riskDot, PRESALES_STAGES, stageColor } from '../lib/constants.js';
+import { riskDot, PRESALES_STAGES, stageColor, accountType } from '../lib/constants.js';
+import AccountTypeTabs from '../components/AccountTypeTabs.jsx';
 
 const NO_STAGE = 'No stage';
 const STAGE_ORDER = [...PRESALES_STAGES, NO_STAGE];
@@ -18,30 +19,48 @@ function fmtMoney(n) {
 export default function Dashboard() {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
+  // The board defaults to customers — partners don't move through the presales
+  // stages the same way, so they'd distort the per-stage counts.
+  const [typeTab, setTypeTab] = useState('customer');
 
   useEffect(() => {
     api.listAccounts().then(setAccounts).finally(() => setLoading(false));
   }, []);
 
+  const counts = useMemo(() => {
+    const c = { customer: 0, partner: 0 };
+    accounts.forEach(a => { c[accountType(a)]++; });
+    return c;
+  }, [accounts]);
+
+  const visible = useMemo(() => accounts.filter(a => accountType(a) === typeTab), [accounts, typeTab]);
+
   // Group accounts by presales stage (accounts with no/unknown stage bucket last).
   const groups = useMemo(() => {
     const m = {};
     for (const s of STAGE_ORDER) m[s] = [];
-    for (const a of accounts) {
+    for (const a of visible) {
       const key = a.presales_stage && PRESALES_STAGES.includes(a.presales_stage) ? a.presales_stage : NO_STAGE;
       m[key].push(a);
     }
     for (const s of STAGE_ORDER) m[s].sort((x, y) => (x.account_name || '').localeCompare(y.account_name || ''));
     return m;
-  }, [accounts]);
+  }, [visible]);
 
   if (loading) return <div className="p-8 text-[12px] text-text-muted">Loading dashboard…</div>;
 
   return (
     <div className="p-6 max-w-[1500px] mx-auto flex flex-col gap-4">
-      <div>
-        <h1 className="text-xl font-semibold text-text-primary">Accounts by stage</h1>
-        <div className="text-[12px] text-text-muted mt-1">{accounts.length} account{accounts.length === 1 ? '' : 's'} total</div>
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold text-text-primary">
+            {typeTab === 'partner' ? 'Partners by stage' : 'Accounts by stage'}
+          </h1>
+          <div className="text-[12px] text-text-muted mt-1">
+            {visible.length} {typeTab === 'partner' ? 'partner' : 'account'}{visible.length === 1 ? '' : 's'}
+          </div>
+        </div>
+        <AccountTypeTabs value={typeTab} onChange={setTypeTab} counts={counts} />
       </div>
 
       {/* Per-stage counts */}
@@ -64,9 +83,9 @@ export default function Dashboard() {
       </div>
 
       {/* Accounts as a stage board (one column per stage) */}
-      {accounts.length === 0 ? (
+      {visible.length === 0 ? (
         <div className="text-center py-12 text-text-dim text-[12px] border border-dashed border-border rounded-lg">
-          No accounts yet. <Link to="/new" className="text-accent-blue underline">Create one</Link>.
+          No {typeTab === 'partner' ? 'partners' : 'accounts'} yet. <Link to="/new" className="text-accent-blue underline">Create one</Link>.
         </div>
       ) : (
         <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>
