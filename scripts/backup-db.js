@@ -5,10 +5,20 @@
 // Copies the live database to backups/notebook_YYYY-MM-DD_HH-MM.sqlite
 // and keeps only the most recent 30 backups (oldest deleted first).
 //
-// NOTE: the actual database file is server/db/se-notebook.db (not
-// "notebook.sqlite"). Because the DB runs in WAL mode, the -wal and -shm
-// sidecar files are copied alongside the snapshot when present, so the
-// backup is internally consistent and restorable.
+// NOT the scheduled backup. launchd (com.se-notebook-backup) runs
+// ~/se-notebook-data/backup.sh instead, which uses sqlite3's own .backup plus
+// PRAGMA integrity_check -- safe against a live database, where the file copy
+// below can capture a torn file mid-transaction. This script stays for
+// ad-hoc snapshots.
+//
+// The DB path must be resolved the same way server/db/database.js resolves it.
+// It used to be hardcoded to server/db/se-notebook.db; when the database moved
+// to ~/se-notebook-data on 2026-08-20 (OneDrive corrupted it in place) this
+// script kept pointing at the old location and the nightly job failed silently
+// for 13 days -- "ERROR: database not found" into a log nobody reads.
+//
+// Because the DB runs in WAL mode, the -wal and -shm sidecar files are copied
+// alongside the snapshot when present, so the backup is restorable.
 //
 // Usage:
 //   node scripts/backup-db.js
@@ -16,9 +26,13 @@
 
 const fs   = require('fs');
 const path = require('path');
+const os   = require('os');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
-const DB_PATH      = path.join(PROJECT_ROOT, 'server', 'db', 'se-notebook.db');
+// Mirrors database.js: SE_NOTEBOOK_DB_DIR wins, else the default data dir.
+const DB_DIR       = process.env.SE_NOTEBOOK_DB_DIR
+  || path.join(os.homedir(), 'se-notebook-data');
+const DB_PATH      = path.join(DB_DIR, 'se-notebook.db');
 const BACKUP_DIR   = path.join(PROJECT_ROOT, 'backups');
 const KEEP         = 30;
 const PREFIX       = 'notebook_';
