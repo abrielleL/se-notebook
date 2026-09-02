@@ -6,6 +6,7 @@ import { agingColor, accountType, ACCOUNT_TYPES } from '../lib/constants.js';
 import { stageBadgeClass } from '../lib/stages.js';
 import { useAccountUpdates } from '../lib/accountStore.js';
 import AccountTypeTabs from '../components/AccountTypeTabs.jsx';
+import { snoozeTitle } from '../components/SnoozeMenu.jsx';
 
 const PARTNER_COLOR = ACCOUNT_TYPES.partner.color;
 
@@ -191,6 +192,14 @@ export default function Accounts() {
                 ))}
                 {typeTab === 'customer' && (a.partners || []).length > 2 && (
                   <span className="text-[10px] text-text-dim shrink-0">+{a.partners.length - 2}</span>
+                )}
+                {/* The Accounts page stays the full inventory -- a snoozed
+                    account is badged here, not filtered out. */}
+                {a.is_snoozed && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 bg-accent-blue/15 text-accent-blue border border-accent-blue/30"
+                    title={snoozeTitle(a)}>
+                    Snoozed
+                  </span>
                 )}
               </div>
               <div className="text-[11px] text-text-muted truncate">

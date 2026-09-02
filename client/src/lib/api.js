@@ -29,6 +29,10 @@ export const api = {
   getAccount: (id) => request(`/api/accounts/${id}`),
   createAccount: (body) => request('/api/accounts', { method: 'POST', body: json(body) }),
   updateAccount: (id, body) => request(`/api/accounts/${id}`, { method: 'PUT', body: json(body) }),
+  // Snooze hides an account from the stage board. days omitted = indefinite.
+  snoozeAccount: (id, { days, reason } = {}) =>
+    request(`/api/accounts/${id}/snooze`, { method: 'PUT', body: json({ days: days ?? null, reason }) }),
+  unsnoozeAccount: (id) => request(`/api/accounts/${id}/snooze`, { method: 'DELETE' }),
   // Partner links, one relation from either end. Each call replaces the full set.
   setAccountPartners: (id, partner_ids) =>
     request(`/api/accounts/${id}/partners`, { method: 'PUT', body: json({ partner_ids }) }),

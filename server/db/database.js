@@ -63,6 +63,18 @@ addColumn('accounts', 'tags', 'TEXT DEFAULT NULL');
 // migration pass that adds the column.
 const partnerTagNeedsMigration = !columnExists('accounts', 'account_type');
 addColumn('accounts', 'account_type', "TEXT DEFAULT 'customer'");
+// Snooze: hide an account from the stage board while it isn't moving, without
+// deleting it or faking a stage change.
+//
+// Three columns rather than one flag, because "hidden" needs an expiry to stop
+// being a graveyard: snoozed_at NULL means not snoozed at all; a snoozed_until
+// date means it comes back on its own; snoozed_until NULL *while snoozed_at is
+// set* means indefinitely. Expired snoozes are left in place rather than
+// scrubbed -- the account resurfaces because "snoozed" is computed against
+// today, and keeping the row lets the UI say what it was snoozed for.
+addColumn('accounts', 'snoozed_at', 'TIMESTAMP DEFAULT NULL');
+addColumn('accounts', 'snoozed_until', 'DATE DEFAULT NULL');
+addColumn('accounts', 'snooze_reason', 'TEXT DEFAULT NULL');
 
 // --- contacts additions ---
 // meddpicc_role: internal qualification role; never surfaced as "MEDDPICC" in UI.

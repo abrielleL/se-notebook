@@ -81,9 +81,6 @@ export const ROLE_LABELS = ROLE_OPTIONS.reduce((m, o) => {
   return m;
 }, {});
 
-// Who the person is relative to us. A partner or analyst is tied to the
-// account(s) they work, but their employer is their own — hence org_name.
-// Only 'customer' contacts go into customer-facing exports by default.
 // Account type: a customer we're selling to vs. a partner/reseller we sell
 // through. Drives the tabs on Accounts and the Dashboard. Colors deliberately
 // match the customer/partner contact types below so "partner" reads the same
@@ -97,6 +94,18 @@ export const ACCOUNT_TYPE_TABS = Object.entries(ACCOUNT_TYPES)
 // Rows written before the account_type migration can be missing the field.
 export const accountType = (a) => (a?.account_type === 'partner' ? 'partner' : 'customer');
 
+// Snooze windows offered in the UI. days: null = indefinite. Kept in step with
+// SNOOZE_DAYS in server/routes/accounts.js, which validates what's accepted.
+export const SNOOZE_OPTIONS = [
+  { label: '30 days', days: 30, hint: 'a month' },
+  { label: '60 days', days: 60, hint: 'a quarter' },
+  { label: '90 days', days: 90, hint: 'next quarter' },
+  { label: 'Indefinitely', days: null, hint: 'until I unsnooze' }
+];
+
+// Who the person is relative to us. A partner or analyst is tied to the
+// account(s) they work, but their employer is their own — hence org_name.
+// Only 'customer' contacts go into customer-facing exports by default.
 export const CONTACT_TYPES = {
   customer: { label: 'Customer', short: 'CU', color: '#5c9bff' },
   partner: { label: 'Partner', short: 'PA', color: '#4fd15c' },

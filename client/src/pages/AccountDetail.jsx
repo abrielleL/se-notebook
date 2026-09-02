@@ -11,6 +11,7 @@ import FieldDrawer from '../components/FieldDrawer.jsx';
 import Markdown, { stripMarkdown } from '../components/Markdown.jsx';
 import AccountTagEditor from '../components/AccountTagEditor.jsx';
 import AccountLinkEditor from '../components/AccountLinkEditor.jsx';
+import SnoozeMenu from '../components/SnoozeMenu.jsx';
 import ContactDrawer, { ContactTypeBadge } from '../components/ContactDrawer.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { useOnline } from '../lib/offline.jsx';
@@ -157,6 +158,27 @@ export default function AccountDetail() {
     } catch (e) { toast(e.message, 'error'); return false; }
   }
 
+  // Snooze hides the account from the stage board (the Accounts list still
+  // shows it, badged). Both calls return the full account row.
+  async function snooze({ days, reason }) {
+    try {
+      const updated = await api.snoozeAccount(id, { days, reason });
+      setAccount(a => ({ ...a, ...updated }));
+      emitAccountUpdated(updated);
+      toast(updated.snoozed_until
+        ? `Snoozed until ${formatDate(updated.snoozed_until)}`
+        : 'Snoozed indefinitely', 'success');
+    } catch (e) { toast(e.message, 'error'); }
+  }
+  async function unsnooze() {
+    try {
+      const updated = await api.unsnoozeAccount(id);
+      setAccount(a => ({ ...a, ...updated }));
+      emitAccountUpdated(updated);
+      toast('Back on the stage board', 'success');
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
   // Partner links, saved from whichever side of the relation this account is
   // on. Both endpoints return the fresh list, so state comes from the server
   // rather than being patched optimistically.
@@ -262,6 +284,12 @@ export default function AccountDetail() {
               </span>
             )}
             {!isPartner && account.presales_stage && <span className="text-[10px] px-2 py-0.5 rounded bg-[#0c295f] text-accent-blue shrink-0">{account.presales_stage}</span>}
+            {account.is_snoozed && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 bg-accent-blue/15 text-accent-blue border border-accent-blue/30"
+                title={account.snooze_reason || ''}>
+                Snoozed {account.snoozed_until ? `until ${formatDate(account.snoozed_until)}` : 'indefinitely'}
+              </span>
+            )}
             {account.escalation && account.escalation !== 'Not Needed' && (
               <span className="text-[10px] px-2 py-0.5 rounded shrink-0" style={{ background: escalationStyle(account.escalation).bg, color: escalationStyle(account.escalation).text }}>{account.escalation}</span>
             )}
@@ -277,6 +305,9 @@ export default function AccountDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <div className="bg-card border border-border rounded px-3 py-1.5">
+            <SnoozeMenu account={account} onSnooze={snooze} onUnsnooze={unsnooze} />
+          </div>
           <button onClick={() => setExportOpen(true)} className="flex items-center gap-1.5 bg-card border border-border rounded px-3 py-1.5 text-[12px] text-text-primary hover:border-accent-blue/40"><Icon.Export width={12} height={12} /> Export</button>
           <button onClick={() => setEditOpen(true)} className="flex items-center gap-1.5 bg-card border border-border rounded px-3 py-1.5 text-[12px] text-text-primary hover:border-accent-blue/40"><Icon.Edit width={12} height={12} /> Edit</button>
         </div>

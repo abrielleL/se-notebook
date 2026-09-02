@@ -36,6 +36,35 @@ const normalizeAccountType = (v) => (ACCOUNT_TYPES.includes(v) ? v : DEFAULT_ACC
 // (or skew stage stats) if the account is later switched back to a customer.
 const stageAppliesTo = (type) => type !== 'partner';
 
+// --- Snooze ---------------------------------------------------------------
+// Whether an account is snoozed *right now*. Computed rather than stored so a
+// dated snooze expires on its own with no cron job: the row keeps its values,
+// and the account simply stops being snoozed once the date passes.
+//
+// Dates are compared as YYYY-MM-DD strings in local time, matching how
+// close_date and note dates are already handled in this codebase.
+const localToday = () => {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+function isSnoozed(account) {
+  if (!account?.snoozed_at) return false;
+  if (!account.snoozed_until) return true;          // indefinite
+  return account.snoozed_until >= localToday();     // expires the day after
+}
+
+// Snooze windows offered by the UI. null = indefinite.
+const SNOOZE_DAYS = [30, 60, 90];
+
+function addDays(days) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 // Partner links, both directions. account_id is always the customer side.
 const partnersFor = (accountId) => db.prepare(`
   SELECT a.id, a.account_name, a.account_type
@@ -67,7 +96,13 @@ function withTags(account) {
   let tags = [];
   try { const a = JSON.parse(account.tags || '[]'); if (Array.isArray(a)) tags = a.filter(t => typeof t === 'string'); }
   catch { tags = []; }
-  return { ...account, tags, account_type: normalizeAccountType(account.account_type) };
+  return {
+    ...account,
+    tags,
+    account_type: normalizeAccountType(account.account_type),
+    // Derived, so no client has to redo the date math (or disagree about it).
+    is_snoozed: isSnoozed(account)
+  };
 }
 // Keep only labels that exist in the managed catalog, de-duped, preserving order.
 function sanitizeTags(input) {
@@ -240,6 +275,15 @@ router.put('/:id', (req, res) => {
     updates.push('presales_stage = ?');
     values.push(null);
   }
+  // Moving an account's stage means it *is* moving, so it wakes up. Without
+  // this you could advance a snoozed account and have it stay invisible on the
+  // board -- the one place you'd look for it.
+  if ('presales_stage' in req.body && !clearStage &&
+      req.body.presales_stage && req.body.presales_stage !== existing.presales_stage &&
+      isSnoozed(existing)) {
+    updates.push('snoozed_at = ?', 'snoozed_until = ?', 'snooze_reason = ?');
+    values.push(null, null, null);
+  }
   // account_type is kept out of EDITABLE_FIELDS so an empty/unknown value
   // normalizes to 'customer' rather than writing a NULL the tabs can't read.
   if ('account_type' in req.body) {
@@ -257,6 +301,41 @@ router.put('/:id', (req, res) => {
   db.prepare(`UPDATE accounts SET ${updates.join(', ')} WHERE id = ?`).run(...values);
   const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.id);
   res.json(withTags(account));
+});
+
+// ---------------------------------------------------------------------------
+// Snooze / unsnooze. The expiry date is computed server-side so every client
+// agrees on what "90 days" means, and so a stale browser tab can't set a date
+// in the past.
+// ---------------------------------------------------------------------------
+
+router.put('/:id/snooze', (req, res) => {
+  const account = db.prepare('SELECT id FROM accounts WHERE id = ?').get(req.params.id);
+  if (!account) return res.status(404).json({ error: 'Account not found' });
+
+  // days omitted/null = snooze indefinitely; otherwise one of the offered windows.
+  const raw = req.body?.days;
+  const indefinite = raw == null || raw === '';
+  const days = indefinite ? null : Number(raw);
+  if (!indefinite && !SNOOZE_DAYS.includes(days)) {
+    return res.status(400).json({ error: `days must be one of ${SNOOZE_DAYS.join(', ')} (or omitted for indefinite)` });
+  }
+
+  const reason = (req.body?.reason || '').trim() || null;
+  db.prepare(
+    'UPDATE accounts SET snoozed_at = CURRENT_TIMESTAMP, snoozed_until = ?, snooze_reason = ? WHERE id = ?'
+  ).run(indefinite ? null : addDays(days), reason, account.id);
+
+  res.json(withTags(db.prepare('SELECT * FROM accounts WHERE id = ?').get(account.id)));
+});
+
+router.delete('/:id/snooze', (req, res) => {
+  const account = db.prepare('SELECT id FROM accounts WHERE id = ?').get(req.params.id);
+  if (!account) return res.status(404).json({ error: 'Account not found' });
+  db.prepare(
+    'UPDATE accounts SET snoozed_at = NULL, snoozed_until = NULL, snooze_reason = NULL WHERE id = ?'
+  ).run(account.id);
+  res.json(withTags(db.prepare('SELECT * FROM accounts WHERE id = ?').get(account.id)));
 });
 
 // ---------------------------------------------------------------------------

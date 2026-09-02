@@ -3,6 +3,11 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { riskDot, PRESALES_STAGES, stageColor, accountType } from '../lib/constants.js';
 import AccountTypeTabs from '../components/AccountTypeTabs.jsx';
+import SnoozeMenu, { snoozeTitle } from '../components/SnoozeMenu.jsx';
+import TablerIcon from '../components/TablerIcon.jsx';
+import { useToast } from '../components/Toast.jsx';
+import { formatDate } from '../lib/stage.js';
+import { emitAccountUpdated } from '../lib/accountStore.js';
 
 const NO_STAGE = 'No stage';
 const STAGE_ORDER = [...PRESALES_STAGES, NO_STAGE];
@@ -22,10 +27,36 @@ export default function Dashboard() {
   // The board defaults to customers — partners don't move through the presales
   // stages the same way, so they'd distort the per-stage counts.
   const [typeTab, setTypeTab] = useState('customer');
+  // Snoozed accounts are hidden from the board but never gone: this reveals
+  // them in place, dimmed, so nothing disappears without a way back.
+  const [showSnoozed, setShowSnoozed] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     api.listAccounts().then(setAccounts).finally(() => setLoading(false));
   }, []);
+
+  // Replace the row in place so the board doesn't jump on a snooze/unsnooze.
+  const applyAccount = (updated) =>
+    setAccounts(list => list.map(a => (a.id === updated.id ? { ...a, ...updated } : a)));
+
+  async function snooze(account, { days, reason }) {
+    try {
+      const updated = await api.snoozeAccount(account.id, { days, reason });
+      applyAccount(updated);
+      emitAccountUpdated(updated);
+      const when = updated.snoozed_until ? `until ${formatDate(updated.snoozed_until)}` : 'indefinitely';
+      toast(`${account.account_name} snoozed ${when}`, 'success');
+    } catch (e) { toast(e.message, 'error'); }
+  }
+  async function unsnooze(account) {
+    try {
+      const updated = await api.unsnoozeAccount(account.id);
+      applyAccount(updated);
+      emitAccountUpdated(updated);
+      toast(`${account.account_name} is back on the board`, 'success');
+    } catch (e) { toast(e.message, 'error'); }
+  }
 
   const counts = useMemo(() => {
     const c = { customer: 0, partner: 0 };
@@ -33,8 +64,14 @@ export default function Dashboard() {
     return c;
   }, [accounts]);
 
-  const visible = useMemo(() => accounts.filter(a => accountType(a) === typeTab), [accounts, typeTab]);
   const isPartnerTab = typeTab === 'partner';
+  const ofType = useMemo(() => accounts.filter(a => accountType(a) === typeTab), [accounts, typeTab]);
+  // Snoozed count is per-tab, so the chip matches what you're looking at.
+  const snoozedCount = useMemo(() => ofType.filter(a => a.is_snoozed).length, [ofType]);
+  const visible = useMemo(
+    () => (showSnoozed ? ofType : ofType.filter(a => !a.is_snoozed)),
+    [ofType, showSnoozed]
+  );
 
   // Group accounts by presales stage (accounts with no/unknown stage bucket last).
   const groups = useMemo(() => {
@@ -57,8 +94,24 @@ export default function Dashboard() {
           <h1 className="text-xl font-semibold text-text-primary">
             {isPartnerTab ? 'Partners' : 'Accounts by stage'}
           </h1>
-          <div className="text-[12px] text-text-muted mt-1">
-            {visible.length} {typeTab === 'partner' ? 'partner' : 'account'}{visible.length === 1 ? '' : 's'}
+          <div className="text-[12px] text-text-muted mt-1 flex items-center gap-2">
+            <span>
+              {visible.length} {typeTab === 'partner' ? 'partner' : 'account'}{visible.length === 1 ? '' : 's'}
+            </span>
+            {snoozedCount > 0 && (
+              <button
+                onClick={() => setShowSnoozed(s => !s)}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] transition ${
+                  showSnoozed
+                    ? 'bg-accent-blue/15 text-accent-blue border-accent-blue/30'
+                    : 'bg-card text-text-dim border-border hover:text-text-primary'
+                }`}
+                title={showSnoozed ? 'Hide snoozed accounts again' : 'Show snoozed accounts in place'}
+              >
+                <TablerIcon name="ti-zzz" />
+                {snoozedCount} snoozed
+              </button>
+            )}
           </div>
         </div>
         <AccountTypeTabs value={typeTab} onChange={setTypeTab} counts={counts} />
@@ -99,12 +152,24 @@ export default function Dashboard() {
             const linked = p.linked_accounts || [];
             return (
               <Link key={p.id} to={`/accounts/${p.id}`}
-                className="flex flex-col gap-2 bg-card border border-border rounded-lg px-3 py-2.5 hover:border-accent-blue/40 hover:bg-[#111f42] transition">
+                title={snoozeTitle(p)}
+                className={`group flex flex-col gap-2 bg-card border border-border rounded-lg px-3 py-2.5 hover:border-accent-blue/40 hover:bg-[#111f42] transition ${p.is_snoozed ? 'opacity-50 hover:opacity-100' : ''}`}>
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: riskDot(p.risk) }} title={`Risk: ${p.risk || 'none'}`} />
                   <span className="text-[12px] font-medium text-text-primary truncate flex-1 min-w-0">{p.account_name}</span>
+                  <span className={`shrink-0 ${p.is_snoozed ? '' : 'opacity-0 group-hover:opacity-100 transition'}`}>
+                    <SnoozeMenu account={p} compact
+                      onSnooze={(opts) => snooze(p, opts)}
+                      onUnsnooze={() => unsnooze(p)} />
+                  </span>
                   <span className="text-[10px] text-text-dim shrink-0">{p.note_count} {p.note_count === 1 ? 'entry' : 'entries'}</span>
                 </div>
+                {p.is_snoozed && (
+                  <div className="text-[10px] text-accent-blue/80 truncate">
+                    Snoozed {p.snoozed_until ? `until ${formatDate(p.snoozed_until)}` : 'indefinitely'}
+                    {p.snooze_reason ? ` — ${p.snooze_reason}` : ''}
+                  </div>
+                )}
                 <div className="text-[10px] text-text-dim">
                   {linked.length ? `${linked.length} linked account${linked.length === 1 ? '' : 's'}` : 'No linked accounts'}
                 </div>
@@ -136,15 +201,29 @@ export default function Dashboard() {
                 )}
                 {groups[s].map(a => (
                   <Link key={a.id} to={`/accounts/${a.id}`}
-                    className="block bg-card border border-border rounded px-3 py-2 hover:border-accent-blue/40 hover:bg-[#111f42] transition">
+                    title={snoozeTitle(a)}
+                    className={`group block bg-card border border-border rounded px-3 py-2 hover:border-accent-blue/40 hover:bg-[#111f42] transition ${a.is_snoozed ? 'opacity-50 hover:opacity-100' : ''}`}>
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: riskDot(a.risk) }} title={`Risk: ${a.risk || 'none'}`} />
                       <span className="text-[12px] font-medium text-text-primary truncate flex-1 min-w-0">{a.account_name}</span>
+                      {/* Only appears on hover so the board stays quiet, but a
+                          snoozed card keeps it visible -- that's the way back. */}
+                      <span className={a.is_snoozed ? '' : 'opacity-0 group-hover:opacity-100 transition'}>
+                        <SnoozeMenu account={a} compact
+                          onSnooze={(opts) => snooze(a, opts)}
+                          onUnsnooze={() => unsnooze(a)} />
+                      </span>
                     </div>
                     <div className="flex items-center gap-2 mt-1 text-[10px] text-text-dim">
                       <span className="truncate flex-1 min-w-0">{a.ae_name || a.account_executive || 'No AE'}</span>
                       {fmtMoney(a.opportunity_value) && <span className="shrink-0 text-text-muted">{fmtMoney(a.opportunity_value)}</span>}
                     </div>
+                    {a.is_snoozed && (
+                      <div className="text-[10px] text-accent-blue/80 mt-1 truncate">
+                        Snoozed {a.snoozed_until ? `until ${formatDate(a.snoozed_until)}` : 'indefinitely'}
+                        {a.snooze_reason ? ` — ${a.snooze_reason}` : ''}
+                      </div>
+                    )}
                     {(a.tags || []).length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1.5">
                         {a.tags.slice(0, 3).map(t => (
