@@ -2,7 +2,7 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const db = require('../db/database');
 const { PRESALES_STAGES } = require('../lib/stages');
-const { contactsForAccount } = require('../lib/contactStore');
+const { contactsForAccount, promotePartnerContacts } = require('../lib/contactStore');
 
 const router = express.Router();
 
@@ -313,6 +313,12 @@ router.put('/:id', (req, res) => {
   if (!updates.length) return res.json(withTags(existing));
   values.push(req.params.id);
   db.prepare(`UPDATE accounts SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  // Switching an account to partner makes its contacts partner contacts. The
+  // boot invariant would catch this eventually; doing it here means the
+  // Contacts page is right immediately rather than after the next restart.
+  if (effType === 'partner' && normalizeAccountType(existing.account_type) !== 'partner') {
+    promotePartnerContacts(db, req.params.id);
+  }
   const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.id);
   res.json(withTags(account));
 });

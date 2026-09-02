@@ -595,9 +595,13 @@ function TranscriptRow({ transcript: t }) {
 }
 
 const CONTACT_INPUT = 'bg-[#040d1c] border border-border rounded px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:border-accent-blue/50 w-full';
-const emptyContactForm = () => ({
+// Someone added on a partner account works for the partner, and the server
+// stores them that way regardless, so the form shows Partner up front instead
+// of saying Customer and silently saving something else.
+const emptyContactForm = (accountTypeValue = 'customer') => ({
   name: '', title: '', org_name: '', email: '', phone: '',
-  contact_type: 'customer', meddpicc_role: '', linkedin_url: ''
+  contact_type: accountTypeValue === 'partner' ? 'partner' : 'customer',
+  meddpicc_role: '', linkedin_url: ''
 });
 
 function ContactFields({ form, setForm }) {
@@ -706,7 +710,8 @@ function ContactsCard({ account, onChange }) {
   const toast = useToast();
   const [adding, setAdding] = useState(false);
   const [linking, setLinking] = useState(false);
-  const [addForm, setAddForm] = useState(emptyContactForm());
+  const defaultContactType = accountType(account);
+  const [addForm, setAddForm] = useState(() => emptyContactForm(defaultContactType));
   const [openId, setOpenId] = useState(null);
   const [confirmRemove, setConfirmRemove] = useState(null);
   const [removingId, setRemovingId] = useState(null);
@@ -719,7 +724,7 @@ function ContactsCard({ account, onChange }) {
 
   function openAdd() {
     setLinking(false);
-    setAddForm(emptyContactForm());
+    setAddForm(emptyContactForm(defaultContactType));
     setAdding(true);
   }
 
@@ -731,7 +736,7 @@ function ContactsCard({ account, onChange }) {
         ...addForm,
         meddpicc_role: addForm.meddpicc_role || null
       });
-      setAddForm(emptyContactForm());
+      setAddForm(emptyContactForm(defaultContactType));
       setAdding(false);
       onChange();
       toast(

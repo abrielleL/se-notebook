@@ -7,7 +7,7 @@ import ContactDrawer, { ContactTypeBadge, RoleBadge } from '../components/Contac
 import { initials, colorForName, formatDate } from '../lib/stage.js';
 import { linkedInSearchUrl } from '../lib/linkedin.js';
 import {
-  CONTACT_TYPES, CONTACT_TYPE_OPTIONS, ROLE_OPTIONS, DUPE_REASONS
+  CONTACT_TYPES, CONTACT_TYPE_OPTIONS, ROLE_OPTIONS, DUPE_REASONS, accountType
 } from '../lib/constants.js';
 
 const FIELD = 'bg-[#040d1c] border border-border rounded px-2 py-1.5 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50';
@@ -183,6 +183,20 @@ export default function Contacts() {
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
+  // Picking a partner account flips the type to Partner, since that's what the
+  // server will store anyway — better to show it than to save something the
+  // form didn't say. An explicit analyst/internal choice is preserved.
+  const setAccountId = (e) => {
+    const account_id = e.target.value;
+    const picked = accounts.find(a => a.id === account_id);
+    setForm(f => {
+      const keepExplicit = f.contact_type === 'analyst' || f.contact_type === 'internal';
+      if (keepExplicit) return { ...f, account_id };
+      const isPartner = picked && accountType(picked) === 'partner';
+      return { ...f, account_id, contact_type: isPartner ? 'partner' : 'customer' };
+    });
+  };
+
   async function create() {
     if (!form.name.trim()) return toast('Name is required', 'error');
     try {
@@ -256,7 +270,7 @@ export default function Contacts() {
             <input placeholder="Phone" value={form.phone} onChange={set('phone')} className={FIELD} />
           </div>
           <div className="grid grid-cols-3 gap-2 mb-3">
-            <select value={form.account_id} onChange={set('account_id')} className={FIELD}>
+            <select value={form.account_id} onChange={setAccountId} className={FIELD}>
               <option value="">No account yet</option>
               {accounts.map(a => <option key={a.id} value={a.id}>{a.account_name}</option>)}
             </select>

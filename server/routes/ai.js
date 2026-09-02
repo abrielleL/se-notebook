@@ -140,7 +140,9 @@ function writeContactBatch(accountId, parsedContacts, counts) {
       title: c.title,
       org_name: c.org_name,
       role: resolveRole(c.title, c.name, counts),
-      contact_type: 'customer',
+      // Left unset on purpose: upsertContact derives it from the account, so
+      // extraction on a partner account produces partner contacts instead of
+      // hardcoding everyone as a customer.
       auto_extracted: 1
     });
     if (!r || !r.contact) {

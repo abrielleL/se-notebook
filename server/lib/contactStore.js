@@ -27,6 +27,48 @@ const CONTACT_ROLES = ['decision_maker', 'champion', 'technical_lead', 'influenc
 function cleanType(t) {
   return CONTACT_TYPES.includes(t) ? t : 'customer';
 }
+
+// Someone on a partner account works for the partner, so they read as a
+// partner contact wherever they appear. 'customer' is the type everything
+// defaults to when nobody said otherwise -- including the extraction pipeline
+// and the add-contact forms -- so on a partner account it carries no
+// information and is upgraded. An explicit 'analyst' or 'internal' is a real
+// choice and is left alone.
+//
+// Exported because the same rule has to hold in three places: here (new
+// contacts), the boot invariant (existing rows), and the accounts PUT (an
+// account switched to partner after its contacts already existed).
+function isPartnerAccount(db, accountId) {
+  if (!accountId) return false;
+  const row = db.prepare('SELECT account_type FROM accounts WHERE id = ?').get(accountId);
+  return !!row && row.account_type === 'partner';
+}
+
+// The type a contact should carry given what the caller asked for and which
+// account they're being filed under.
+function resolveType(db, requestedType, accountId) {
+  const clean = cleanType(requestedType);
+  if (clean !== 'customer') return clean;                  // explicit analyst/internal/partner
+  return isPartnerAccount(db, accountId) ? 'partner' : 'customer';
+}
+
+// Promote every default-typed contact linked to a partner account. Matches on
+// contact_accounts (not contacts.account_id) so a contact whose primary
+// account is elsewhere still counts if any of their accounts is a partner.
+// Scope to one account by passing its id; omit it to sweep every partner.
+function promotePartnerContacts(db, accountId = null) {
+  return db.prepare(`
+    UPDATE contacts SET contact_type = 'partner'
+    WHERE COALESCE(contact_type, 'customer') = 'customer'
+      AND EXISTS (
+        SELECT 1 FROM contact_accounts ca
+          JOIN accounts a ON a.id = ca.account_id
+         WHERE ca.contact_id = contacts.id
+           AND a.account_type = 'partner'
+           ${accountId ? 'AND a.id = ?' : ''}
+      )
+  `).run(...(accountId ? [accountId] : [])).changes;
+}
 function cleanRole(r) {
   return CONTACT_ROLES.includes(r) ? r : null;
 }
@@ -121,7 +163,7 @@ function upsertContact(db, input) {
     phone: (input.phone || '').trim(),
     org_name: (input.org_name || '').trim(),
     linkedin_url: normalizeLinkedInUrl(input.linkedin_url) || '',
-    contact_type: cleanType(input.contact_type),
+    contact_type: resolveType(db, input.contact_type, accountId),
     auto_extracted: input.auto_extracted ? 1 : 0
   };
   const role = cleanRole(input.role);
@@ -288,6 +330,8 @@ module.exports = {
   CONTACT_ROLES,
   cleanType,
   cleanRole,
+  resolveType,
+  promotePartnerContacts,
   upsertContact,
   linkAccount,
   contactsForAccount,

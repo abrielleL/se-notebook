@@ -545,6 +545,16 @@ if (partnerTagNeedsMigration) {
 // ---------------------------------------------------------------------------
 require('./contactsMigration').migrateContacts(db);
 
+// A contact on a partner account is a partner contact. Runs every boot rather
+// than once, so the rule stays true after accounts are retyped or contacts are
+// relinked. Only touches rows still carrying the default 'customer' -- an
+// explicit 'analyst' or 'internal' is somebody's decision and is left alone.
+// Must run after migrateContacts, which is what backfills contact_accounts.
+{
+  const n = require('../lib/contactStore').promotePartnerContacts(db);
+  if (n) console.log(`[migration] contact_type: ${n} contact(s) on partner accounts tagged as partner`);
+}
+
 // Prevents a repeat of the original bug at the storage layer: two concurrent
 // extractions can no longer both insert the same person. Scoped to the primary
 // account, since the same name on two different accounts is two people.
