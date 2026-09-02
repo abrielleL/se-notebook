@@ -284,6 +284,20 @@ router.put('/:id', (req, res) => {
     updates.push('snoozed_at = ?', 'snoozed_until = ?', 'snooze_reason = ?');
     values.push(null, null, null);
   }
+  // status_note is handled outside EDITABLE_FIELDS so that a cleared note
+  // normalizes to NULL rather than an empty string, and so its timestamp is
+  // stamped from the server clock -- "updated 3 days ago" shouldn't depend on
+  // whatever the browser thinks the time is. Re-saving identical text isn't an
+  // update, so it doesn't bump the timestamp.
+  if ('status_note' in req.body) {
+    const note = (req.body.status_note || '').trim() || null;
+    updates.push('status_note = ?');
+    values.push(note);
+    if (note !== (existing.status_note || null)) {
+      updates.push('status_note_updated_at = ?');
+      values.push(note ? new Date().toISOString() : null);
+    }
+  }
   // account_type is kept out of EDITABLE_FIELDS so an empty/unknown value
   // normalizes to 'customer' rather than writing a NULL the tabs can't read.
   if ('account_type' in req.body) {

@@ -72,6 +72,13 @@ addColumn('accounts', 'account_type', "TEXT DEFAULT 'customer'");
 // set* means indefinitely. Expired snoozes are left in place rather than
 // scrubbed -- the account resurfaces because "snoozed" is computed against
 // today, and keeping the row lets the UI say what it was snoozed for.
+// status_note: a free-text "what's going on right now" line the SE writes by
+// hand and reads at a glance -- why an account is parked, who we're waiting on.
+// Deliberately not an AI field and never overwritten by extraction; the AI
+// summary lives in ai_summary. Plain text, not markdown (it's a user-typed
+// note, so it renders raw).
+addColumn('accounts', 'status_note', 'TEXT DEFAULT NULL');
+addColumn('accounts', 'status_note_updated_at', 'TIMESTAMP DEFAULT NULL');
 addColumn('accounts', 'snoozed_at', 'TIMESTAMP DEFAULT NULL');
 addColumn('accounts', 'snoozed_until', 'DATE DEFAULT NULL');
 addColumn('accounts', 'snooze_reason', 'TEXT DEFAULT NULL');

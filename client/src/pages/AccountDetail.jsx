@@ -12,6 +12,7 @@ import Markdown, { stripMarkdown } from '../components/Markdown.jsx';
 import AccountTagEditor from '../components/AccountTagEditor.jsx';
 import AccountLinkEditor from '../components/AccountLinkEditor.jsx';
 import SnoozeMenu from '../components/SnoozeMenu.jsx';
+import StatusNote from '../components/StatusNote.jsx';
 import ContactDrawer, { ContactTypeBadge } from '../components/ContactDrawer.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { useOnline } from '../lib/offline.jsx';
@@ -342,6 +343,13 @@ export default function AccountDetail() {
         })}
       </div>
       )}
+
+      {/* STATUS NOTE — hand-written, pinned above everything else */}
+      <StatusNote
+        value={account.status_note}
+        updatedAt={account.status_note_updated_at}
+        onSave={(status_note) => patchAccount({ status_note })}
+      />
 
       {/* THREE COLUMNS */}
       <div className="flex-1 overflow-auto p-3">
