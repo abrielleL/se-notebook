@@ -157,11 +157,9 @@ export default function Dashboard() {
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: riskDot(p.risk) }} title={`Risk: ${p.risk || 'none'}`} />
                   <span className="text-[12px] font-medium text-text-primary truncate flex-1 min-w-0">{p.account_name}</span>
-                  <span className={`shrink-0 ${p.is_snoozed ? '' : 'opacity-0 group-hover:opacity-100 transition'}`}>
-                    <SnoozeMenu account={p} compact
-                      onSnooze={(opts) => snooze(p, opts)}
-                      onUnsnooze={() => unsnooze(p)} />
-                  </span>
+                  <SnoozeMenu account={p} compact revealOnHover
+                    onSnooze={(opts) => snooze(p, opts)}
+                    onUnsnooze={() => unsnooze(p)} />
                   <span className="text-[10px] text-text-dim shrink-0">{p.note_count} {p.note_count === 1 ? 'entry' : 'entries'}</span>
                 </div>
                 {p.is_snoozed && (
@@ -206,13 +204,11 @@ export default function Dashboard() {
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: riskDot(a.risk) }} title={`Risk: ${a.risk || 'none'}`} />
                       <span className="text-[12px] font-medium text-text-primary truncate flex-1 min-w-0">{a.account_name}</span>
-                      {/* Only appears on hover so the board stays quiet, but a
-                          snoozed card keeps it visible -- that's the way back. */}
-                      <span className={a.is_snoozed ? '' : 'opacity-0 group-hover:opacity-100 transition'}>
-                        <SnoozeMenu account={a} compact
-                          onSnooze={(opts) => snooze(a, opts)}
-                          onUnsnooze={() => unsnooze(a)} />
-                      </span>
+                      {/* revealOnHover lives inside SnoozeMenu so an open menu
+                          stays visible once the pointer leaves the card. */}
+                      <SnoozeMenu account={a} compact revealOnHover
+                        onSnooze={(opts) => snooze(a, opts)}
+                        onUnsnooze={() => unsnooze(a)} />
                     </div>
                     <div className="flex items-center gap-2 mt-1 text-[10px] text-text-dim">
                       <span className="truncate flex-1 min-w-0">{a.ae_name || a.account_executive || 'No AE'}</span>
