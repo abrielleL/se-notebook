@@ -1,3 +1,5 @@
+import { STEP_OWNERS, stepOwner } from './constants.js';
+
 function escapeHtml(s = '') {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -23,9 +25,17 @@ export function exportAccountPdf(account) {
     `<li>${escapeHtml(c.name)}${c.title ? ` — <span class="muted">${escapeHtml(c.title)}</span>` : ''}</li>`
   ).join('');
 
-  const nextSteps = (account.next_steps || []).map(s =>
+  // Owner-grouped, same order and fallback as the account page: a single
+  // group prints as one plain list rather than under a lone heading.
+  const stepGroups = STEP_OWNERS
+    .map(o => ({ owner: o, rows: (account.next_steps || []).filter(s => stepOwner(s) === o.value) }))
+    .filter(g => g.rows.length);
+  const stepList = (rows) => `<ul>${rows.map(s =>
     `<li class="${s.completed ? 'done' : ''}">${escapeHtml(s.text)} <span class="tag">${escapeHtml(s.source)}</span></li>`
-  ).join('');
+  ).join('')}</ul>`;
+  const nextSteps = !stepGroups.length ? ''
+    : stepGroups.length === 1 ? stepList(stepGroups[0].rows)
+    : stepGroups.map(g => `<h3>${escapeHtml(g.owner.label)}</h3>${stepList(g.rows)}`).join('');
 
   const notes = [...(account.notes || [])]
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
@@ -72,7 +82,7 @@ export function exportAccountPdf(account) {
       ${account.ai_environment ? `<div><h3>Environment</h3><pre>${escapeHtml(account.ai_environment)}</pre></div>` : ''}
     </div>` : ''}
 
-  ${nextSteps ? `<h2>Next Steps</h2><ul>${nextSteps}</ul>` : ''}
+  ${nextSteps ? `<h2>Next Steps</h2>${nextSteps}` : ''}
   ${contacts ? `<h2>Contacts</h2><ul>${contacts}</ul>` : ''}
 
   ${notes ? `<h2>Note Log</h2>${notes}` : ''}

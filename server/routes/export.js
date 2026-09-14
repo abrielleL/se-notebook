@@ -71,6 +71,19 @@ const SECTION_TITLES = {
 
 const INTERNAL_LABEL = 'INTERNAL - NOT FOR DISTRIBUTION';
 
+// Next-step owners, in the same order the account page groups them. Mirrors
+// STEP_OWNERS on the client; '' is the unassigned bucket (a NULL column).
+const STEP_OWNER_GROUPS = [
+  { value: 'se', label: 'Solutions Engineering' },
+  { value: 'ae', label: 'Account Executive' },
+  { value: 'customer', label: 'Customer' },
+  { value: '', label: 'Unassigned' }
+];
+function stepOwnerKey(step) {
+  const o = String((step && step.owner) || '').trim().toLowerCase();
+  return STEP_OWNER_GROUPS.some(g => g.value && g.value === o) ? o : '';
+}
+
 function escapeHtml(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -95,8 +108,19 @@ function assemble(account, sectionKeys, povId, includeNonCustomer = false) {
     } else if (key === 'environment') {
       items.push({ key, title, paragraphs: [account.ai_environment || '(none)'] });
     } else if (key === 'next_steps') {
-      const steps = db.prepare('SELECT text, completed FROM next_steps WHERE account_id = ? ORDER BY created_at').all(id);
-      items.push({ key, title, paragraphs: steps.length ? steps.map(s => `${s.completed ? '[x]' : '[ ]'} ${s.text}`) : ['(none)'] });
+      const steps = db.prepare('SELECT text, completed, owner FROM next_steps WHERE account_id = ? ORDER BY created_at').all(id);
+      const line = (s) => `${s.completed ? '[x]' : '[ ]'} ${s.text}`;
+      // Grouped by owner so the document reads as who-does-what. With only one
+      // group (the usual case before anyone triages) the heading adds nothing,
+      // so it falls back to the old flat list.
+      const groups = STEP_OWNER_GROUPS
+        .map(g => ({ heading: g.label, rows: steps.filter(s => stepOwnerKey(s) === g.value) }))
+        .filter(g => g.rows.length);
+      if (groups.length > 1) {
+        items.push({ key, title, subsections: groups.map(g => ({ heading: g.heading, paragraphs: g.rows.map(line) })) });
+      } else {
+        items.push({ key, title, paragraphs: steps.length ? steps.map(line) : ['(none)'] });
+      }
     } else if (key === 'contacts') {
       const rows = contactsForAccount(db, id, { customerOnly: !includeNonCustomer });
       // The Organization column only earns its place when non-customer

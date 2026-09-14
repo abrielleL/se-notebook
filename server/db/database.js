@@ -120,6 +120,10 @@ addColumn('next_steps', 'due_date', 'DATE DEFAULT NULL');
 // NULL means a person closed it by hand.
 addColumn('next_steps', 'resolved_reason', 'TEXT DEFAULT NULL');
 addColumn('next_steps', 'resolved_note', 'TEXT DEFAULT NULL');
+// Who owns the action: 'se', 'ae' or 'customer'. NULL means unassigned, which
+// is where every pre-existing step starts and where the AI leaves anything it
+// can't attribute from the notes — an honest gap beats a confident guess.
+addColumn('next_steps', 'owner', 'TEXT DEFAULT NULL');
 
 // --- pov_drafts additions ---
 // Persist the preflight selections (products/deployment/os/use_cases/

@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import Modal from './Modal.jsx';
 import { api } from '../lib/api.js';
 import { useToast } from './Toast.jsx';
-import { EXPORT_SECTIONS, EXPORT_PRESETS, QUAL_FIELDS } from '../lib/constants.js';
+import { EXPORT_SECTIONS, EXPORT_PRESETS, QUAL_FIELDS, stepOwner, stepOwnerLabel } from '../lib/constants.js';
 import { formatDate } from '../lib/stage.js';
 
 const trunc = (s, n) => {
@@ -50,7 +50,7 @@ export default function AccountExportModal({ accountId, accountName, account = {
       case 'environment': return account.ai_environment ? [trunc(account.ai_environment, 200)] : [];
       case 'next_steps':
         return (account.next_steps || []).filter(s => !s.completed).slice(0, 5)
-          .map(s => `${s.text}${s.due_date ? ` — ${formatDate(s.due_date)}` : ''}`);
+          .map(s => `${stepOwner(s) ? `${stepOwnerLabel(stepOwner(s))}: ` : ''}${s.text}${s.due_date ? ` — ${formatDate(s.due_date)}` : ''}`);
       case 'contacts':
         return (account.contacts || [])
           .filter(c => includeNonCustomer || (c.contact_type || 'customer') === 'customer')

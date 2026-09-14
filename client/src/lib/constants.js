@@ -161,6 +161,28 @@ export const NOTE_TYPES = [
   'Kickoff', 'Email', 'Transcript', 'General'
 ];
 
+// Who owns a next step. '' is the unassigned bucket: a display grouping, not a
+// stored value — the column is NULL. Listed in working order (my work, the
+// AE's, theirs, then whatever hasn't been triaged).
+export const STEP_OWNERS = [
+  { value: 'se', label: 'SE', chip: 'text-accent-blue border-accent-blue/40' },
+  { value: 'ae', label: 'AE', chip: 'text-accent-purple border-accent-purple/40' },
+  { value: 'customer', label: 'Customer', chip: 'text-accent-green border-accent-green/40' },
+  { value: '', label: 'Unassigned', chip: 'text-text-dim border-border' }
+];
+
+// Normalizes a step's owner to one of the STEP_OWNERS values, so a NULL, a
+// legacy row, or a value the AI invented all land in the unassigned bucket.
+export function stepOwner(step) {
+  const o = String((step && step.owner) || '').trim().toLowerCase();
+  return STEP_OWNERS.some(s => s.value && s.value === o) ? o : '';
+}
+
+export function stepOwnerLabel(owner) {
+  const found = STEP_OWNERS.find(s => s.value === (owner || ''));
+  return found ? found.label : 'Unassigned';
+}
+
 export const POV_STATUSES = ['Draft', 'Sent', 'Kicked Off', 'In Progress', 'Closed'];
 
 export const DURATION_OPTIONS = ['2 weeks', '1 week', '30 days', 'Custom'];

@@ -24,7 +24,8 @@ import { linkedInSearchUrl } from '../lib/linkedin.js';
 import {
   riskDot, RISK_OPTIONS, escalationStyle, ESCALATION_OPTIONS, QUAL_FIELDS,
   ROLE_BADGES, ROLE_OPTIONS, STAGE_BAR, EXTRA_STAGES, STAGE_GATES, nextStage, stageBarStyle,
-  agingColor, PRESALES_STAGES, CONTACT_TYPE_OPTIONS, ACCOUNT_TYPES, ACCOUNT_TYPE_TABS, accountType
+  agingColor, PRESALES_STAGES, CONTACT_TYPE_OPTIONS, ACCOUNT_TYPES, ACCOUNT_TYPE_TABS, accountType,
+  STEP_OWNERS, stepOwner, stepOwnerLabel
 } from '../lib/constants.js';
 
 // Accent color for a terminal stage when it is the account's current stage.
@@ -50,6 +51,8 @@ function extractionMessage(prefix, r) {
     parts.push(`${closed} next step${closed > 1 ? 's' : ''} closed (${how})`);
   }
   if (addedSteps) parts.push(`${addedSteps} new next step${addedSteps > 1 ? 's' : ''}`);
+  const assigned = (r.stepsAssigned || []).length;
+  if (assigned) parts.push(`${assigned} step${assigned > 1 ? 's' : ''} assigned an owner`);
   if (!r.hasKey) parts.push('AI summary skipped — no API key set (add it in Settings)');
   else if (r.summaryError) parts.push(`AI summary failed: ${r.summaryError}`);
   return parts.join(' · ');
@@ -1071,10 +1074,32 @@ const RESOLUTION_LABEL = {
   duplicate: 'merged into another step'
 };
 
+// Owner picker on a step row and on the add-step line. Deliberately a native
+// select: the whole card is 10px dense, and a bespoke dropdown here would cost
+// more than the four options are worth.
+function OwnerSelect({ value, onChange, title }) {
+  const opt = STEP_OWNERS.find(o => o.value === (value || '')) || STEP_OWNERS[STEP_OWNERS.length - 1];
+  return (
+    <select
+      value={value || ''}
+      onChange={e => onChange(e.target.value)}
+      title={title || 'Who owns this step'}
+      className={`shrink-0 appearance-none cursor-pointer rounded border bg-transparent px-1 py-[1px] text-[9px] focus:outline-none ${opt.chip}`}
+    >
+      {STEP_OWNERS.map(o => (
+        <option key={o.value} value={o.value} className="bg-[#040d1c] text-text-primary">
+          {o.value ? o.label : '—'}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function NextStepsCard({ account, onChange }) {
   const toast = useToast();
   const online = useOnline();
   const [text, setText] = useState('');
+  const [newOwner, setNewOwner] = useState('se');
   const [showDone, setShowDone] = useState(false);
   const [consolidating, setConsolidating] = useState(false);
 
@@ -1082,10 +1107,19 @@ function NextStepsCard({ account, onChange }) {
   const open = steps.filter(s => !s.completed);
   const done = steps.filter(s => s.completed);
 
+  // Open work split by owner, in STEP_OWNERS order, empty buckets dropped.
+  const groups = STEP_OWNERS
+    .map(o => ({ owner: o, items: open.filter(s => stepOwner(s) === o.value) }))
+    .filter(g => g.items.length);
+  // An account nobody has triaged yet is all one unassigned pile; a header
+  // reading "Unassigned 7" above the only group is pure noise, so drop it.
+  const showGroupHeaders = groups.length > 1 || (groups.length === 1 && groups[0].owner.value);
+
   async function toggle(s) { await api.updateNextStep(s.id, { completed: !s.completed }); onChange(); }
+  async function setOwner(s, owner) { await api.updateNextStep(s.id, { owner }); onChange(); }
   async function add() {
     if (!text.trim()) return;
-    await api.createNextStep({ account_id: account.id, text, source: 'manual' });
+    await api.createNextStep({ account_id: account.id, text, source: 'manual', owner: newOwner });
     setText(''); onChange();
   }
 
@@ -1094,17 +1128,20 @@ function NextStepsCard({ account, onChange }) {
   async function consolidate() {
     setConsolidating(true);
     try {
-      const { closed } = await consolidateNextSteps(account.id);
+      const { closed, assigned = [] } = await consolidateNextSteps(account.id);
       onChange();
-      if (!closed.length) {
+      if (!closed.length && !assigned.length) {
         toast('Nothing to consolidate — every open step still looks outstanding.', 'info');
+      } else if (!closed.length) {
+        toast(`Assigned an owner to ${assigned.length} step${assigned.length === 1 ? '' : 's'}`, 'success');
       } else {
         const d = closed.filter(c => c.reason === 'done').length;
         const m = closed.filter(c => c.reason === 'duplicate').length;
         const parts = [];
         if (d) parts.push(`${d} done`);
         if (m) parts.push(`${m} merged`);
-        toast(`Closed ${closed.length} step${closed.length === 1 ? '' : 's'} — ${parts.join(', ')}`, 'success');
+        const owners = assigned.length ? ` · ${assigned.length} assigned an owner` : '';
+        toast(`Closed ${closed.length} step${closed.length === 1 ? '' : 's'} — ${parts.join(', ')}${owners}`, 'success');
         setShowDone(true);   // so the change is visible, not just a number
       }
     } catch (e) {
@@ -1118,11 +1155,11 @@ function NextStepsCard({ account, onChange }) {
     <Section
       title="Next steps"
       icon={Icon.Check}
-      right={open.length > 1 && online && (
+      right={open.length > 0 && online && (
         <button
           onClick={consolidate}
           disabled={consolidating}
-          title="Re-read the notes: close steps that have been done, merge ones that say the same thing"
+          title="Re-read the notes: close steps that have been done, merge ones that say the same thing, and assign an owner to steps that don't have one"
           className="flex items-center gap-1 text-[10px] text-text-dim hover:text-accent-blue disabled:opacity-50"
         >
           <Icon.Sync width={10} height={10} />
@@ -1134,10 +1171,23 @@ function NextStepsCard({ account, onChange }) {
         {open.length === 0 && done.length === 0 && (
           <div className="text-[10px] text-text-dim">No next steps yet.</div>
         )}
-        {open.map(s => (
-          <div key={s.id} className="flex items-start gap-2">
-            <button onClick={() => toggle(s)} className="w-3.5 h-3.5 rounded-full border border-text-dim flex items-center justify-center shrink-0 mt-0.5" />
-            <div className="text-[10px] flex-1 text-text-secondary">{s.text} {s.source === 'ai' && <Icon.Sparkles width={8} height={8} className="inline text-accent-purple" />}</div>
+        {groups.map(g => (
+          <div key={g.owner.value || 'unassigned'} className="flex flex-col gap-1.5">
+            {showGroupHeaders && (
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className={`rounded border px-1 py-[1px] text-[9px] uppercase tracking-wide ${g.owner.chip}`}>
+                  {g.owner.label}
+                </span>
+                <span className="text-[9px] text-text-dim">{g.items.length}</span>
+              </div>
+            )}
+            {g.items.map(s => (
+              <div key={s.id} className="flex items-start gap-2">
+                <button onClick={() => toggle(s)} className="w-3.5 h-3.5 rounded-full border border-text-dim flex items-center justify-center shrink-0 mt-0.5" />
+                <div className="text-[10px] flex-1 text-text-secondary">{s.text} {s.source === 'ai' && <Icon.Sparkles width={8} height={8} className="inline text-accent-purple" />}</div>
+                <OwnerSelect value={stepOwner(s)} onChange={(v) => setOwner(s, v)} />
+              </div>
+            ))}
           </div>
         ))}
 
@@ -1163,6 +1213,9 @@ function NextStepsCard({ account, onChange }) {
                 be cancelled by the child, so the reason line was struck out
                 too. */}
             <div className="text-[10px] flex-1 text-text-dim">
+              {stepOwner(s) && (
+                <span className="text-[9px] text-text-dim/80 mr-1">{stepOwnerLabel(stepOwner(s))} ·</span>
+              )}
               <span className="line-through">{s.text}</span>
               {s.resolved_reason && (
                 <span className="block text-[9px] text-text-dim/80 mt-0.5"
@@ -1174,8 +1227,9 @@ function NextStepsCard({ account, onChange }) {
           </div>
         ))}
 
-        <div className="flex gap-1 mt-1">
-          <input value={text} onChange={e => setText(e.target.value)} placeholder="Add step…" className="flex-1 bg-[#040d1c] border border-border rounded px-2 py-1 text-[10px] text-text-primary" />
+        <div className="flex items-center gap-1 mt-1">
+          <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} placeholder="Add step…" className="flex-1 bg-[#040d1c] border border-border rounded px-2 py-1 text-[10px] text-text-primary" />
+          <OwnerSelect value={newOwner} onChange={setNewOwner} title="Owner for the new step" />
           <button onClick={add} className="text-accent-blue px-1"><Icon.Plus width={12} height={12} /></button>
         </div>
       </div>

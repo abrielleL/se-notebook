@@ -1,4 +1,5 @@
 import { api } from './api.js';
+import { stepOwner } from './constants.js';
 
 export const ANTHROPIC_KEY_STORAGE = 'anthropic_api_key';
 export const ANTHROPIC_MODEL = 'claude-sonnet-4-6';
@@ -106,9 +107,10 @@ const SYSTEM_PROMPT = `You are a solutions engineering assistant. Analyze the fo
   "summary": "concise bullet-point summary covering deal status, key stakeholder, competitive risk, blockers, and momentum",
   "technical_drivers": "bullet list of key technical requirements and drivers",
   "environment": "description of current technical environment and architecture",
-  "next_steps": ["array", "of", "NEW action items as strings"],
+  "next_steps": [{ "text": "NEW action item", "owner": "se" }],
   "completed_steps": [{ "id": "s1", "evidence": "the note text that shows it was done" }],
-  "duplicate_steps": [{ "id": "s2", "duplicate_of": "s1" }]
+  "duplicate_steps": [{ "id": "s2", "duplicate_of": "s1" }],
+  "assign_owners": [{ "id": "s3", "owner": "ae" }]
 }
 
 RECONCILING NEXT STEPS — read the "Currently open next steps" list below, if present:
@@ -116,6 +118,13 @@ RECONCILING NEXT STEPS — read the "Currently open next steps" list below, if p
 - "duplicate_steps": open steps that restate another open step in different words. Point "duplicate_of" at the id of the one worth keeping (prefer the clearest, most specific wording). Only for genuinely the same action.
 - "next_steps": action items NOT already on that list. Do not restate an open step in new words — if the work is already listed, leave it out entirely, even if you would phrase it better.
 - Leave anything you are unsure about alone: omit it from all three and it stays open.
+
+OWNERS — every action belongs to someone. Use exactly one of:
+- "se": solutions engineering / technical work — labs, installs, configuration, integration testing, architecture diagrams, technical documents, demos, POV setup and success criteria, answering technical questions.
+- "ae": account executive / commercial work — pricing and quotes, contracts and procurement, budget and business-case conversations, executive relationship building, scheduling and internal deal logistics, forecasting.
+- "customer": work the customer or partner has to do on their side — providing access, credentials, hardware or environments, internal approvals, sending sample data, confirming attendees.
+- "" (empty string): genuinely unclear who owns it.
+Rules: set "owner" on each item in "next_steps". Steps shown as "[unassigned]" below may be attributed in "assign_owners" — only when the notes make the owner clear. Never propose an owner for a step already shown with an owner; a person set that and it stands.
 
 Be concise and technical. In summary, technical_drivers, and environment, use simple '- ' bullet points, one per line. Do not use bold ('**'), italic ('*'), headings ('#'), or tables. Return only valid JSON, no other text.`;
 
@@ -131,7 +140,11 @@ function openStepHandles(account) {
 
 function renderOpenSteps(byHandle) {
   if (!byHandle.size) return '';
-  const lines = [...byHandle.entries()].map(([h, s]) => `${h}: ${s.text}`);
+  // The owner travels with each step so the model knows which ones are still
+  // up for attribution and which a person has already decided.
+  const lines = [...byHandle.entries()].map(([h, s]) =>
+    `${h} [${stepOwner(s) || 'unassigned'}]: ${s.text}`
+  );
   return `\n\n## Currently open next steps\n${lines.join('\n')}`;
 }
 
@@ -177,10 +190,32 @@ async function applyStepReconciliation(accountId, byHandle, parsed) {
     closed.push({ text: step.text, reason: 'duplicate' });
   }
 
-  return closed;
+  // Attribution only fills gaps. A step that already has an owner was assigned
+  // by a person (or by an earlier run they left standing), and the model
+  // doesn't get to second-guess that.
+  const assigned = [];
+  for (const entry of asArray(parsed.assign_owners)) {
+    const step = resolve(entry && entry.id);
+    const owner = normalizeOwner(entry && entry.owner);
+    if (!step || !owner || step.completed || stepOwner(step)) continue;
+    if (closed.some(c => c.text === step.text)) continue;   // just closed above
+    await api.updateNextStep(step.id, { owner });
+    assigned.push({ text: step.text, owner });
+  }
+
+  return { closed, assigned };
 }
 
 function asArray(v) { return Array.isArray(v) ? v : []; }
+
+// The model is asked for 'se' | 'ae' | 'customer'; anything else it invents
+// (a person's name, 'both', 'SE/AE') becomes unassigned rather than a bucket
+// nobody can see.
+const STEP_OWNER_VALUES = new Set(['se', 'ae', 'customer']);
+function normalizeOwner(v) {
+  const o = String(v == null ? '' : v).trim().toLowerCase();
+  return STEP_OWNER_VALUES.has(o) ? o : '';
+}
 
 function buildCorpus(account) {
   const noteBlocks = (account.notes || []).map(n =>
@@ -257,26 +292,35 @@ export async function runAIExtraction(accountId) {
   // Close out what the notes show is done or restated, then add only what's
   // genuinely new. Closing first means a step the model both closed and
   // re-proposed can't come back as a fresh row.
-  const closedSteps = await applyStepReconciliation(accountId, stepHandles.byHandle, parsed);
+  const { closed: closedSteps, assigned } = await applyStepReconciliation(accountId, stepHandles.byHandle, parsed);
 
   const existingTexts = new Set(
     (account.next_steps || []).map(s => s.text.trim().toLowerCase())
   );
   const addedSteps = [];
   for (const step of asArray(parsed.next_steps)) {
-    const t = (typeof step === 'string' ? step : String(step || '')).trim();
+    const { text: t, owner } = parseProposedStep(step);
     if (!t) continue;
     // Exact-text guard is only a backstop now; the prompt does the real work of
     // not restating an open step.
     if (existingTexts.has(t.toLowerCase())) continue;
     existingTexts.add(t.toLowerCase());
-    await api.createNextStep({ account_id: accountId, text: t, source: 'ai' });
+    await api.createNextStep({ account_id: accountId, text: t, source: 'ai', owner });
     addedSteps.push(t);
   }
 
   const updated = await api.getAccount(accountId);
-  updated._stepChanges = { closed: closedSteps, added: addedSteps };
+  updated._stepChanges = { closed: closedSteps, added: addedSteps, assigned };
   return updated;
+}
+
+// A proposed step is `{ text, owner }`, but older prompts (and the model on an
+// off day) return a bare string — take either.
+function parseProposedStep(step) {
+  if (step && typeof step === 'object') {
+    return { text: String(step.text || '').trim(), owner: normalizeOwner(step.owner) };
+  }
+  return { text: String(step == null ? '' : step).trim(), owner: '' };
 }
 
 // Reconcile next steps without touching the AI summary — what the
@@ -288,10 +332,10 @@ export async function consolidateNextSteps(accountId) {
 
   const account = await api.getAccount(accountId);
   const stepHandles = openStepHandles(account);
-  if (!stepHandles.open.length) return { closed: [], added: [], openBefore: 0 };
+  if (!stepHandles.open.length) return { closed: [], assigned: [], added: [], openBefore: 0 };
 
   const corpus = buildCorpus(account);
-  if (!corpus.trim()) return { closed: [], added: [], openBefore: stepHandles.open.length };
+  if (!corpus.trim()) return { closed: [], assigned: [], added: [], openBefore: stepHandles.open.length };
 
   const text = await generateText({
     system: SYSTEM_PROMPT,
@@ -300,8 +344,8 @@ export async function consolidateNextSteps(accountId) {
   });
   const parsed = extractJson(text);
 
-  const closed = await applyStepReconciliation(accountId, stepHandles.byHandle, parsed);
-  return { closed, added: [], openBefore: stepHandles.open.length };
+  const { closed, assigned } = await applyStepReconciliation(accountId, stepHandles.byHandle, parsed);
+  return { closed, assigned, added: [], openBefore: stepHandles.open.length };
 }
 
 export const CRM_SNAPSHOT_MAX = 255;
@@ -430,7 +474,7 @@ export async function runFullExtraction(accountId, noteId, transcriptId) {
   // of silently looking like success (the toast otherwise reports only the
   // server-side fields, which succeed independently of the summary).
   let summaryError = null;
-  let stepChanges = { closed: [], added: [] };
+  let stepChanges = { closed: [], added: [], assigned: [] };
   const aiTasks = [];
   if (key) {
     aiTasks.push(runAIExtraction(accountId).then(acct => {
@@ -454,6 +498,7 @@ export async function runFullExtraction(accountId, noteId, transcriptId) {
     hasKey: Boolean(key),
     summaryError,
     stepsClosed: stepChanges.closed,
-    stepsAdded: stepChanges.added
+    stepsAdded: stepChanges.added,
+    stepsAssigned: stepChanges.assigned || []
   };
 }
