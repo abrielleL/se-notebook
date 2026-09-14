@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mockup — Opportunities on accounts</title>
+<style>
+/* Design tokens copied from client/tailwind.config.js (OPSWAT Product UI, dark).
+   Hand-written CSS rather than a Tailwind CDN so the file opens offline. */
+:root{
+  --app:#040d1c; --card:#081938; --subtle:#111f42; --border:#273454;
+  --t1:#f4f4f5; --t2:#cbd3e7; --t3:#838892; --t4:#616875;
+  --blue:#5c9bff; --blue-solid:#1d6bfc; --green:#4fd15c; --orange:#ff9a4d;
+  --red:#ff6b66; --purple:#8f47e8;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--app);color:var(--t1);
+  font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:12px}
+a{color:var(--blue);text-decoration:none}
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px}
+.card>h3{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  margin:0;padding:8px 12px;border-bottom:1px solid var(--border);
+  font-size:11px;font-weight:500;color:var(--t1)}
+.card>.body{padding:12px}
+.chip{display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;
+  text-transform:uppercase;letter-spacing:.04em;border:1px solid}
+.chip.se{color:var(--blue);border-color:rgba(92,155,255,.4)}
+.chip.ae{color:var(--purple);border-color:rgba(143,71,232,.4)}
+.chip.cust{color:var(--green);border-color:rgba(79,209,92,.4)}
+.chip.un{color:var(--t4);border-color:var(--border)}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:500}
+.pill.cust{background:rgba(29,107,252,.15);color:var(--blue);border:1px solid rgba(92,155,255,.3)}
+.pill.won{background:rgba(0,138,0,.18);color:var(--green);border:1px solid rgba(79,209,92,.35)}
+.pill.live{background:rgba(29,107,252,.18);color:var(--blue);border:1px solid rgba(92,155,255,.35)}
+.stage{padding:2px 8px;border-radius:4px;background:#0c295f;color:var(--blue);font-size:10px}
+.muted{color:var(--t3)} .dim{color:var(--t4)} .sec{color:var(--t2)}
+.row{display:flex;align-items:center;gap:8px}
+.between{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.col{display:flex;flex-direction:column;gap:12px;min-width:0}
+.kv{display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:1px 0}
+.kv span:first-child{color:var(--t4)}
+.kv span:last-child{color:var(--t2);text-align:right}
+.btn{background:var(--card);border:1px solid var(--border);border-radius:4px;
+  padding:5px 10px;font-size:11px;color:var(--t1);cursor:pointer;font-family:inherit}
+.btn:hover{border-color:rgba(92,155,255,.4)}
+.btn.primary{background:var(--blue-solid);border-color:var(--blue-solid);color:#fff}
+.btn.mini{padding:2px 6px;font-size:9px;color:var(--t4);background:none;border:none}
+.btn.mini:hover{color:var(--blue)}
+.hdr{padding:12px 20px;border-bottom:1px solid var(--border)}
+.tabstrip{padding:8px 20px;border-bottom:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap}
+.tab{font-size:10px;padding:4px 10px;border-radius:4px;background:var(--subtle);color:var(--t3);cursor:pointer}
+.tab.on{background:rgba(29,107,252,.16);color:var(--blue)}
+.grid3{display:grid;grid-template-columns:230px 1fr 250px;gap:12px;padding:12px}
+.dot{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
+.step{display:flex;align-items:flex-start;gap:8px;font-size:10px;color:var(--t2)}
+.step .box{width:14px;height:14px;border-radius:50%;border:1px solid var(--t4);flex:0 0 auto;margin-top:2px}
+.opp{border:1px solid var(--border);border-radius:6px;padding:10px;background:var(--subtle);cursor:pointer}
+.opp:hover{border-color:rgba(92,155,255,.4)}
+.opp.arch{background:transparent;opacity:.75}
+.inherit{border-left:2px solid rgba(92,155,255,.45);padding-left:8px}
+.tag-inherit{font-size:9px;color:var(--blue);border:1px solid rgba(92,155,255,.35);
+  border-radius:3px;padding:0 4px;text-transform:uppercase;letter-spacing:.04em}
+.toggle{display:inline-flex;align-items:center;gap:6px;font-size:10px;color:var(--t2);cursor:pointer}
+.switch{width:26px;height:14px;border-radius:999px;background:var(--border);position:relative;transition:.15s}
+.switch i{position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:50%;background:var(--t3);transition:.15s}
+.switch.on{background:var(--blue-solid)} .switch.on i{left:14px;background:#fff}
+.note{font-size:10px;color:var(--t3);line-height:1.5}
+.bar{background:var(--subtle);border-bottom:1px solid var(--border);padding:8px 20px;
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.bar .lbl{font-size:10px;color:var(--t4);text-transform:uppercase;letter-spacing:.06em}
+/* Design annotations — toggled off by default so the mock reads as a real screen. */
+.ann{display:none;border:1px dashed rgba(255,154,77,.5);border-radius:4px;
+  background:rgba(237,103,6,.1);color:var(--orange);font-size:10px;padding:5px 7px;line-height:1.45}
+body.notes .ann{display:block}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--t4);
+  font-weight:500;padding:6px 10px;border-bottom:1px solid var(--border)}
+td{padding:8px 10px;border-bottom:1px solid var(--border);color:var(--t2)}
+tr.child td:first-child{padding-left:28px}
+.view{display:none} .view.on{display:block}
+</style>
+</head>
+<body class="notes">
+
+<!-- ===== mock chrome (not part of the app) ===== -->
+<div class="bar">
+  <span class="lbl">Mockup</span>
+  <button class="btn" onclick="show('company')">Company page</button>
+  <button class="btn" onclick="show('opp')">Opportunity page (Diodes)</button>
+  <button class="btn" onclick="show('board')">Pipeline board</button>
+  <span style="flex:1"></span>
+  <label class="toggle" onclick="document.body.classList.toggle('notes')">
+    <span class="switch on" id="annsw"><i></i></span> design notes
+  </label>
+</div>
+
+<!-- ============================================================ -->
+<!-- VIEW 1 — COMPANY PAGE                                        -->
+<!-- ============================================================ -->
+<div class="view on" id="v-company">
+  <div class="hdr between">
+    <div>
+      <div class="row">
+        <span class="dim">←</span>
+        <span style="font-size:15px;font-weight:600">Maple Lodge Farms</span>
+        <span class="pill cust">Customer</span>
+      </div>
+      <div class="muted" style="font-size:11px;margin-top:4px">
+        Food &amp; Beverage Manufacturing · AE Jordan Q. · 12 sites · 2 opportunities
+      </div>
+      <div class="ann" style="margin-top:8px;max-width:640px">
+        No stage, no close date, no risk dot here any more — those moved to the opportunity.
+        The company header only carries what's true regardless of what you're selling.
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn">Export</button>
+      <button class="btn">Edit</button>
+      <button class="btn primary">+ New opportunity</button>
+    </div>
+  </div>
+
+  <div class="grid3">
+    <!-- left -->
+    <div class="col">
+      <div class="card">
+        <h3>Company info <span class="btn mini">edit</span></h3>
+        <div class="body">
+          <div class="kv"><span>Industry</span><span>Food &amp; Bev Mfg</span></div>
+          <div class="kv"><span>Account exec</span><span>Jordan Q.</span></div>
+          <div class="kv"><span>Type</span><span>Customer</span></div>
+          <div class="kv"><span>Sites</span><span>12 (6 with OT)</span></div>
+          <div class="kv"><span>Tags</span><span>Manufacturing, OT</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Partners</h3>
+        <div class="body note">Spartan Controls — reseller of record</div>
+      </div>
+      <div class="ann">Partners stay company-level: the reseller is the reseller across every deal.</div>
+    </div>
+
+    <!-- middle -->
+    <div class="col">
+      <div class="card">
+        <h3>Opportunities <span class="btn mini">+ add</span></h3>
+        <div class="body" style="display:flex;flex-direction:column;gap:8px">
+
+          <div class="opp" onclick="show('opp')">
+            <div class="between">
+              <div class="row">
+                <span class="dot" style="background:var(--orange)"></span>
+                <strong style="font-size:12px">Data Diodes</strong>
+                <span class="pill live">Active</span>
+              </div>
+              <span class="stage">1-Discovery</span>
+            </div>
+            <div class="muted" style="font-size:10px;margin-top:6px">
+              Opened Aug 2026 · close Q2 2027 · 4 notes · 1 transcript · 6 open steps
+            </div>
+            <div class="sec" style="font-size:10px;margin-top:6px">
+              Evaluating unidirectional gateways for the two nuclear-adjacent plants after
+              the OT segmentation audit.
+            </div>
+          </div>
+
+          <div class="opp arch">
+            <div class="between">
+              <div class="row">
+                <span class="dot" style="background:var(--green)"></span>
+                <strong style="font-size:12px">Kiosk &amp; MFT</strong>
+                <span class="pill won">Won</span>
+              </div>
+              <span class="stage">7-Technical Win</span>
+            </div>
+            <div class="muted" style="font-size:10px;margin-top:6px">
+              Mar 2025 – Mar 2026 · $128,000 · 3 notes · 33 steps · 2 POVs · archived
+            </div>
+            <div class="row" style="margin-top:6px">
+              <span class="btn mini">open ↗</span>
+              <span class="btn mini">unarchive</span>
+            </div>
+          </div>
+
+          <div class="ann">
+            Archived, still readable — off the board, still on this page, and its notes stay
+            available to the context toggle on the Diodes opportunity.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Company environment <span class="dim" style="font-size:10px">AI · shared</span></h3>
+        <div class="body">
+          <div class="sec" style="font-size:11px;line-height:1.6">
+            Six plants run air-gapped OT segments behind Rockwell PLCs; corporate IT is
+            Entra-joined with Defender across ~1,400 endpoints. Change windows are quarterly
+            and procurement runs eight weeks through a shared-services desk in Brampton.
+          </div>
+          <div class="ann" style="margin-top:10px">
+            The single most valuable thing an opportunity inherits. True for Kiosk, true for
+            diodes — so it lives here and every opportunity reads it, rather than each deal
+            re-deriving it from its own notes.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- right -->
+    <div class="col">
+      <div class="card">
+        <h3>Contacts <span class="dim" style="font-size:10px">7</span></h3>
+        <div class="body" style="display:flex;flex-direction:column;gap:10px">
+          <div>
+            <div class="row"><strong style="font-size:11px">D. Reyes</strong>
+              <span class="chip cust">Champion</span></div>
+            <div class="dim" style="font-size:9px;margin-top:2px">Dir. of IT · met on Kiosk &amp; MFT</div>
+          </div>
+          <div>
+            <div class="row"><strong style="font-size:11px">P. Sandhu</strong>
+              <span class="chip un">Influencer</span></div>
+            <div class="dim" style="font-size:9px;margin-top:2px">VP Ops · met on Kiosk &amp; MFT</div>
+          </div>
+          <div>
+            <div class="row"><strong style="font-size:11px">M. Lefebvre</strong>
+              <span class="chip se">Technical lead</span></div>
+            <div class="dim" style="font-size:9px;margin-top:2px">OT Engineer · met on Data Diodes</div>
+          </div>
+          <div class="ann">
+            One roster, attributed. Same person can be champion on one deal and a bystander
+            on the next, because the role already lives on the link row, not the person.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Company files <span class="btn mini">+ upload</span></h3>
+        <div class="body note" style="display:flex;flex-direction:column;gap:6px">
+          <div>📄 Maple Lodge network diagram.pdf</div>
+          <div>📄 Plant site list.xlsx</div>
+          <div>📄 Security policy excerpt.docx</div>
+          <div class="ann">Deal-specific files (POV reports, test plans) live on the opportunity instead.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- VIEW 2 — OPPORTUNITY PAGE                                    -->
+<!-- ============================================================ -->
+<div class="view" id="v-opp">
+  <div class="hdr">
+    <div class="between">
+      <div>
+        <div class="row" style="font-size:11px">
+          <span class="dim">←</span>
+          <a onclick="show('company')" style="cursor:pointer">Maple Lodge Farms</a>
+          <span class="dim">/</span>
+          <span class="muted">Data Diodes</span>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <span class="dot" style="background:var(--orange)"></span>
+          <span style="font-size:15px;font-weight:600">Data Diodes</span>
+          <span class="stage">1-Discovery</span>
+          <span class="pill live">Active</span>
+        </div>
+        <div class="muted" style="font-size:11px;margin-top:4px">
+          AE Jordan Q. · close Q2 2027 · opened 12 Aug 2026
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn">Export</button>
+        <button class="btn">Edit</button>
+        <button class="btn primary">+ Note</button>
+      </div>
+    </div>
+    <div class="tabstrip" style="padding:10px 0 0;border:none">
+      <span class="tab on">Overview</span><span class="tab">Notes 4</span>
+      <span class="tab">Transcripts 1</span><span class="tab">POV</span>
+      <span class="tab">Stage gates</span><span class="tab">Files 2</span>
+    </div>
+  </div>
+
+  <div class="grid3">
+    <!-- left -->
+    <div class="col">
+      <div class="card">
+        <h3>Opportunity info <span class="btn mini">edit</span></h3>
+        <div class="body">
+          <div class="kv"><span>Stage</span><span>1-Discovery</span></div>
+          <div class="kv"><span>Risk</span><span>Yellow</span></div>
+          <div class="kv"><span>Value</span><span>—</span></div>
+          <div class="kv"><span>Close date</span><span>Q2 2027</span></div>
+          <div class="kv"><span>Escalation</span><span>Not needed</span></div>
+          <div class="kv"><span>Products</span><span>Diode / NetWall</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>From the company <span class="tag-inherit">inherited</span></h3>
+        <div class="body inherit">
+          <div class="note">
+            Air-gapped OT at 6 plants · Rockwell PLCs · quarterly change windows ·
+            8-week procurement via Brampton
+          </div>
+          <div style="margin-top:8px"><a>View company page ↗</a></div>
+          <div class="ann" style="margin-top:10px">
+            Read-only here. Edited once, on the company, so it can't drift between deals.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>People in this deal</h3>
+        <div class="body note" style="display:flex;flex-direction:column;gap:6px">
+          <div>M. Lefebvre <span class="chip se">Technical lead</span></div>
+          <div>D. Reyes <span class="chip un">Influencer</span>
+            <span class="dim" style="font-size:9px">· champion on Kiosk</span></div>
+          <div class="btn mini" style="align-self:flex-start">+ add from company roster (7)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- middle -->
+    <div class="col">
+      <div class="card">
+        <h3>
+          AI summary
+          <label class="toggle" onclick="this.querySelector('.switch').classList.toggle('on')">
+            <span class="switch on"><i></i></span> include Kiosk &amp; MFT history
+          </label>
+        </h3>
+        <div class="body">
+          <div class="sec" style="font-size:11px;line-height:1.6">
+            Maple Lodge is scoping unidirectional gateways for the Brampton and Cambridge
+            plants following an OT segmentation audit. M. Lefebvre is driving technically and
+            wants one-way historian replication proven before any budget conversation.
+            <span style="color:var(--blue)">Prior deal: they bought Kiosk and MFT in Mar 2026,
+            so the buying process and the plant topology are already known quantities.</span>
+          </div>
+          <div class="ann" style="margin-top:10px">
+            The blue clause is what the toggle buys you. Switched off, the summary is written
+            from the four diode notes alone and that sentence disappears.
+            Default: <strong>on</strong> when the company has a prior closed opportunity.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Next steps</h3>
+        <div class="body" style="display:flex;flex-direction:column;gap:8px">
+          <div class="between"><div class="row"><span class="chip se">SE</span>
+            <span class="dim" style="font-size:9px">3</span></div>
+            <span class="btn mini">⧉ Copy</span></div>
+          <div class="step"><span class="box"></span><span>Build one-way historian replication demo on the OT lab rig</span></div>
+          <div class="step"><span class="box"></span><span>Confirm PI Server version at Cambridge with M. Lefebvre</span></div>
+          <div class="step"><span class="box"></span><span>Draft diode POV success criteria</span></div>
+
+          <div class="between" style="margin-top:4px"><div class="row"><span class="chip ae">AE</span>
+            <span class="dim" style="font-size:9px">2</span></div>
+            <span class="btn mini">⧉ Copy</span></div>
+          <div class="step"><span class="box"></span><span>Get budget owner for the FY27 OT line</span></div>
+          <div class="step"><span class="box"></span><span>Re-engage Spartan on the diode SKU margin</span></div>
+
+          <div class="between" style="margin-top:4px"><div class="row"><span class="chip cust">Customer</span>
+            <span class="dim" style="font-size:9px">1</span></div>
+            <span class="btn mini">⧉ Copy</span></div>
+          <div class="step"><span class="box"></span><span>Send current plant network segmentation diagram</span></div>
+
+          <div class="ann">
+            Six steps, not thirty-nine. The Kiosk deal's 33 steps stayed with the Kiosk
+            opportunity when it was archived.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Notes &amp; transcripts <span class="dim" style="font-size:10px">this opportunity</span></h3>
+        <div class="body note" style="display:flex;flex-direction:column;gap:8px">
+          <div class="between"><span>OT segmentation audit readout</span><span class="dim">2 Sep</span></div>
+          <div class="between"><span>Discovery call — Lefebvre + plant leads</span><span class="dim">26 Aug</span></div>
+          <div class="between"><span>📄 Transcript: intro call</span><span class="dim">12 Aug</span></div>
+          <div class="ann">
+            Extraction and Consolidate read <strong>only</strong> these. No toggle — they write
+            and close rows unattended, and a diode transcript must never close a Kiosk step.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- right -->
+    <div class="col">
+      <div class="card">
+        <h3>POV <span class="btn mini">+ generate</span></h3>
+        <div class="body note">
+          No POV yet for this opportunity.
+          <div style="margin-top:8px" class="dim">Kiosk &amp; MFT had 2 (archived)</div>
+          <div class="ann" style="margin-top:10px">
+            The generator gets the same include-history toggle, defaulted on, and the
+            retrieval filter is set from this opportunity's products — not the account's.
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Files</h3>
+        <div class="body note" style="display:flex;flex-direction:column;gap:6px">
+          <div>📄 Segmentation audit.pdf <span class="dim" style="font-size:9px">· this deal</span></div>
+          <div>📄 Network diagram.pdf <span class="tag-inherit">company</span></div>
+          <div class="ann">Both levels visible, source marked. Upload asks which.</div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Meetings</h3>
+        <div class="body note">Next: plant walkthrough, 22 Sep</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- VIEW 3 — PIPELINE BOARD                                      -->
+<!-- ============================================================ -->
+<div class="view" id="v-board">
+  <div class="hdr between">
+    <div>
+      <div style="font-size:15px;font-weight:600">Pipeline</div>
+      <div class="muted" style="font-size:11px;margin-top:4px">63 companies · 71 opportunities</div>
+    </div>
+    <div class="row">
+      <span class="lbl" style="font-size:10px;color:var(--t4)">View</span>
+      <span class="tab" id="t-co" onclick="board('co')">Companies</span>
+      <span class="tab on" id="t-de" onclick="board('de')">Deals</span>
+    </div>
+  </div>
+  <div style="padding:12px">
+    <div class="ann" style="margin-bottom:10px">
+      The scope toggle you already have for quarter/all, applied to the unit of the board.
+      Maple Lodge is one row in Companies and two in Deals.
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr><th>Name</th><th>Stage</th><th>Risk</th><th>Close</th><th>Open steps</th></tr></thead>
+        <tbody id="tb-de">
+          <tr><td>Maple Lodge Farms — Data Diodes</td><td>1-Discovery</td><td>Yellow</td><td>Q2 2027</td><td>6</td></tr>
+          <tr><td>Cardinal Glass — MetaDefender Core</td><td>7-Technical Win</td><td>Green</td><td>Oct 2026</td><td>11</td></tr>
+          <tr><td>Conduent — Kiosk refresh</td><td>7-Technical Win</td><td>Green</td><td>Sep 2026</td><td>38</td></tr>
+          <tr><td>BLG — MFT</td><td>7-Technical Win</td><td>Green</td><td>Sep 2026</td><td>32</td></tr>
+          <tr><td>DRW — Core</td><td>5-Deployment</td><td>Yellow</td><td>Dec 2026</td><td>9</td></tr>
+        </tbody>
+        <tbody id="tb-co" style="display:none">
+          <tr><td>Maple Lodge Farms <span class="dim" style="font-size:9px">2 opportunities</span></td>
+            <td>1-Discovery</td><td>Yellow</td><td>Q2 2027</td><td>6</td></tr>
+          <tr class="child"><td class="dim">↳ Data Diodes · active</td><td>1-Discovery</td><td>Yellow</td><td>Q2 2027</td><td>6</td></tr>
+          <tr class="child"><td class="dim">↳ Kiosk &amp; MFT · won, archived</td><td>7-Technical Win</td><td>—</td><td>Mar 2026</td><td>—</td></tr>
+          <tr><td>Cardinal Glass</td><td>7-Technical Win</td><td>Green</td><td>Oct 2026</td><td>11</td></tr>
+          <tr><td>Conduent</td><td>7-Technical Win</td><td>Green</td><td>Sep 2026</td><td>38</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+function show(v){
+  document.querySelectorAll('.view').forEach(function(e){e.classList.remove('on')});
+  document.getElementById('v-'+v).classList.add('on');
+  window.scrollTo(0,0);
+}
+function board(m){
+  document.getElementById('tb-co').style.display = m==='co' ? '' : 'none';
+  document.getElementById('tb-de').style.display = m==='de' ? '' : 'none';
+  document.getElementById('t-co').classList.toggle('on', m==='co');
+  document.getElementById('t-de').classList.toggle('on', m==='de');
+}
+</script>
+</body>
+</html>
