@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('../db/database');
+const opportunities = require('../lib/opportunityStore');
 
 const router = express.Router();
 
@@ -40,13 +41,13 @@ function upsertDealIntelligence(accountId, field, value, sourceNoteId = null) {
   }
 
   db.prepare(`
-    INSERT INTO deal_intelligence (account_id, field, value, source_note_id, last_updated)
-    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+    INSERT INTO deal_intelligence (account_id, opportunity_id, field, value, source_note_id, last_updated)
+    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(account_id, field) DO UPDATE SET
       value = excluded.value,
       source_note_id = excluded.source_note_id,
       last_updated = CURRENT_TIMESTAMP
-  `).run(accountId, field, newValue, sourceNoteId || null);
+  `).run(accountId, opportunities.resolveId(db, accountId, null), field, newValue, sourceNoteId || null);
 
   return db
     .prepare('SELECT * FROM deal_intelligence WHERE account_id = ? AND field = ?')
@@ -88,11 +89,12 @@ router.put('/accounts/:id/deal-intelligence/:field', (req, res) => {
   // expand drawer). Default behavior appends with a date stamp (used by AI).
   if (req.body.mode === 'replace') {
     db.prepare(`
-      INSERT INTO deal_intelligence (account_id, field, value, source_note_id, last_updated)
-      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+      INSERT INTO deal_intelligence (account_id, opportunity_id, field, value, source_note_id, last_updated)
+      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(account_id, field) DO UPDATE SET
         value = excluded.value, last_updated = CURRENT_TIMESTAMP
-    `).run(req.params.id, field, String(value), req.body.source_note_id || null);
+    `).run(req.params.id, opportunities.resolveId(db, req.params.id, req.body.opportunity_id),
+           field, String(value), req.body.source_note_id || null);
     return res.json(db.prepare('SELECT * FROM deal_intelligence WHERE account_id = ? AND field = ?').get(req.params.id, field));
   }
 

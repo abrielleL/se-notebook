@@ -5,6 +5,7 @@ const fs = require('fs');
 const mammoth = require('mammoth');
 const { v4: uuid } = require('uuid');
 const db = require('../db/database');
+const opportunities = require('../lib/opportunityStore');
 
 const router = express.Router();
 
@@ -50,11 +51,12 @@ router.post('/', upload.single('file'), async (req, res, next) => {
 
     const id = uuid();
     db.prepare(`
-      INSERT INTO transcripts (id, account_id, title, source, content, duration_minutes, call_date)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO transcripts (id, account_id, opportunity_id, title, source, content, duration_minutes, call_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       account_id,
+      opportunities.resolveId(db, account_id, req.body.opportunity_id),
       resolvedTitle || 'Untitled transcript',
       source || 'clari_copilot',
       content,

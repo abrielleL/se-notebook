@@ -1,6 +1,7 @@
 const express = require('express');
 const { v4: uuid } = require('uuid');
 const db = require('../db/database');
+const opportunities = require('../lib/opportunityStore');
 
 const router = express.Router();
 
@@ -23,9 +24,9 @@ router.post('/accounts/:id/crm-snapshots', (req, res) => {
   const truncated = text.slice(0, 255);
   const id = uuid();
   db.prepare(`
-    INSERT INTO crm_snapshots (id, account_id, snapshot_text)
-    VALUES (?, ?, ?)
-  `).run(id, req.params.id, truncated);
+    INSERT INTO crm_snapshots (id, account_id, opportunity_id, snapshot_text)
+    VALUES (?, ?, ?, ?)
+  `).run(id, req.params.id, opportunities.resolveId(db, req.params.id, req.body?.opportunity_id), truncated);
 
   const snapshot = db.prepare('SELECT * FROM crm_snapshots WHERE id = ?').get(id);
   res.status(201).json(snapshot);

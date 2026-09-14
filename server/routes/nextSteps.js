@@ -1,6 +1,7 @@
 const express = require('express');
 const { v4: uuid } = require('uuid');
 const db = require('../db/database');
+const opportunities = require('../lib/opportunityStore');
 
 const router = express.Router();
 
@@ -24,10 +25,11 @@ router.post('/', (req, res) => {
   const { account_id, text, source, due_date, owner } = req.body;
   if (!account_id || !text) return res.status(400).json({ error: 'account_id and text required' });
   const id = uuid();
+  const opportunityId = opportunities.resolveId(db, account_id, req.body.opportunity_id);
   db.prepare(`
-    INSERT INTO next_steps (id, account_id, text, source, completed, due_date, owner)
-    VALUES (?, ?, ?, ?, 0, ?, ?)
-  `).run(id, account_id, text, source || 'manual', due_date || null, normalizeOwner(owner));
+    INSERT INTO next_steps (id, account_id, opportunity_id, text, source, completed, due_date, owner)
+    VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+  `).run(id, account_id, opportunityId, text, source || 'manual', due_date || null, normalizeOwner(owner));
   res.status(201).json(db.prepare('SELECT * FROM next_steps WHERE id = ?').get(id));
 });
 

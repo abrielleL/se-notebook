@@ -26,13 +26,32 @@ function aiHeaders() {
 export const api = {
   // accounts
   listAccounts: () => request('/api/accounts'),
-  getAccount: (id) => request(`/api/accounts/${id}`),
+  // Without an opportunity id this returns everything the company has (the
+  // company view); with one, only that deal's notes, steps and transcripts.
+  getAccount: (id, opportunityId) =>
+    request(`/api/accounts/${id}${opportunityId ? `?opportunity_id=${encodeURIComponent(opportunityId)}` : ''}`),
+
+  listOpportunities: (accountId) => request(`/api/accounts/${accountId}/opportunities`),
+  createOpportunity: (accountId, body) =>
+    request(`/api/accounts/${accountId}/opportunities`, { method: 'POST', body: json(body) }),
+  updateOpportunity: (id, body) => request(`/api/opportunities/${id}`, { method: 'PUT', body: json(body) }),
+  closeOpportunity: (id, status) =>
+    request(`/api/opportunities/${id}/close`, { method: 'POST', body: json({ status }) }),
+  reopenOpportunity: (id) => request(`/api/opportunities/${id}/reopen`, { method: 'POST' }),
+  deleteOpportunity: (id) => request(`/api/opportunities/${id}`, { method: 'DELETE' }),
   createAccount: (body) => request('/api/accounts', { method: 'POST', body: json(body) }),
   updateAccount: (id, body) => request(`/api/accounts/${id}`, { method: 'PUT', body: json(body) }),
   // Snooze hides an account from the stage board. days omitted = indefinite.
-  snoozeAccount: (id, { days, reason } = {}) =>
-    request(`/api/accounts/${id}/snooze`, { method: 'PUT', body: json({ days: days ?? null, reason }) }),
-  unsnoozeAccount: (id) => request(`/api/accounts/${id}/snooze`, { method: 'DELETE' }),
+  snoozeAccount: (id, { days, reason, opportunityId } = {}) =>
+    request(`/api/accounts/${id}/snooze`, {
+      method: 'PUT',
+      body: json({ days: days ?? null, reason, opportunity_id: opportunityId || undefined })
+    }),
+  unsnoozeAccount: (id, opportunityId) =>
+    request(`/api/accounts/${id}/snooze`, {
+      method: 'DELETE',
+      body: json({ opportunity_id: opportunityId || undefined })
+    }),
   // Partner links, one relation from either end. Each call replaces the full set.
   setAccountPartners: (id, partner_ids) =>
     request(`/api/accounts/${id}/partners`, { method: 'PUT', body: json({ partner_ids }) }),

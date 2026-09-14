@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('../db/database');
+const opportunities = require('../lib/opportunityStore');
 
 const router = express.Router();
 
@@ -27,12 +28,13 @@ router.put('/accounts/:id/stage-gates/:stage/:gate_key', (req, res) => {
   const completedAt = completed ? new Date().toISOString() : null;
 
   db.prepare(`
-    INSERT INTO stage_gate_progress (account_id, stage, gate_key, completed, completed_at)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO stage_gate_progress (account_id, opportunity_id, stage, gate_key, completed, completed_at)
+    VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(account_id, stage, gate_key) DO UPDATE SET
       completed = excluded.completed,
       completed_at = excluded.completed_at
-  `).run(req.params.id, req.params.stage, req.params.gate_key, completed, completedAt);
+  `).run(req.params.id, opportunities.resolveId(db, req.params.id, req.body?.opportunity_id),
+         req.params.stage, req.params.gate_key, completed, completedAt);
 
   const row = db
     .prepare('SELECT gate_key, completed, completed_at FROM stage_gate_progress WHERE account_id = ? AND stage = ? AND gate_key = ?')

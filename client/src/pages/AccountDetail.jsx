@@ -12,6 +12,7 @@ import Markdown, { stripMarkdown } from '../components/Markdown.jsx';
 import AccountTagEditor from '../components/AccountTagEditor.jsx';
 import AccountLinkEditor from '../components/AccountLinkEditor.jsx';
 import SnoozeMenu from '../components/SnoozeMenu.jsx';
+import OpportunityBar, { NewOpportunityModal } from '../components/OpportunityBar.jsx';
 import StatusNote from '../components/StatusNote.jsx';
 import ContactDrawer, { ContactTypeBadge } from '../components/ContactDrawer.jsx';
 import { useToast } from '../components/Toast.jsx';
@@ -103,6 +104,12 @@ export default function AccountDetail() {
   const [exportOpen, setExportOpen] = useState(false);
   const [gateTarget, setGateTarget] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
+  // Which deal the page is showing. null means the company: everything across
+  // every opportunity, which is also exactly what an account that has never
+  // been split returns, so its page is unchanged.
+  const [oppId, setOppId] = useState(null);
+  const [newOppOpen, setNewOppOpen] = useState(false);
+  const autoPicked = useRef(null);
   const [extracting, setExtracting] = useState(false);
   const [tagCatalog, setTagCatalog] = useState([]);
   useEffect(() => { api.listTags().then(setTagCatalog).catch(() => {}); }, []);
@@ -131,17 +138,31 @@ export default function AccountDetail() {
     onError: (msg) => toast(`POV generation failed: ${msg}`, 'warn')
   });
 
-  async function loadAll() {
+  async function loadAll(scopeId = oppId) {
     const [acct, dealIntel, povList, snaps] = await Promise.all([
-      api.getAccount(id),
+      api.getAccount(id, scopeId),
       api.getDealIntelligence(id).catch(() => ({})),
       api.listPov(id).catch(() => []),
       api.listCrmSnapshots(id).catch(() => [])
     ]);
     setAccount(acct); setDi(dealIntel); setPovs(povList); setSnapshots(snaps);
     setLoading(false);
+
+    // Opening a split account should land on the deal that's live, not on the
+    // company summary -- the live deal is what you came to work on. Done once
+    // per account so it never fights a deliberate switch to Company.
+    const opps = acct.opportunities || [];
+    if (scopeId === null && opps.length > 1 && autoPicked.current !== id) {
+      autoPicked.current = id;
+      const live = opps.find(o => !o.archived_at) || opps[0];
+      if (live) setOppId(live.id);
+    }
   }
-  useEffect(() => { setLoading(true); loadAll(); }, [id]);
+  useEffect(() => { setLoading(true); setOppId(null); autoPicked.current = null; }, [id]);
+  // Reloads on both a new account and a switch between its deals. A stale
+  // opportunity id from the previous account is harmless: the server rejects
+  // one that isn't the account's and falls back to its default.
+  useEffect(() => { loadAll(oppId); }, [id, oppId]);
 
   // Catch-up pass for notes flagged pending_ai_extraction=1 -- either saved
   // while offline, or saved by a path that failed to extract at the time. The
@@ -166,7 +187,9 @@ export default function AccountDetail() {
 
   async function patchAccount(body) {
     try {
-      const updated = await api.updateAccount(id, body);
+      // Stage, risk, close date, the AI summary and the status note belong to
+      // a deal now; the account's copies mirror whichever one is live.
+      const updated = await api.updateAccount(id, { ...body, opportunity_id: oppId || undefined });
       setAccount(a => ({ ...a, ...updated }));   // detail topbar + info card update
       emitAccountUpdated(updated);                // accounts list / dashboard update live
       return true;
@@ -177,7 +200,7 @@ export default function AccountDetail() {
   // shows it, badged). Both calls return the full account row.
   async function snooze({ days, reason }) {
     try {
-      const updated = await api.snoozeAccount(id, { days, reason });
+      const updated = await api.snoozeAccount(id, { days, reason, opportunityId: oppId });
       setAccount(a => ({ ...a, ...updated }));
       emitAccountUpdated(updated);
       toast(updated.snoozed_until
@@ -187,7 +210,7 @@ export default function AccountDetail() {
   }
   async function unsnooze() {
     try {
-      const updated = await api.unsnoozeAccount(id);
+      const updated = await api.unsnoozeAccount(id, oppId);
       setAccount(a => ({ ...a, ...updated }));
       emitAccountUpdated(updated);
       toast('Back on the stage board', 'success');
@@ -225,7 +248,7 @@ export default function AccountDetail() {
     }
     const raw = noteText;
     try {
-      const note = await api.createNote({ account_id: id, date: todayISO(), raw_notes: raw, pending_ai_extraction: online ? 0 : 1 });
+      const note = await api.createNote({ account_id: id, opportunity_id: oppId || undefined, date: todayISO(), raw_notes: raw, pending_ai_extraction: online ? 0 : 1 });
       setNoteText('');
       if (online) {
         setExtracting(true);
@@ -242,6 +265,7 @@ export default function AccountDetail() {
   async function processTranscript({ text, file }) {
     const form = new FormData();
     form.append('account_id', id);
+    if (oppId) form.append('opportunity_id', oppId);
     form.append('source', file ? 'file_upload' : 'paste');
     if (file) {
       form.append('file', file);
@@ -332,10 +356,25 @@ export default function AccountDetail() {
           <div className="bg-card border border-border rounded px-3 py-1.5">
             <SnoozeMenu account={account} onSnooze={snooze} onUnsnooze={unsnooze} />
           </div>
+          {(account.opportunities || []).length < 2 && (
+            <button onClick={() => setNewOppOpen(true)}
+              title="Track a second deal at this company separately"
+              className="flex items-center gap-1.5 bg-card border border-border rounded px-3 py-1.5 text-[12px] text-text-dim hover:text-text-primary hover:border-accent-blue/40">
+              <Icon.Plus width={12} height={12} /> Opportunity
+            </button>
+          )}
           <button onClick={() => setExportOpen(true)} className="flex items-center gap-1.5 bg-card border border-border rounded px-3 py-1.5 text-[12px] text-text-primary hover:border-accent-blue/40"><Icon.Export width={12} height={12} /> Export</button>
           <button onClick={() => setEditOpen(true)} className="flex items-center gap-1.5 bg-card border border-border rounded px-3 py-1.5 text-[12px] text-text-primary hover:border-accent-blue/40"><Icon.Edit width={12} height={12} /> Edit</button>
         </div>
       </div>
+
+      <OpportunityBar
+        account={account}
+        value={oppId}
+        onChange={setOppId}
+        onChanged={() => loadAll(oppId)}
+        onAdd={() => setNewOppOpen(true)}
+      />
 
       {/* STAGE BAR — customer accounts only */}
       {!isPartner && (
@@ -514,7 +553,7 @@ export default function AccountDetail() {
 
           {/* RIGHT */}
           <div className="flex flex-col gap-3 min-w-0">
-            <NextStepsCard account={account} onChange={loadAll} />
+            <NextStepsCard account={account} opportunityId={oppId} onChange={loadAll} />
             <PrereqCard pov={activePov} />
           </div>
         </div>
@@ -525,6 +564,20 @@ export default function AccountDetail() {
       {exportOpen && <AccountExportModal accountId={id} accountName={account.account_name} account={account} di={di} snapshot={snapshots[0]} pov={activePov} onClose={() => setExportOpen(false)} />}
       {gateTarget && <StageGateModal accountId={id} targetStage={gateTarget} onAdvance={advanceStage} onClose={() => setGateTarget(null)} />}
       {editOpen && <EditAccountModal account={account} onClose={() => setEditOpen(false)} onSave={async (b) => { const ok = await patchAccount(b); if (ok) setEditOpen(false); }} />}
+      {newOppOpen && (
+        <NewOpportunityModal
+          account={account}
+          onClose={() => setNewOppOpen(false)}
+          onCreated={async (created) => {
+            setNewOppOpen(false);
+            // Land in the deal that was just created -- it's the one you came
+            // to start work on, and it makes the split immediately visible.
+            autoPicked.current = id;
+            await loadAll(created.id);
+            setOppId(created.id);
+          }}
+        />
+      )}
       {transcriptOpen && <TranscriptModal onClose={() => setTranscriptOpen(false)} onSave={(t) => processTranscript({ text: t })} />}
     </div>
   );
@@ -1128,7 +1181,7 @@ function CopyStepsButton({ items, label }) {
   );
 }
 
-function NextStepsCard({ account, onChange }) {
+function NextStepsCard({ account, opportunityId, onChange }) {
   const toast = useToast();
   const online = useOnline();
   const [text, setText] = useState('');
@@ -1152,7 +1205,7 @@ function NextStepsCard({ account, onChange }) {
   async function setOwner(s, owner) { await api.updateNextStep(s.id, { owner }); onChange(); }
   async function add() {
     if (!text.trim()) return;
-    await api.createNextStep({ account_id: account.id, text, source: 'manual', owner: newOwner });
+    await api.createNextStep({ account_id: account.id, opportunity_id: opportunityId || undefined, text, source: 'manual', owner: newOwner });
     setText(''); onChange();
   }
 

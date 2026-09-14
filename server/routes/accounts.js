@@ -3,6 +3,7 @@ const { v4: uuid } = require('uuid');
 const db = require('../db/database');
 const { PRESALES_STAGES } = require('../lib/stages');
 const { contactsForAccount, promotePartnerContacts } = require('../lib/contactStore');
+const opportunities = require('../lib/opportunityStore');
 
 const router = express.Router();
 
@@ -197,6 +198,35 @@ router.get('/:id', (req, res) => {
   const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.id);
   if (!account) return res.status(404).json({ error: 'Account not found' });
 
+  // Without ?opportunity_id this returns everything the company has, which is
+  // what the company view wants; with it, the page is one deal and sees only
+  // that deal's content. An account that has never been split has exactly one
+  // opportunity, so both answers are the same and its page is unchanged.
+  account.opportunities = opportunities.listForAccount(db, account.id);
+  const scopeId = req.query.opportunity_id
+    ? opportunities.resolveId(db, account.id, req.query.opportunity_id)
+    : null;
+  account.opportunity_id = scopeId;
+
+  // When the page is one deal, the account's deal fields are overlaid with
+  // that deal's. The account row mirrors whichever opportunity is *live*, so
+  // without this the stage bar, risk dot, close date and AI summary would all
+  // keep showing the live deal while you were reading an archived one. Doing
+  // it here rather than in the client means every existing `account.risk`
+  // style reference in the UI is simply correct for whatever is selected.
+  const scopeRow = scopeId
+    ? db.prepare('SELECT * FROM opportunities WHERE id = ?').get(scopeId)
+    : null;
+  if (scopeRow) {
+    for (const f of opportunities.DEAL_FIELDS) account[f] = scopeRow[f] ?? null;
+    account.opportunity_name = scopeRow.name;
+    account.opportunity_status = scopeRow.status;
+    account.opportunity_archived_at = scopeRow.archived_at;
+  }
+
+  const scope = scopeId ? ' AND opportunity_id = ?' : '';
+  const scoped = (...args) => (scopeId ? [...args, scopeId] : args);
+
   // Via the join table, so partner contacts shared with other accounts appear
   // here too -- not just the ones whose primary account is this one.
   account.contacts = contactsForAccount(db, account.id);
@@ -206,16 +236,16 @@ router.get('/:id', (req, res) => {
   // links so nothing is silently orphaned.
   account.partners = partnersFor(account.id);
   account.linked_accounts = linkedAccountsFor(account.id);
-  account.next_steps = db.prepare('SELECT * FROM next_steps WHERE account_id = ? ORDER BY created_at').all(account.id);
+  account.next_steps = db.prepare(`SELECT * FROM next_steps WHERE account_id = ?${scope} ORDER BY created_at`).all(...scoped(account.id));
   account.todos = db.prepare('SELECT * FROM todos WHERE account_id = ? ORDER BY created_at').all(account.id);
   account.notes = db.prepare(`
     SELECT * FROM notes
-    WHERE account_id = ? AND deleted_at IS NULL
+    WHERE account_id = ? AND deleted_at IS NULL${scope}
     ORDER BY date DESC, created_at DESC
-  `).all(account.id);
-  account.transcripts = db.prepare('SELECT * FROM transcripts WHERE account_id = ? ORDER BY call_date DESC, created_at DESC').all(account.id);
+  `).all(...scoped(account.id));
+  account.transcripts = db.prepare(`SELECT * FROM transcripts WHERE account_id = ?${scope} ORDER BY call_date DESC, created_at DESC`).all(...scoped(account.id));
   account.attachments = db.prepare('SELECT * FROM attachments WHERE account_id = ? ORDER BY created_at DESC').all(account.id);
-  account.meetings = db.prepare('SELECT * FROM meetings WHERE account_id = ? ORDER BY start_time DESC').all(account.id);
+  account.meetings = db.prepare(`SELECT * FROM meetings WHERE account_id = ?${scope} ORDER BY start_time DESC`).all(...scoped(account.id));
 
   const agg = db.prepare(`
     SELECT MAX(created_at) AS last_note_date,
@@ -312,7 +342,28 @@ router.put('/:id', (req, res) => {
   }
   if (!updates.length) return res.json(withTags(existing));
   values.push(req.params.id);
-  db.prepare(`UPDATE accounts SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+
+  // Deal fields (stage, risk, close date, value, the AI summary, snooze,
+  // status note) now belong to an opportunity; the account's copies are a
+  // mirror of whichever one is live. Rather than restructure every branch
+  // above, the write still lands on the account first and is then pushed down
+  // to the opportunity this edit was aimed at -- `opportunity_id` in the body,
+  // or the account's default -- and mirrored back. Wrapped in a transaction so
+  // the intermediate state, where the account briefly shows a non-primary
+  // opportunity's values, is never visible to a reader.
+  const touched = new Set(updates.map(u => u.split(' ')[0]));
+  const dealFields = opportunities.DEAL_FIELDS.filter(f => touched.has(f));
+  const targetOpportunityId = opportunities.resolveId(db, req.params.id, req.body.opportunity_id);
+
+  db.transaction(() => {
+    db.prepare(`UPDATE accounts SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    if (targetOpportunityId && dealFields.length) {
+      const written = db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.id);
+      db.prepare(`UPDATE opportunities SET ${dealFields.map(f => `${f} = ?`).join(', ')} WHERE id = ?`)
+        .run(...dealFields.map(f => written[f] ?? null), targetOpportunityId);
+      opportunities.mirrorToAccount(db, req.params.id);
+    }
+  })();
   // Switching an account to partner makes its contacts partner contacts. The
   // boot invariant would catch this eventually; doing it here means the
   // Contacts page is right immediately rather than after the next restart.
@@ -342,9 +393,16 @@ router.put('/:id/snooze', (req, res) => {
   }
 
   const reason = (req.body?.reason || '').trim() || null;
-  db.prepare(
-    'UPDATE accounts SET snoozed_at = CURRENT_TIMESTAMP, snoozed_until = ?, snooze_reason = ? WHERE id = ?'
-  ).run(indefinite ? null : addDays(days), reason, account.id);
+  // Snoozing hides a deal that isn't moving, not a company, so it is written
+  // to the opportunity and mirrored back like every other deal field.
+  const snoozeTarget = opportunities.resolveId(db, account.id, req.body?.opportunity_id);
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE opportunities SET snoozed_at = CURRENT_TIMESTAMP, snoozed_until = ?, snooze_reason = ?
+      WHERE id = ?
+    `).run(indefinite ? null : addDays(days), reason, snoozeTarget);
+    opportunities.mirrorToAccount(db, account.id);
+  })();
 
   res.json(withTags(db.prepare('SELECT * FROM accounts WHERE id = ?').get(account.id)));
 });
@@ -352,9 +410,14 @@ router.put('/:id/snooze', (req, res) => {
 router.delete('/:id/snooze', (req, res) => {
   const account = db.prepare('SELECT id FROM accounts WHERE id = ?').get(req.params.id);
   if (!account) return res.status(404).json({ error: 'Account not found' });
-  db.prepare(
-    'UPDATE accounts SET snoozed_at = NULL, snoozed_until = NULL, snooze_reason = NULL WHERE id = ?'
-  ).run(account.id);
+  const wakeTarget = opportunities.resolveId(db, account.id, req.body?.opportunity_id);
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE opportunities SET snoozed_at = NULL, snoozed_until = NULL, snooze_reason = NULL
+      WHERE id = ?
+    `).run(wakeTarget);
+    opportunities.mirrorToAccount(db, account.id);
+  })();
   res.json(withTags(db.prepare('SELECT * FROM accounts WHERE id = ?').get(account.id)));
 });
 

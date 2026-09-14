@@ -1,6 +1,7 @@
 const express = require('express');
 const { v4: uuid } = require('uuid');
 const db = require('../db/database');
+const opportunities = require('../lib/opportunityStore');
 
 const router = express.Router();
 
@@ -32,10 +33,11 @@ router.post('/', (req, res) => {
   const { account_id, date, raw_notes, note_type, pending_ai_extraction } = req.body;
   if (!account_id || !date) return res.status(400).json({ error: 'account_id and date required' });
   const id = uuid();
+  const opportunityId = opportunities.resolveId(db, account_id, req.body.opportunity_id);
   db.prepare(`
-    INSERT INTO notes (id, account_id, date, raw_notes, note_type, pending_ai_extraction)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(id, account_id, date, raw_notes || '', note_type || null, pending_ai_extraction ? 1 : 0);
+    INSERT INTO notes (id, account_id, opportunity_id, date, raw_notes, note_type, pending_ai_extraction)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(id, account_id, opportunityId, date, raw_notes || '', note_type || null, pending_ai_extraction ? 1 : 0);
   const note = db.prepare('SELECT * FROM notes WHERE id = ?').get(id);
   db.prepare(`
     INSERT INTO note_versions (id, note_id, snapshot)

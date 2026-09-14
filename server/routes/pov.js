@@ -1,6 +1,7 @@
 const express = require('express');
 const { v4: uuid } = require('uuid');
 const db = require('../db/database');
+const opportunities = require('../lib/opportunityStore');
 const { callAnthropic, getKey, DEFAULT_MODEL } = require('../lib/anthropic');
 const { queryDocs } = require('../lib/chroma');
 const { getEmbedding } = require('../lib/embed');
@@ -341,10 +342,10 @@ ${SECTION_SPEC}`;
     };
     const info = db.prepare(`
       INSERT INTO pov_drafts
-        (account_id, pov_text, section_texts, se_prep_notes, model_used, chunks_used, sources, status, color, start_date, end_date, selections)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)
+        (account_id, opportunity_id, pov_text, section_texts, se_prep_notes, model_used, chunks_used, sources, status, color, start_date, end_date, selections)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)
     `).run(
-      accountId, povText, JSON.stringify(sectionTexts), sePrep || null,
+      accountId, opportunities.resolveId(db, accountId, body.opportunity_id), povText, JSON.stringify(sectionTexts), sePrep || null,
       POV_MODEL, chunks.length, JSON.stringify(sources), color,
       body.start_date || null, body.end_date || null, JSON.stringify(selections)
     );
@@ -551,9 +552,10 @@ router.post('/pov-timeline', (req, res) => {
   const color = TIMELINE_COLORS[db.prepare('SELECT COUNT(*) AS n FROM pov_drafts').get().n % TIMELINE_COLORS.length];
   const info = db.prepare(`
     INSERT INTO pov_drafts
-      (account_id, pov_text, section_texts, status, color, start_date, end_date, manually_created, label)
-    VALUES (?, '', NULL, ?, ?, ?, ?, 1, ?)
-  `).run(account_id, status || 'draft', color, start_date, end_date, label || null);
+      (account_id, opportunity_id, pov_text, section_texts, status, color, start_date, end_date, manually_created, label)
+    VALUES (?, ?, '', NULL, ?, ?, ?, ?, 1, ?)
+  `).run(account_id, opportunities.resolveId(db, account_id, req.body.opportunity_id),
+         status || 'draft', color, start_date, end_date, label || null);
   res.status(201).json(serializeDraft(db.prepare('SELECT * FROM pov_drafts WHERE id = ?').get(info.lastInsertRowid)));
 });
 
