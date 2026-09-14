@@ -1095,6 +1095,39 @@ function OwnerSelect({ value, onChange, title }) {
   );
 }
 
+// Copies one owner's open steps as a plain bullet list, so a group can be
+// pasted straight into Teams or an email without retyping it. "• " rather than
+// "- " because chat clients that don't auto-format markdown would otherwise
+// show the dashes verbatim.
+function CopyStepsButton({ items, label }) {
+  const toast = useToast();
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    const text = items.map(s => `• ${s.text}`).join('\n');
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      toast('Copy failed — select and copy manually.', 'error');
+    }
+  }
+
+  return (
+    <button
+      onClick={copy}
+      title={`Copy the ${label} steps as a bullet list`}
+      className="flex items-center gap-1 text-[9px] text-text-dim hover:text-accent-blue"
+    >
+      {copied
+        ? <><Icon.Check width={9} height={9} className="text-accent-green" /> Copied</>
+        : <><Icon.Copy width={9} height={9} /> Copy</>}
+    </button>
+  );
+}
+
 function NextStepsCard({ account, onChange }) {
   const toast = useToast();
   const online = useOnline();
@@ -1173,14 +1206,21 @@ function NextStepsCard({ account, onChange }) {
         )}
         {groups.map(g => (
           <div key={g.owner.value || 'unassigned'} className="flex flex-col gap-1.5">
-            {showGroupHeaders && (
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className={`rounded border px-1 py-[1px] text-[9px] uppercase tracking-wide ${g.owner.chip}`}>
-                  {g.owner.label}
-                </span>
-                <span className="text-[9px] text-text-dim">{g.items.length}</span>
+            {/* The header row carries the copy button, so it stays even when
+                there's nothing worth labelling (one untriaged pile). */}
+            <div className="flex items-center gap-1.5 mt-0.5">
+              {showGroupHeaders && (
+                <>
+                  <span className={`rounded border px-1 py-[1px] text-[9px] uppercase tracking-wide ${g.owner.chip}`}>
+                    {g.owner.label}
+                  </span>
+                  <span className="text-[9px] text-text-dim">{g.items.length}</span>
+                </>
+              )}
+              <div className="ml-auto">
+                <CopyStepsButton items={g.items} label={g.owner.label.toLowerCase()} />
               </div>
-            )}
+            </div>
             {g.items.map(s => (
               <div key={s.id} className="flex items-start gap-2">
                 <button onClick={() => toggle(s)} className="w-3.5 h-3.5 rounded-full border border-text-dim flex items-center justify-center shrink-0 mt-0.5" />
