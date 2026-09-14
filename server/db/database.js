@@ -1,6 +1,7 @@
 const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
+const { v4: uuid } = require('uuid');
 
 // The SQLite file lives outside the repo by default in Docker
 // (SE_NOTEBOOK_DB_DIR=/data), because this project directory is inside a
@@ -582,6 +583,185 @@ db.exec(`
     ON contacts(account_id, name_key)
     WHERE account_id IS NOT NULL AND name_key IS NOT NULL;
 `);
+
+// ---------------------------------------------------------------------------
+// Opportunities — stage 1: the table exists and is kept in step, nothing reads
+// it yet.
+//
+// An account has been standing in for a deal: stage, close date, value, risk
+// and the AI summary all live on `accounts`. A company that buys twice
+// therefore has nowhere to put the second deal — you either overwrite the
+// first or duplicate the company as a second account and split its contacts
+// and history in half.
+//
+// This stage is deliberately a shadow. `accounts` remains the source of truth,
+// every child row keeps its account_id, and no read path changes, so the app
+// behaves identically and rollback is "ignore these columns" rather than a
+// restore. Stage 2 flips the reads over and adds the company/opportunity UI.
+//
+// ai_environment stays on accounts on purpose: it describes the company, is
+// true across every deal, and is precisely what a second opportunity inherits.
+// ---------------------------------------------------------------------------
+
+// Deal-shaped children: content that belongs to one deal rather than to the
+// company. Contacts, partners, files and attachments are deliberately absent —
+// those stay account-level. `todos` is absent too: it holds no rows and no
+// route writes to it, so migrating it would only add a dead column.
+const OPPORTUNITY_TABLES = [
+  'notes', 'transcripts', 'next_steps', 'meetings', 'pov_drafts',
+  'pov_jobs', 'stage_gate_progress', 'deal_intelligence', 'crm_snapshots'
+];
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS opportunities (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+
+    -- Deal fields, mirrored from accounts. Stage 2 makes these authoritative.
+    opportunity_stage TEXT DEFAULT NULL,
+    presales_stage TEXT DEFAULT NULL,
+    close_date DATE DEFAULT NULL,
+    opportunity_value INTEGER DEFAULT NULL,
+    risk TEXT DEFAULT NULL,
+    escalation TEXT DEFAULT NULL,
+    jira_ticket_url TEXT DEFAULT NULL,
+    pov_success_plan_url TEXT DEFAULT NULL,
+    status_note TEXT DEFAULT NULL,
+    status_note_updated_at TIMESTAMP DEFAULT NULL,
+    snoozed_at TIMESTAMP DEFAULT NULL,
+    snoozed_until DATE DEFAULT NULL,
+    snooze_reason TEXT DEFAULT NULL,
+    ai_summary TEXT DEFAULT NULL,
+    ai_technical_drivers TEXT DEFAULT NULL,
+    ai_summary_updated_at TIMESTAMP DEFAULT NULL,
+
+    -- The opportunity's own state, with no equivalent on accounts today.
+    -- status: 'active' | 'won' | 'lost'. archived_at hides a finished deal
+    -- from the board while leaving it readable on the company page.
+    status TEXT DEFAULT 'active',
+    archived_at TIMESTAMP DEFAULT NULL,
+    closed_at TIMESTAMP DEFAULT NULL,
+    -- Recorded now because it is free at creation and painful to retrofit:
+    -- product-derived names will never match the CRM's own opportunity names.
+    sugar_opportunity_id TEXT DEFAULT NULL,
+    -- 1 on the opportunity auto-created for every account. The account page
+    -- stays in its current flat form while an account has only this one; the
+    -- company/opportunity split appears when a second is added.
+    is_default INTEGER DEFAULT 1,
+    sort_order INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_opportunities_account ON opportunities(account_id);
+  CREATE INDEX IF NOT EXISTS idx_opportunities_status ON opportunities(status);
+`);
+
+// A column with a REFERENCES clause can only be added by ALTER TABLE when its
+// default is NULL, which is what we want anyway: existing rows are pointed at
+// their account's opportunity by the backfill below, not by a default.
+for (const table of OPPORTUNITY_TABLES) {
+  addColumn(table, 'opportunity_id',
+    'TEXT DEFAULT NULL REFERENCES opportunities(id) ON DELETE CASCADE');
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_opportunity ON ${table}(opportunity_id)`);
+}
+
+// Every account gets exactly one opportunity the moment it is created, so the
+// "an account always has at least one" invariant that stage 2 relies on can
+// never be violated by a code path that forgets. A trigger rather than route
+// code because it is atomic with the insert and covers imports and seeds too.
+// The id is built to look like the uuid v4 the routes generate, so ids are one
+// shape throughout the database.
+db.exec(`
+  CREATE TRIGGER IF NOT EXISTS accounts_default_opportunity_ai
+  AFTER INSERT ON accounts BEGIN
+    INSERT INTO opportunities (
+      id, account_id, name, opportunity_stage, presales_stage, close_date,
+      opportunity_value, risk, escalation, jira_ticket_url,
+      pov_success_plan_url, status_note, status_note_updated_at,
+      snoozed_at, snoozed_until, snooze_reason,
+      ai_summary, ai_technical_drivers, ai_summary_updated_at, is_default
+    )
+    VALUES (
+      lower(hex(randomblob(4)))||'-'||lower(hex(randomblob(2)))||'-4'||
+        substr(lower(hex(randomblob(2))),2)||'-'||
+        substr('89ab', abs(random()) % 4 + 1, 1)||
+        substr(lower(hex(randomblob(2))),2)||'-'||lower(hex(randomblob(6))),
+      NEW.id, COALESCE(NEW.account_name, 'Opportunity'),
+      NEW.opportunity_stage, NEW.presales_stage, NEW.close_date,
+      NEW.opportunity_value, NEW.risk, NEW.escalation, NEW.jira_ticket_url,
+      NEW.pov_success_plan_url, NEW.status_note, NEW.status_note_updated_at,
+      NEW.snoozed_at, NEW.snoozed_until, NEW.snooze_reason,
+      NEW.ai_summary, NEW.ai_technical_drivers, NEW.ai_summary_updated_at, 1
+    );
+  END;
+`);
+
+// Backfill, run on every startup like rebuildSearchIndex above: it is cheap at
+// this scale, idempotent, and self-heals rows written while an account somehow
+// had no opportunity. Child rows are only claimed when their opportunity_id is
+// still NULL, so a row deliberately moved to another opportunity in stage 2 is
+// never dragged back to the default one.
+const backfillOpportunities = db.transaction(() => {
+  const accounts = db.prepare(`
+    SELECT * FROM accounts a
+    WHERE NOT EXISTS (SELECT 1 FROM opportunities o WHERE o.account_id = a.id)
+  `).all();
+
+  const insertOpportunity = db.prepare(`
+    INSERT INTO opportunities (
+      id, account_id, name, opportunity_stage, presales_stage, close_date,
+      opportunity_value, risk, escalation, jira_ticket_url,
+      pov_success_plan_url, status_note, status_note_updated_at,
+      snoozed_at, snoozed_until, snooze_reason,
+      ai_summary, ai_technical_drivers, ai_summary_updated_at, is_default
+    ) VALUES (
+      @id, @account_id, @name, @opportunity_stage, @presales_stage, @close_date,
+      @opportunity_value, @risk, @escalation, @jira_ticket_url,
+      @pov_success_plan_url, @status_note, @status_note_updated_at,
+      @snoozed_at, @snoozed_until, @snooze_reason,
+      @ai_summary, @ai_technical_drivers, @ai_summary_updated_at, 1
+    )
+  `);
+
+  for (const a of accounts) {
+    insertOpportunity.run({
+      id: uuid(),
+      account_id: a.id,
+      // Named after the account: in stage 1 nobody ever sees this name, and
+      // when an account is actually split the dialog names both deals then,
+      // which is the only moment there is enough context to name them well.
+      name: a.account_name || 'Opportunity',
+      opportunity_stage: a.opportunity_stage ?? null,
+      presales_stage: a.presales_stage ?? null,
+      close_date: a.close_date ?? null,
+      opportunity_value: a.opportunity_value ?? null,
+      risk: a.risk ?? null,
+      escalation: a.escalation ?? null,
+      jira_ticket_url: a.jira_ticket_url ?? null,
+      pov_success_plan_url: a.pov_success_plan_url ?? null,
+      status_note: a.status_note ?? null,
+      status_note_updated_at: a.status_note_updated_at ?? null,
+      snoozed_at: a.snoozed_at ?? null,
+      snoozed_until: a.snoozed_until ?? null,
+      snooze_reason: a.snooze_reason ?? null,
+      ai_summary: a.ai_summary ?? null,
+      ai_technical_drivers: a.ai_technical_drivers ?? null,
+      ai_summary_updated_at: a.ai_summary_updated_at ?? null
+    });
+  }
+
+  for (const table of OPPORTUNITY_TABLES) {
+    db.exec(`
+      UPDATE ${table} SET opportunity_id = (
+        SELECT o.id FROM opportunities o
+        WHERE o.account_id = ${table}.account_id AND o.is_default = 1
+        ORDER BY o.created_at LIMIT 1
+      )
+      WHERE opportunity_id IS NULL AND account_id IS NOT NULL
+    `);
+  }
+});
+backfillOpportunities();
 
 // ---------------------------------------------------------------------------
 // Global search: extend the FTS index beyond notes/transcripts.
