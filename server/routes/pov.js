@@ -9,6 +9,11 @@ const { contactsForAccount } = require('../lib/contactStore');
 
 const EMBED_FAIL_BANNER = '⚠ This POV was generated without OPSWAT documentation sources. To get deployment-specific instructions and accurate prerequisites, start the embed server on your Mac and regenerate: node embed-server.js (in se-notebook folder)';
 
+// Section 8 is built entirely out of retrieved documentation. Writing it from
+// the model's own recall would put invented sizing numbers, ports, and package
+// names in front of a customer, so with no docs we say so instead.
+const DEPLOY_NO_DOCS = '⚠ Deployment information could not be generated: no OPSWAT documentation was retrieved for the selected products. Start the embed server (node embed-server.js in the se-notebook folder), confirm ChromaDB is up, then regenerate this section. Nothing here is invented from memory on purpose — system requirements, ports, and package names must come from the docs.';
+
 const router = express.Router();
 
 const POV_MODEL = 'claude-sonnet-4-6';
@@ -35,8 +40,8 @@ OPSWAT core differentiators to use where relevant:
 
 Deployment and configuration guidance rules:
 - Pull specific installation steps from the documentation excerpts provided
-- Include specific system requirements (OS, CPU, RAM, ports) from the docs
-- After each installation step or configuration detail, cite the source as: (ref: https://docs.opswat.com/...)
+- Include specific system requirements (OS, CPU, RAM, disk, ports) from the docs
+- Do NOT write inline (ref: URL) citations in the prose. This is a customer-facing document; documentation links belong in the deployment chapter's reference subsection instead.
 - Flag any section where documentation was insufficient: [Note: verify this section against current documentation]
 - For air-gapped deployments: always include offline license staging and offline signature update package instructions with lead time warnings
 
@@ -48,26 +53,26 @@ Product-accuracy rules (CRITICAL — accuracy outranks completeness):
 
 Tone: professional, consultative, direct. Write as an SE who has deployed these products many times, not a marketer.`;
 
-const SECTION_SPEC = `Generate the complete PoV document with these exact sections. Fill all placeholders with specific content. Do not leave any section generic or template-like.
+const SECTION_SPEC = `Generate the PoV document with these exact sections. Fill all placeholders with specific content. Do not leave any section generic or template-like.
 
 SECTION 1: Purpose
-Brief paragraph specific to this customer's environment and drivers.
+Brief paragraph specific to this customer's environment and drivers. Say what is being evaluated and why now — including the tool being replaced and the constraint that makes it unsuitable, where those are known. Name the partner if one is engaged, and say they should be included in technical sessions.
 
 SECTION 2: Products in scope
-Table: Product/Module | Version | Customer-specific purpose
-List only relevant products. Version = 'Latest' if unknown. Purpose must be customer-specific.
+Table: Product / Module | Version | Customer-specific purpose
+One row per product AND one row per selected module, engine tier, or integration in scope. A licensed add-on such as Deep CDR, Proactive DLP, or syslog/SIEM output gets its own row rather than a mention inside another row. Version = 'Latest' if unknown. The purpose must say what that specific module does for this customer, not what it does in general.
 
 SECTION 3: Customer environment
 Table: Item | Detail
-Fill from selected_deployment and selected_os: Deployment location | Operating system(s) | Internet connectivity | Authentication | Other relevant context
+One row per fact that shapes the deployment or the testing. Include, wherever the inputs support it: Account, Partner, Deployment location, Deployment method, Operating system, Internet connectivity, Primary file types, Expected volume, Current security tool being replaced, Application architecture, Storage, SIEM, Authentication, Procurement channel. Omit a row entirely rather than filling it with 'n/a'. Where a detail is unconfirmed, say so in the Detail cell in plain prose ('to be confirmed during pre-kickoff') instead of asserting it.
 
 SECTION 4: Objectives & success criteria
 Table: # | Success criterion | Validation method | Result
-Write 4-6 clear, verifiable criteria. Each must: be specific to this customer's environment, have a concrete validation method described qualitatively (e.g. 'Submit known-malicious and benign test files and confirm the threat verdict and report are correct'), be achievable in a 2-week POV, and map to a capability the selected product actually provides. Do NOT invent specific quantities or percentages (number of devices, number of files, '100% detection') unless the SE provided them. Result column: [ ] Met [ ] Not Met. If success criteria override provided: use verbatim.
+Write one criterion per capability in scope — typically 5 to 9. Each must: be specific to this customer's environment; have a concrete validation method described qualitatively (e.g. 'Submit known-malicious and benign test files and confirm the threat verdict and report are correct'); be achievable inside the PoV duration; and map to a capability the selected product actually provides. Every product, module, and integration listed in Section 2 needs at least one criterion. Do NOT invent specific quantities or percentages (number of devices, number of files, '100% detection') unless the SE provided them. Result column: [ ] Met [ ] Not Met. If success criteria override provided: use verbatim.
 
 SECTION 5: Scope
 5.1 In scope: bullet list
-5.2 Out of scope: bullet list (include production traffic, HA/clustering, full deployment sizing)
+5.2 Out of scope: bullet list. Always include production traffic routing, HA/clustering, and full production sizing, plus any product or mode the customer raised that is not being evaluated. Where something is out of scope because of a gap or an unconfirmed capability, say that in the bullet itself — do NOT refer the reader to a risks section, because this document does not have one.
 
 SECTION 6: Use cases
 Table: ID | Use case | Customer-specific description | Product(s)
@@ -75,23 +80,58 @@ Table: ID | Use case | Customer-specific description | Product(s)
 
 SECTION 7: Plan & timeline
 Table: When | Activity | Description | Date
-Standard 2-week: Pre-kickoff | Week 1 Deploy & Configure | Mid-POV check-in | Week 2 Execute Tests | Close-out. For Week 1 Deploy & Configure: include numbered installation steps from documentation with source URLs.
+Phase the schedule across the PoV duration: pre-kickoff, kickoff and deployment, configuration and walkthrough, mid-PoV check-in, structured testing, results and close-out. Keep each Description to one line and leave the deployment detail to Section 8 — no installation steps or system requirements here. Date column: 'TBD' unless dates were provided.
 
-SECTION 8: Technical prerequisites
-8.1 Per-product requirements table for each selected product. Pull from documentation: supported OS, CPU/RAM/disk sizing, required ports, software dependencies, external URLs. If air-gapped selected: include offline license file note with 5 business day lead time warning.
-8.2 Pre-kickoff checklist: standard items plus environment-specific items based on deployment type.
+Section 8 (Deployment information) is written separately and appended after Section 7. Refer to it by number where useful, but do NOT write it.
 
-SECTION 9: Roles & contacts
-Table with contacts from account data.
-
-SECTION 10: Assumptions & risks
-Table: # | Assumption or Risk | Mitigation
-3-5 items specific to this customer. If known risks provided: include verbatim. If air-gapped: include offline license deadline risk. If OT environment: include change control timeline risk.
-
-SECTION 11: Sign-off & next steps
-Standard sign-off table. Include 'Recommended next steps' paragraph suggesting follow-on engagement based on POV scope.
+Do NOT write a 'Roles & contacts', 'Assumptions & risks', or 'Sign-off' section. This document ends at Section 8. Fold what would have gone in those into the sections above:
+- Known blockers and risks become caveats in the Section 3 Detail cells and out-of-scope bullets in Section 5, phrased as what must be verified or what is excluded.
+- Competitors and the incumbent tool become part of Section 1 and the 'Current security tool being replaced' row in Section 3.
+- Contacts inform the content but are not listed. The SE and AE appear on the cover page, which is generated separately.
 
 OUTPUT FORMAT: Return as structured text using plain 'SECTION N: [name]' section headers, exactly — no leading '#' marks, and no document title, subtitle, byline, or horizontal rules ('---') before SECTION 1. Within a section, use a Markdown pipe table only where a table is specified above, and '- ' bullets only where a bullet list is specified. Do NOT use bold ('**'), italic ('*'), or heading ('#') decoration anywhere in the prose. Write clean plain sentences. This will be parsed by section for storage and display.`;
+
+// Section 8 gets its own call and its own retrieval. It is the one chapter that
+// is entirely documentation-derived — sizing tables, package names, ports,
+// env vars — and sharing a single response with the other seven sections left
+// it as a thin prerequisites list.
+const DEPLOYMENT_SPEC = `Write SECTION 8: Deployment information for the PoV document above.
+
+Open with one short paragraph (no heading) saying what the chapter covers: the system requirements and deployment approach for the products in scope on this customer's chosen platform, and that it supplements Section 3 (Customer environment) and Section 7 (Plan & timeline).
+
+Then write these six subsections, each introduced by its number and title alone on its own line, in exactly this form and order — no '#' marks, no bold:
+8.1 System requirements
+8.2 Pre-kickoff deployment checklist
+8.3 Deployment steps
+8.4 Third-party dependencies
+8.5 Network requirements
+8.6 Reference documentation
+
+8.1 System requirements
+Markdown pipe table: Package | CPU cores | RAM | Disk
+One row per licensed combination that matters — the base product alone, and the base product plus the selected add-on modules. Take every number from the documentation excerpts. Follow the table with a short paragraph covering supported operating system versions, storage add-ons that apply regardless of package, and any sizing subtlety (for example whether an add-on's requirement applies once or is additive per module). If a figure is not in the excerpts, say it must be verified against current documentation — do not estimate it.
+
+8.2 Pre-kickoff deployment checklist
+Bullet list, every line starting with '- ', one concrete thing that must be true before kickoff. Derive the items from the deployment target, the database requirement, OS dependencies, outbound network access, licensing, and the test data the Section 4 success criteria need. Cross-reference the other subsections by number where it helps ('see 8.4').
+
+8.3 Deployment steps
+Markdown pipe table: Step | Detail
+Numbered steps 1..N specific to the deployment target. Name the actual container image, package, installer, port, environment variable, or configuration setting wherever the documentation provides it, and say what value to set. No generic steps: 'install the product' is useless. Every step must carry something the customer could not have guessed. Where the platform has a constraint that affects the product (scale-to-zero, ephemeral storage, plan sizing limits), say what to set and why.
+
+8.4 Third-party dependencies
+Markdown pipe table: Base image / distro | Dependencies
+One row per OS or distro family in scope listing the packages the selected modules require, plus an 'All distros' row for anything universal. Omit this subsection only if the excerpts show no third-party dependencies for these products.
+
+8.5 Network requirements
+Markdown pipe table: Host | Purpose
+One row per outbound host or port the deployment needs — license activation, engine and signature updates, and anything else the excerpts name. Follow with a short paragraph on firewall practicalities, such as whether IP-based allowlisting is safe for these hosts.
+
+8.6 Reference documentation
+Bullet list of the documentation pages actually used above, each as 'Title: URL'. Use only URLs present in the excerpts. If none were provided, say so.
+
+If the deployment is air-gapped, add offline license staging and offline signature-update package steps to 8.3, and a lead-time warning to 8.2.
+
+OUTPUT: return only the body of section 8, starting with the opening paragraph. Do NOT repeat a 'SECTION 8' header. No bold, italic, or '#' heading marks anywhere. Use Markdown pipe tables only where specified above.`;
 
 // --- helpers ---
 
@@ -126,6 +166,47 @@ function chromaFoldersFor(productValues, deploymentValues, maps) {
   }
   if ((deploymentValues || []).includes('airgap')) folders.add('mddownloader');
   return [...folders];
+}
+
+// Retrieval for the deployment chapter. One broad similarity query over the
+// account's drivers (what buildSearchQuery does for sections 1-7) does not
+// surface sizing tables, package lists, or firewall hosts — those live in
+// different pages from the ones that match a business-pain paragraph. So ask
+// four narrow questions instead and union the results, deduped by source.
+function deploymentQueries({ productLabels, osLabels, deploymentLabels, deploymentTarget }) {
+  const products = productLabels.join(', ') || 'MetaDefender';
+  const os = osLabels.join(', ');
+  const target = [deploymentTarget, deploymentLabels.join(', ')].filter(Boolean).join(' ');
+  return [
+    `${products} system requirements CPU cores RAM disk space supported operating systems sizing`,
+    `${products} installation deployment steps ${target} ${os}`.replace(/\s+/g, ' ').trim(),
+    `${products} network requirements outbound hosts ports firewall license activation engine updates`,
+    `${products} third-party dependencies prerequisites required packages libraries runtime`
+  ];
+}
+
+// Sequential on purpose: the embed server runs a single transformers.js
+// pipeline on the host, so four concurrent requests buy nothing and risk
+// queueing behind each other anyway.
+async function retrieveDeploymentDocs({ queries, where, chromaUrl }) {
+  const seen = new Set();
+  const chunks = [];
+  for (const q of queries) {
+    try {
+      const embedding = await getEmbedding(q);
+      const found = await queryDocs({ chromaUrl, embedding, nResults: 8, where });
+      for (const c of found) {
+        const key = `${(c.metadata && c.metadata.url) || ''}#${String(c.document || '').slice(0, 120)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        chunks.push(c);
+      }
+      console.log(`[pov] deploy query "${q.slice(0, 60)}" -> ${found.length} (${chunks.length} unique so far)`);
+    } catch (e) {
+      console.error('[pov] deploy retrieval failed for a query:', e.message);
+    }
+  }
+  return chunks;
 }
 
 // Split the model output on 'SECTION N: Name' headers into an ordered map.
@@ -246,7 +327,7 @@ async function generateDraft(accountId, body, key, locals) {
     if (body.competitors) optional.push(`USE THESE COMPETITORS IN SECTION 11:\n${body.competitors}`);
     if (body.additional_context) optional.push(`ADDITIONAL CONTEXT:\n${body.additional_context}`);
 
-    const userPrompt =
+    const contextBlock =
 `ACCOUNT CONTEXT:
 Account: ${body.account_name_override || account.account_name} | Industry: ${account.industry || 'n/a'} | Stage: ${account.presales_stage || account.opportunity_stage || 'n/a'}
 Close date: ${account.close_date || 'n/a'} | Value: ${account.opportunity_value || 'n/a'}
@@ -278,29 +359,89 @@ Metascan Windows engine tier: ${body.metascan_windows_tier ? labelsFor('technolo
 Metascan Linux engine tier: ${body.metascan_linux_tier ? labelsFor('technology', [body.metascan_linux_tier], maps)[0] : 'n/a'}
 File types in scope: ${labelsFor('file_type', body.selected_file_types, maps).join(', ') || 'n/a'}
 Compliance frameworks: ${labelsFor('compliance', body.selected_compliance, maps).join(', ') || 'n/a'}
+Deployment target / platform: ${body.deployment_target || 'n/a'}
 Network topology: ${body.network_topology || 'n/a'}
 Existing security stack: ${body.existing_stack || 'n/a'}
 Competitors: ${body.competitors || 'n/a'}
 Endpoint / user count: ${body.endpoint_count || body.user_count || 'n/a'}
 ${body.duration ? `Duration: ${body.duration}` : ''}
 
-${optional.join('\n\n')}
+${optional.join('\n\n')}`;
 
-RELEVANT OPSWAT DOCUMENTATION (use for deployment steps and prerequisites -- cite source URLs inline):
-${docBlocks || '(no documentation chunks retrieved -- flag deployment sections for manual verification)'}
+    const userPrompt =
+`${contextBlock}
+
+RELEVANT OPSWAT DOCUMENTATION (background for the customer-facing sections; do not cite URLs inline):
+${docBlocks || '(no documentation chunks retrieved -- flag sections for manual verification)'}
 ${lowConfBlock}
 
 ${SECTION_SPEC}`;
 
-    // 6. generate
+    // 6. generate sections 1-7
     const povText = await callAnthropic({
-      key, model: POV_MODEL, max_tokens: 3000,
+      key, model: POV_MODEL, max_tokens: 10000,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userPrompt }]
     });
 
     // 7. parse sections
     const sectionTexts = parseSections(povText);
+
+    // 7b. Section 8 -- the deployment chapter, on its own retrieval and its own
+    // call. Separated because it is wholly documentation-derived and was the
+    // section most starved by sharing one response with the other seven.
+    const deployFolders = chromaFoldersFor(body.selected_products, body.selected_deployment, maps);
+    const deployWhere = deployFolders.length ? { product: { $in: deployFolders } } : undefined;
+    const deployChunks = await retrieveDeploymentDocs({
+      queries: deploymentQueries({
+        productLabels: labelsFor('product', body.selected_products, maps),
+        osLabels: labelsFor('os', body.selected_os, maps),
+        deploymentLabels: labelsFor('deployment', body.selected_deployment, maps),
+        deploymentTarget: body.deployment_target
+      }),
+      where: deployWhere,
+      chromaUrl: locals.chromaUrl
+    });
+    const deploySources = [...new Set(deployChunks.map(c => c.metadata && c.metadata.url).filter(Boolean))];
+
+    const DEPLOY_SECTION_KEY = 'SECTION 8: Deployment information';
+    let deployText;
+    if (!deployChunks.length) {
+      console.warn('[pov] no deployment docs retrieved -- section 8 left as a notice');
+      deployText = DEPLOY_NO_DOCS;
+    } else {
+      // Sections 3, 4 and 7 are what section 8 has to stay consistent with:
+      // the environment it deploys into, the criteria it has to make testable,
+      // and the schedule its checklist feeds.
+      const continuityKeys = [3, 4, 7];
+      const continuity = continuityKeys
+        .map(n => {
+          const k = Object.keys(sectionTexts).find(key => new RegExp(`^SECTION\\s*${n}\\b`, 'i').test(key));
+          return k ? `${k}:\n${sectionTexts[k]}` : null;
+        })
+        .filter(Boolean)
+        .join('\n\n');
+
+      const deployDocBlocks = deployChunks.map(c =>
+        `--- Source: ${(c.metadata && c.metadata.url) || 'n/a'} | Product: ${(c.metadata && c.metadata.product) || 'n/a'} ---\n${c.document}`
+      ).join('\n\n');
+
+      deployText = await callAnthropic({
+        key, model: POV_MODEL, max_tokens: 6000,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content:
+`${contextBlock}
+
+SECTIONS ALREADY WRITTEN (stay consistent with these; do not rewrite them):
+${continuity || '(none available)'}
+
+OPSWAT DEPLOYMENT DOCUMENTATION (every requirement, package name, port, host and setting below must come from these excerpts):
+${deployDocBlocks}
+
+${DEPLOYMENT_SPEC}` }]
+      });
+    }
+    sectionTexts[DEPLOY_SECTION_KEY] = deployText;
 
     // If embedding failed we have no documentation sources — surface a clear
     // warning at the top of Section 1 so the SE knows to start the embed server.
@@ -316,6 +457,11 @@ ${SECTION_SPEC}`;
     const sePrep = '';
 
     // 9. persist
+    // pov_text is the flat archive of what the model returned; keep section 8 in
+    // it so an old draft opened from the library still reads as one document.
+    const fullText = `${povText}\n\n${DEPLOY_SECTION_KEY}\n${deployText}`;
+    const allSources = [...new Set([...sources, ...deploySources])];
+
     const color = POV_COLORS[db.prepare('SELECT COUNT(*) AS n FROM pov_drafts').get().n % POV_COLORS.length];
     const selections = {
       products: body.selected_products || [],
@@ -328,6 +474,7 @@ ${SECTION_SPEC}`;
       metascan_linux_tier: body.metascan_linux_tier || null,
       file_types: body.selected_file_types || [],
       compliance: body.selected_compliance || [],
+      deployment_target: body.deployment_target || null,
       network_topology: body.network_topology || null,
       existing_stack: body.existing_stack || null,
       competitors: body.competitors || null,
@@ -345,8 +492,8 @@ ${SECTION_SPEC}`;
         (account_id, opportunity_id, pov_text, section_texts, se_prep_notes, model_used, chunks_used, sources, status, color, start_date, end_date, selections)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)
     `).run(
-      accountId, opportunities.resolveId(db, accountId, body.opportunity_id), povText, JSON.stringify(sectionTexts), sePrep || null,
-      POV_MODEL, chunks.length, JSON.stringify(sources), color,
+      accountId, opportunities.resolveId(db, accountId, body.opportunity_id), fullText, JSON.stringify(sectionTexts), sePrep || null,
+      POV_MODEL, chunks.length + deployChunks.length, JSON.stringify(allSources), color,
       body.start_date || null, body.end_date || null, JSON.stringify(selections)
     );
     const povId = info.lastInsertRowid;
@@ -465,7 +612,60 @@ router.post('/accounts/:id/pov/:povId/section/:sectionKey/regenerate', async (re
       .map(([k, v]) => `${k}:\n${String(v).slice(0, 800)}`)
       .join('\n\n');
 
-    const userPrompt =
+    // Section 8 has to be regenerated the same way it was written: against
+    // retrieved documentation. Sent through the generic path below it would be
+    // rewritten from the model's recall, replacing real sizing figures, package
+    // names and hosts with plausible invented ones.
+    const isDeployment = /^SECTION\s*8\b/i.test(req.params.sectionKey);
+    let newText;
+
+    if (isDeployment) {
+      const maps = loadPovConfigMaps();
+      let sel = {};
+      try { sel = draft.selections ? JSON.parse(draft.selections) : {}; } catch {}
+      const folders = chromaFoldersFor(sel.products, sel.deployment, maps);
+      const deployChunks = await retrieveDeploymentDocs({
+        queries: deploymentQueries({
+          productLabels: labelsFor('product', sel.products, maps),
+          osLabels: labelsFor('os', sel.os, maps),
+          deploymentLabels: labelsFor('deployment', sel.deployment, maps),
+          deploymentTarget: sel.deployment_target
+        }),
+        where: folders.length ? { product: { $in: folders } } : undefined,
+        chromaUrl: req.app.locals.chromaUrl
+      });
+
+      if (!deployChunks.length) {
+        return res.status(503).json({
+          error: 'No OPSWAT documentation could be retrieved, so this section would have to be written from memory. Start the embed server (node embed-server.js) and check ChromaDB, then try again. The existing section has been left untouched.'
+        });
+      }
+
+      const deployDocBlocks = deployChunks.map(c =>
+        `--- Source: ${(c.metadata && c.metadata.url) || 'n/a'} | Product: ${(c.metadata && c.metadata.product) || 'n/a'} ---\n${c.document}`
+      ).join('\n\n');
+
+      newText = await callAnthropic({
+        key, model: POV_MODEL, max_tokens: 6000,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content:
+`Rewrite the deployment chapter of an OPSWAT PoV document for account ${account.account_name} (industry: ${account.industry || 'n/a'}).
+${reason ? `Reason for regeneration: ${reason}\n` : ''}
+Deployment target / platform: ${sel.deployment_target || 'n/a'}
+Products: ${labelsFor('product', sel.products, maps).join(', ') || 'n/a'}
+Deployment: ${labelsFor('deployment', sel.deployment, maps).join(', ') || 'n/a'}
+OS: ${labelsFor('os', sel.os, maps).join(', ') || 'n/a'}
+
+THE REST OF THE DOCUMENT (stay consistent with it; do not rewrite it):
+${continuity}
+
+OPSWAT DEPLOYMENT DOCUMENTATION (every requirement, package name, port, host and setting must come from these excerpts):
+${deployDocBlocks}
+
+${DEPLOYMENT_SPEC}` }]
+      });
+    } else {
+      const userPrompt =
 `Regenerate ONLY the section "${req.params.sectionKey}" of an OPSWAT PoV document for account ${account.account_name} (industry: ${account.industry || 'n/a'}).
 ${reason ? `Reason for regeneration: ${reason}\n` : ''}
 Business pain: ${di.business_pain || 'n/a'}
@@ -476,11 +676,12 @@ ${continuity}
 
 Return ONLY the new content for "${req.params.sectionKey}" -- no section header, no preamble.`;
 
-    const newText = await callAnthropic({
-      key, model: POV_MODEL, max_tokens: 1500,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userPrompt }]
-    });
+      newText = await callAnthropic({
+        key, model: POV_MODEL, max_tokens: 4000,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userPrompt }]
+      });
+    }
 
     sections[req.params.sectionKey] = newText;
     db.prepare('UPDATE pov_drafts SET section_texts = ? WHERE id = ?')

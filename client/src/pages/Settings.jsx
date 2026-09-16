@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ANTHROPIC_KEY_STORAGE } from '../lib/ai.js';
+import { api } from '../lib/api.js';
 import Card from '../components/Card.jsx';
 import PovConfigSettings from './PovConfigSettings.jsx';
 import TagSettings from './TagSettings.jsx';
@@ -8,9 +9,17 @@ import BackupSettings from './BackupSettings.jsx';
 export default function Settings() {
   const [value, setValue] = useState(localStorage.getItem(ANTHROPIC_KEY_STORAGE) || '');
   const [saved, setSaved] = useState(false);
+  // Server-side, unlike the API key: the POV docx is rendered on the server and
+  // needs this name for the Solutions Engineer line on the cover.
+  const [seName, setSeName] = useState('');
 
-  function save() {
+  useEffect(() => {
+    api.getSeProfile().then(r => setSeName((r.config && r.config.name) || '')).catch(() => {});
+  }, []);
+
+  async function save() {
     localStorage.setItem(ANTHROPIC_KEY_STORAGE, value.trim());
+    try { await api.saveSeProfile({ name: seName.trim() }); } catch { /* key still saved */ }
     setSaved(true);
     setTimeout(() => setSaved(false), 2200);
   }
@@ -43,6 +52,20 @@ export default function Settings() {
             Clear key
           </button>
         )}
+      </Card>
+
+      <Card className="p-6 mt-4">
+        <div className="text-[13px] font-medium text-text-primary mb-1">Your name</div>
+        <p className="text-[12px] text-text-muted mb-4 leading-relaxed">
+          Used for the Solutions Engineer line on exported POV documents. The Account Executive on the
+          same cover page comes from the AE recorded on each account.
+        </p>
+        <input
+          value={seName}
+          onChange={e => setSeName(e.target.value)}
+          placeholder="e.g. Abrielle Land"
+          className="w-full bg-[#040d1c] border border-border rounded px-3 py-2 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50"
+        />
       </Card>
 
       <BackupSettings />

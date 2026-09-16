@@ -94,7 +94,7 @@ export default function PovGenerator() {
     selected_products: [], selected_deployment: [], selected_os: [], selected_use_cases: [], selected_integrations: [],
     selected_technologies: [], metascan_windows_tier: '', metascan_linux_tier: '',
     selected_file_types: [], selected_compliance: [],
-    network_topology: '', existing_stack: '',
+    deployment_target: '', network_topology: '', existing_stack: '',
     success_criteria_override: '', known_risks: '', competitors: '', endpoint_count: '', additional_context: '', se_notes: ''
   });
 
@@ -232,6 +232,7 @@ export default function PovGenerator() {
       metascan_linux_tier: s.metascan_linux_tier || '',
       selected_file_types: s.file_types || [],
       selected_compliance: s.compliance || [],
+      deployment_target: s.deployment_target || '',
       network_topology: s.network_topology || '',
       existing_stack: s.existing_stack || '',
       competitors: s.competitors || '',
@@ -413,7 +414,10 @@ export default function PovGenerator() {
             <Labeled label="Endpoint / user count"><input className={inputCls} value={form.endpoint_count} onChange={e => setForm(f => ({ ...f, endpoint_count: e.target.value }))} /></Labeled>
           </div>
           <div className="grid grid-cols-2 gap-3">
+            <Labeled label="Deployment target / platform"><input className={inputCls} value={form.deployment_target} onChange={e => setForm(f => ({ ...f, deployment_target: e.target.value }))} placeholder="e.g. Azure Container Apps, AWS ECS, bare metal RHEL 9" /></Labeled>
             <Labeled label="Network topology"><input className={inputCls} value={form.network_topology} onChange={e => setForm(f => ({ ...f, network_topology: e.target.value }))} placeholder="e.g. segmented OT network, DMZ" /></Labeled>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <Labeled label="Existing security stack"><input className={inputCls} value={form.existing_stack} onChange={e => setForm(f => ({ ...f, existing_stack: e.target.value }))} placeholder="e.g. Palo Alto, CrowdStrike" /></Labeled>
           </div>
           <Labeled label="Additional context"><textarea className={inputCls} rows={2} value={form.additional_context} onChange={e => setForm(f => ({ ...f, additional_context: e.target.value }))} /></Labeled>

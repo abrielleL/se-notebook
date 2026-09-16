@@ -112,6 +112,10 @@ export const api = {
   mergeContacts: (keeperId, loserId) =>
     request('/api/contacts/merge', { method: 'POST', body: json({ keeper_id: keeperId, loser_id: loserId }) }),
 
+  // the notebook owner's identity, used on POV exports
+  getSeProfile: () => request('/api/settings/se-profile'),
+  saveSeProfile: (config) => request('/api/settings/se-profile', { method: 'PUT', body: json({ config }) }),
+
   // next steps
   getBackupSettings: () => request('/api/settings/backup'),
   saveBackupSettings: (body) => request('/api/settings/backup', { method: 'PUT', body: json(body) }),

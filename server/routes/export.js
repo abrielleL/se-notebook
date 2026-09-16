@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../db/database');
 const { contactsForAccount } = require('../lib/contactStore');
+const seProfile = require('../lib/seProfile');
 
 const router = express.Router();
 
@@ -242,10 +243,13 @@ const PT = {
 const TABLE_W = 9360;
 const half = (pt) => Math.round(pt * 2); // docx sizes are half-points
 
+// The generated POV runs 1-8 and ends on the deployment chapter. Sections 9-11
+// are no longer produced, but stay in the order so POVs generated before that
+// change still export in full — findSection() skips whatever isn't present.
 const POV_SECTION_ORDER = [
   [1, 'Purpose'], [2, 'Products in scope'], [3, 'Customer environment'],
   [4, 'Objectives & success criteria'], [5, 'Scope'], [6, 'Use cases'],
-  [7, 'Plan & timeline'], [8, 'Technical prerequisites'], [9, 'Roles & contacts'],
+  [7, 'Plan & timeline'], [8, 'Deployment information'], [9, 'Roles & contacts'],
   [10, 'Assumptions & risks'], [11, 'Sign-off & next steps']
 ];
 
@@ -320,6 +324,17 @@ async function renderDocx(account, pov, selectedKeys) {
     ]
   });
 
+  // heading2: a numbered subsection inside a section body ('8.1 System
+  // requirements'). The number takes the accent blue the section headings use
+  // for theirs, so 8.1 reads as a child of 8 rather than a new chapter.
+  const subSectionHeading = (num, title) => new Paragraph({
+    spacing: { before: 280, after: 120, line: 252, lineRule: LineRuleType.AUTO },
+    children: [
+      run(`${num}  `, { bold: true, color: C.blue, size: half(PT.h2) }),
+      run(title, { bold: true, color: C.navy, size: half(PT.h2) })
+    ]
+  });
+
   // Markdown '#'-heading rendered inside a section body (used by the fallback
   // path when a POV was stored as one un-split blob). Level scales the size.
   const mdHeadingPara = (text, level) => new Paragraph({
@@ -342,7 +357,12 @@ async function renderDocx(account, pov, selectedKeys) {
       const trimmed = lines[i].trim();
       if (!trimmed) { i++; continue; }
       const heading = trimmed.match(/^(#{1,6})\s+(.*)$/);
+      // 'N.M Title' as its own line is a subsection heading, not body text.
+      // Only honored where the section is known to use them (section 8), so a
+      // sentence opening with a version number elsewhere isn't mistaken for one.
+      const sub = opts.subHeadings && trimmed.match(/^(\d+\.\d+)[.)]?\s+(\S.{0,80})$/);
       if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) { i++; continue; } // skip horizontal rules
+      else if (sub) out.push(subSectionHeading(sub[1], sub[2].replace(/\*\*/g, '').trim()));
       else if (heading) out.push(mdHeadingPara(heading[2].replace(/\*\*/g, ''), heading[1].length));
       else if (/^[-•*]\s+/.test(trimmed)) out.push(bulletPara(trimmed.replace(/^[-•*]\s+/, ''), opts.bulletChar || '•', opts.bulletColor));
       else out.push(bodyPara(trimmed));
@@ -440,14 +460,14 @@ async function renderDocx(account, pov, selectedKeys) {
     children: [run(label, { size: half(PT.provided) }), run(value, { size: half(PT.provided), bold: true })]
   });
   children.push(providedLine('Provided for: ', account.account_name || 'TBD'));
-  children.push(providedLine('Provided by: ', account.ae_name || account.account_executive || 'TBD'));
 
   // Supporting engagement metadata (not on the template cover) at small body size.
+  // The SE is always the notebook owner; the AE comes off the account record.
   const metaLine = (label, value) => new Paragraph({ spacing: { after: 20 }, children: [run(`${label}: `, { size: half(PT.small), color: C.muted }), run(value, { size: half(PT.small) })] });
   children.push(metaLine('Engagement type', 'Proof of Value (PoV)'));
-  children.push(metaLine('Solutions Engineer', 'SE Name'));
+  children.push(metaLine('Solutions Engineer', seProfile.read().name || 'TBD'));
+  children.push(metaLine('Account Executive', account.ae_name || account.account_executive || 'TBD'));
   children.push(metaLine('PoV duration', duration));
-  children.push(metaLine('Classification', 'Confidential'));
   children.push(new Paragraph({ children: [new PageBreak()] }));
 
   // SECTION CARDS from pov.section_texts
@@ -476,7 +496,7 @@ async function renderDocx(account, pov, selectedKeys) {
         }
         children.push(signoffTable());
       } else if (num === 8) {
-        children.push(...parseBody(body, { bulletChar: '☐', bulletColor: C.muted }));
+        children.push(...parseBody(body, { bulletChar: '☐', bulletColor: C.muted, subHeadings: true }));
       } else {
         children.push(...parseBody(body));
       }

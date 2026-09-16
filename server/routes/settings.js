@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../db/database');
 const backup = require('../lib/backupConfig');
+const seProfile = require('../lib/seProfile');
 
 const router = express.Router();
 
@@ -25,6 +26,17 @@ function listSnapshots(configPath) {
     return { readable: false, snapshots: [], error: e.message };
   }
 }
+
+// The notebook owner's identity, used for the Solutions Engineer line on POV
+// exports. Kept server-side because the docx is rendered there.
+router.get('/se-profile', (_req, res) => {
+  res.json({ config: seProfile.read() });
+});
+
+router.put('/se-profile', (req, res) => {
+  const { config } = seProfile.validate(req.body && req.body.config ? req.body.config : req.body);
+  res.json({ config: seProfile.write(config) });
+});
 
 router.get('/backup', (_req, res) => {
   const config = backup.read();
