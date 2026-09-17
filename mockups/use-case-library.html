@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mockup — Use Case Library</title>
+<style>
+/* Design tokens copied from client/tailwind.config.js (OPSWAT Product UI, dark).
+   Hand-written CSS rather than a Tailwind CDN so the file opens offline. */
+:root{
+  --app:#040d1c; --card:#081938; --subtle:#111f42; --border:#273454;
+  --t1:#f4f4f5; --t2:#cbd3e7; --t3:#838892; --t4:#616875;
+  --blue:#5c9bff; --blue-solid:#1d6bfc; --green:#4fd15c; --orange:#ff9a4d;
+  --red:#ff6b66; --purple:#8f47e8; --teal:#0f8fa3;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--app);color:var(--t1);
+  font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:12px}
+a{color:var(--blue);text-decoration:none}
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px}
+.card>h3{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  margin:0;padding:8px 12px;border-bottom:1px solid var(--border);
+  font-size:11px;font-weight:500;color:var(--t1)}
+.card>.body{padding:12px}
+.muted{color:var(--t3)} .dim{color:var(--t4)} .sec{color:var(--t2)}
+.row{display:flex;align-items:center;gap:8px}
+.between{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.col{display:flex;flex-direction:column;gap:12px;min-width:0}
+.btn{background:var(--card);border:1px solid var(--border);border-radius:4px;
+  padding:5px 10px;font-size:11px;color:var(--t1);cursor:pointer;font-family:inherit}
+.btn:hover{border-color:rgba(92,155,255,.4)}
+.btn.primary{background:var(--blue-solid);border-color:var(--blue-solid);color:#fff}
+.btn.mini{padding:2px 6px;font-size:9px;color:var(--t4);background:none;border:none}
+.btn.mini:hover{color:var(--blue)}
+.btn:disabled{opacity:.4;cursor:default}
+.hdr{padding:12px 20px;border-bottom:1px solid var(--border)}
+.bar{background:var(--subtle);border-bottom:1px solid var(--border);padding:8px 20px;
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.bar .lbl{font-size:10px;color:var(--t4);text-transform:uppercase;letter-spacing:.06em}
+.toggle{display:inline-flex;align-items:center;gap:6px;font-size:10px;color:var(--t2);cursor:pointer}
+.switch{width:26px;height:14px;border-radius:999px;background:var(--border);position:relative;transition:.15s}
+.switch i{position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:50%;background:var(--t3);transition:.15s}
+.switch.on{background:var(--blue-solid)} .switch.on i{left:14px;background:#fff}
+/* Design annotations — on by default here; this file exists to argue a shape. */
+.ann{display:none;border:1px dashed rgba(255,154,77,.5);border-radius:4px;
+  background:rgba(237,103,6,.1);color:var(--orange);font-size:10px;padding:5px 7px;line-height:1.45}
+body.notes .ann{display:block}
+.view{display:none} .view.on{display:block}
+
+/* --- library-specific --- */
+.filters{padding:10px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+select,input[type=text]{background:var(--app);border:1px solid var(--border);border-radius:4px;
+  color:var(--t2);font-size:11px;padding:4px 8px;font-family:inherit}
+.tab{font-size:10px;padding:4px 10px;border-radius:4px;background:var(--subtle);color:var(--t3);cursor:pointer;border:1px solid transparent}
+.tab.on{background:rgba(29,107,252,.16);color:var(--blue);border-color:rgba(92,155,255,.3)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;padding:16px 20px}
+.pat{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;cursor:pointer;
+  display:flex;flex-direction:column;gap:10px;transition:.12s}
+.pat:hover{border-color:rgba(92,155,255,.45)}
+.pat .title{font-size:13px;font-weight:600;color:var(--t1);line-height:1.3}
+.pat .sub{font-size:10px;color:var(--t4)}
+.tagrow{display:flex;gap:4px;flex-wrap:wrap}
+.tag{font-size:9px;padding:2px 6px;border-radius:3px;border:1px solid var(--border);color:var(--t3)}
+.tag.prod{color:var(--blue);border-color:rgba(92,155,255,.3);background:rgba(29,107,252,.1)}
+.tag.vert{color:var(--teal);border-color:rgba(15,143,163,.45);background:rgba(15,143,163,.12)}
+.tag.gap{color:var(--t4);border-style:dashed}
+.meta{display:flex;gap:14px;font-size:10px;color:var(--t3);border-top:1px solid var(--border);padding-top:9px}
+.meta b{color:var(--t1);font-weight:600}
+.stub{border-style:dashed;background:transparent}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--t4);
+  font-weight:500;padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:7px 8px;border-bottom:1px solid var(--border);color:var(--t2)}
+td.n{text-align:center;font-variant-numeric:tabular-nums}
+.cell{display:inline-flex;align-items:center;justify-content:center;width:22px;height:20px;border-radius:4px;font-size:10px}
+.cell.has{background:rgba(0,138,0,.22);color:var(--green);border:1px solid rgba(79,209,92,.35)}
+.cell.src{background:rgba(29,107,252,.16);color:var(--blue);border:1px solid rgba(92,155,255,.3)}
+.cell.none{color:var(--t4);border:1px dashed var(--border)}
+.legend{display:flex;gap:16px;font-size:10px;color:var(--t3);padding:10px 20px 0}
+.grid2{display:grid;grid-template-columns:1fr 300px;gap:12px;padding:16px 20px}
+.vtabs{display:flex;gap:6px;flex-wrap:wrap;padding:10px 20px;border-bottom:1px solid var(--border);
+  background:var(--subtle)}
+.stmt{border-left:2px solid rgba(92,155,255,.45);padding:2px 0 2px 10px;margin-bottom:10px}
+.stmt .p{font-size:11px;color:var(--t4);margin-bottom:2px}
+.stmt .v{font-size:11px;color:var(--t2);line-height:1.5}
+.diagram{background:var(--app);border:1px solid var(--border);border-radius:6px;padding:16px;
+  display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;min-height:120px}
+.zone{border:1px dashed var(--border);border-radius:6px;padding:10px 12px;text-align:center;min-width:104px}
+.zone .zl{font-size:8px;text-transform:uppercase;letter-spacing:.07em;color:var(--t4);margin-bottom:6px}
+.node{background:var(--subtle);border:1px solid rgba(92,155,255,.3);border-radius:4px;
+  padding:5px 8px;font-size:10px;color:var(--blue);margin-bottom:4px}
+.node.plain{border-color:var(--border);color:var(--t3)}
+.arrow{color:var(--t4);font-size:15px}
+.lineage{background:rgba(237,103,6,.07);border:1px solid rgba(255,154,77,.3);border-radius:6px;padding:10px}
+.lineage .hl{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--orange);margin-bottom:7px}
+.src{display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:3px 0;color:var(--t2)}
+.gate{border:1px solid rgba(79,209,92,.35);background:rgba(0,138,0,.12);border-radius:6px;
+  padding:9px 10px;font-size:10px;color:var(--t2);line-height:1.5}
+.sidebar{width:172px;background:var(--card);border-right:1px solid var(--border);padding:12px 0;flex:0 0 auto}
+.nav{display:flex;align-items:center;gap:8px;padding:6px 14px;font-size:11px;color:var(--t3);cursor:pointer}
+.nav:hover{background:var(--subtle)}
+.nav.on{background:rgba(29,107,252,.16);color:var(--blue);box-shadow:inset 2px 0 0 var(--blue-solid)}
+.nav .ic{width:12px;text-align:center;opacity:.8}
+.shell{display:flex;min-height:520px}
+.main{flex:1;min-width:0}
+h1{font-size:16px;font-weight:600;margin:0}
+</style>
+</head>
+<body class="notes">
+
+<div class="bar">
+  <span class="lbl">Mockup</span>
+  <button class="btn" onclick="show('lib')">Library</button>
+  <button class="btn" onclick="show('cov')">Coverage</button>
+  <button class="btn" onclick="show('pat')">Pattern detail</button>
+  <span style="flex:1"></span>
+  <span class="dim" style="font-size:10px">Real data: 8 POVs across 7 accounts, pulled from pov_drafts.selections</span>
+  <label class="toggle" onclick="document.body.classList.toggle('notes')">
+    <span class="switch on"><i></i></span> design notes
+  </label>
+</div>
+
+<div class="shell">
+  <!-- nav, showing where this lands -->
+  <div class="sidebar">
+    <div class="nav"><span class="ic">⌂</span> Dashboard</div>
+    <div class="nav"><span class="ic">▤</span> Accounts</div>
+    <div class="nav"><span class="ic">◍</span> Contacts</div>
+    <div class="nav"><span class="ic">▦</span> POV Calendar</div>
+    <div class="nav"><span class="ic">▣</span> POV Library</div>
+    <div class="nav on"><span class="ic">◈</span> Use Case Library</div>
+    <div class="nav"><span class="ic">▤</span> Attachment Library</div>
+    <div class="nav"><span class="ic">◉</span> Stats</div>
+  </div>
+
+  <div class="main">
+
+  <!-- ========================================================== -->
+  <!-- VIEW 1 — LIBRARY INDEX                                     -->
+  <!-- ========================================================== -->
+  <div class="view on" id="v-lib">
+    <div class="hdr between">
+      <div>
+        <h1>Use Case Library</h1>
+        <div class="muted" style="font-size:11px;margin-top:4px">
+          5 patterns · 12 vertical adaptations · built from 8 POVs across 7 accounts
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn">Coverage view</button>
+        <button class="btn primary">+ New pattern</button>
+      </div>
+    </div>
+
+    <div class="filters">
+      <input type="text" placeholder="Search patterns…" style="width:190px">
+      <select><option>All verticals</option><option>Legal</option><option>Energy regulation</option>
+        <option>Food manufacturing</option><option>Power utility</option><option>Business process services</option></select>
+      <select><option>All products</option><option>MetaDefender Core</option><option>MetaDefender MFT</option>
+        <option>MetaDefender Kiosk</option><option>MetaDefender Endpoint</option><option>MetaDefender Cloud</option></select>
+      <select><option>Any outcome</option><option>Backed by a win</option><option>No outcome yet</option></select>
+      <span style="flex:1"></span>
+      <span class="dim" style="font-size:10px">Same filter bar as POV Library</span>
+    </div>
+
+    <div class="ann" style="margin:12px 20px">
+      Patterns are <b>use-case-first</b>. The card is the use case; verticals are adaptations listed on it.
+      Nothing here was typed in by hand — every card below is a cluster the app found in
+      <code>pov_drafts.selections</code>, which already records products, deployment, OS and use cases per POV.
+    </div>
+
+    <div class="cards">
+      <div class="pat" onclick="show('pat')">
+        <div>
+          <div class="title">File upload scanning</div>
+          <div class="sub">Untrusted files entering an internal application or portal</div>
+        </div>
+        <div class="tagrow">
+          <span class="tag prod">MetaDefender Core</span><span class="tag prod">MFT</span>
+          <span class="tag prod">Kiosk</span><span class="tag prod">Cloud</span>
+        </div>
+        <div class="tagrow">
+          <span class="tag vert">Legal</span><span class="tag vert">Energy regulation</span>
+          <span class="tag vert">Food manufacturing</span><span class="tag vert">Business process svcs</span>
+          <span class="tag vert">Labor union</span>
+        </div>
+        <div class="meta"><span><b>5</b> source accounts</span><span><b>5</b> adaptations</span><span class="dim">no outcome yet</span></div>
+      </div>
+
+      <div class="pat">
+        <div>
+          <div class="title">Removable media control</div>
+          <div class="sub">USB and contractor media entering a plant or office</div>
+        </div>
+        <div class="tagrow">
+          <span class="tag prod">MetaDefender Kiosk</span><span class="tag prod">Core</span>
+          <span class="tag">OPSWAT hardware</span>
+        </div>
+        <div class="tagrow"><span class="tag vert">Legal</span><span class="tag vert">Food manufacturing</span></div>
+        <div class="meta"><span><b>2</b> source accounts</span><span><b>2</b> adaptations</span><span class="dim">no outcome yet</span></div>
+      </div>
+
+      <div class="pat">
+        <div>
+          <div class="title">API integration</div>
+          <div class="sub">Scanning called inline from a customer-built application</div>
+        </div>
+        <div class="tagrow"><span class="tag prod">MetaDefender Cloud</span><span class="tag prod">Core</span>
+          <span class="tag">SaaS</span><span class="tag">Cloud</span></div>
+        <div class="tagrow"><span class="tag vert">Business process svcs</span><span class="tag vert">Labor union</span></div>
+        <div class="meta"><span><b>2</b> source accounts</span><span><b>2</b> adaptations</span><span class="dim">no outcome yet</span></div>
+      </div>
+
+      <div class="pat">
+        <div>
+          <div class="title">Endpoint compliance</div>
+          <div class="sub">Proving device posture against a regulatory standard</div>
+        </div>
+        <div class="tagrow"><span class="tag prod">MetaDefender Endpoint</span>
+          <span class="tag prod">My OPSWAT Central Mgmt</span><span class="tag">NERC CIP</span></div>
+        <div class="tagrow"><span class="tag vert">Power utility</span>
+          <span class="tag gap">+ nuclear, water — no adaptation yet</span></div>
+        <div class="meta"><span><b>1</b> source account</span><span><b>1</b> adaptation</span><span class="dim">no outcome yet</span></div>
+      </div>
+
+      <div class="pat">
+        <div>
+          <div class="title">Deep CDR / sanitization</div>
+          <div class="sub">Rebuilding documents rather than trusting detection</div>
+        </div>
+        <div class="tagrow"><span class="tag prod">MetaDefender Core</span>
+          <span class="tag">Office</span><span class="tag">PDF</span><span class="tag">Archives</span></div>
+        <div class="tagrow"><span class="tag vert">Energy regulation</span></div>
+        <div class="meta"><span><b>1</b> source account</span><span><b>1</b> adaptation</span><span class="dim">no outcome yet</span></div>
+      </div>
+
+      <div class="pat stub">
+        <div>
+          <div class="title dim">MetaDefender Drive</div>
+          <div class="sub">1 POV recorded no use case — nothing to build a pattern from</div>
+        </div>
+        <div class="ann">
+          The honest empty state. Cardinal Glass's POV has a product but no <code>use_cases</code>, so the
+          app can't infer what the pattern would be. It shows the gap and offers to ask, rather than
+          inventing a use case from the product name.
+        </div>
+        <div class="meta"><span class="dim">1 source account</span><span class="dim">needs a use case</span></div>
+      </div>
+    </div>
+
+    <div class="ann" style="margin:0 20px 20px">
+      <b>Credibility ranking is free, once outcomes exist.</b> Every POV in your database is still
+      <code>status: draft</code> with no <code>win_loss</code>, so every card honestly reads "no outcome yet."
+      Start marking POVs won or lost and these sort by wins with no extra data entry.
+    </div>
+  </div>
+
+  <!-- ========================================================== -->
+  <!-- VIEW 2 — COVERAGE MATRIX                                   -->
+  <!-- ========================================================== -->
+  <div class="view" id="v-cov">
+    <div class="hdr between">
+      <div>
+        <h1>Coverage</h1>
+        <div class="muted" style="font-size:11px;margin-top:4px">Use case × vertical — what you can already speak to, and what you can't</div>
+      </div>
+      <button class="btn" onclick="show('lib')">Back to library</button>
+    </div>
+
+    <div class="legend">
+      <span><span class="cell has">✓</span> adaptation written</span>
+      <span><span class="cell src">1</span> accounts, no adaptation yet</span>
+      <span><span class="cell none">·</span> no accounts here</span>
+    </div>
+
+    <div style="padding:12px 20px">
+      <div class="card"><div class="body" style="padding:0;overflow:auto">
+        <table>
+          <thead><tr>
+            <th style="min-width:180px">Use case</th>
+            <th>Utilities<br>&amp; power</th><th>Manufac-<br>turing</th><th>Financial<br>services</th>
+            <th>Health-<br>care</th><th>Nuclear</th><th>Insur-<br>ance</th><th>Legal</th>
+            <th>Food<br>mfg</th><th>Gov /<br>SLED</th>
+          </tr></thead>
+          <tbody>
+            <tr><td>File upload scanning</td>
+              <td class="n"><span class="cell src">10</span></td><td class="n"><span class="cell src">5</span></td>
+              <td class="n"><span class="cell src">5</span></td><td class="n"><span class="cell src">3</span></td>
+              <td class="n"><span class="cell src">2</span></td><td class="n"><span class="cell src">2</span></td>
+              <td class="n"><span class="cell has">✓</span></td><td class="n"><span class="cell has">✓</span></td>
+              <td class="n"><span class="cell src">2</span></td></tr>
+            <tr><td>Removable media control</td>
+              <td class="n"><span class="cell src">10</span></td><td class="n"><span class="cell src">5</span></td>
+              <td class="n"><span class="cell none">·</span></td><td class="n"><span class="cell none">·</span></td>
+              <td class="n"><span class="cell src">2</span></td><td class="n"><span class="cell none">·</span></td>
+              <td class="n"><span class="cell has">✓</span></td><td class="n"><span class="cell has">✓</span></td>
+              <td class="n"><span class="cell none">·</span></td></tr>
+            <tr><td>API integration</td>
+              <td class="n"><span class="cell none">·</span></td><td class="n"><span class="cell none">·</span></td>
+              <td class="n"><span class="cell src">5</span></td><td class="n"><span class="cell src">3</span></td>
+              <td class="n"><span class="cell none">·</span></td><td class="n"><span class="cell src">2</span></td>
+              <td class="n"><span class="cell none">·</span></td><td class="n"><span class="cell none">·</span></td>
+              <td class="n"><span class="cell none">·</span></td></tr>
+            <tr><td>Endpoint compliance</td>
+              <td class="n"><span class="cell has">✓</span></td><td class="n"><span class="cell src">5</span></td>
+              <td class="n"><span class="cell none">·</span></td><td class="n"><span class="cell none">·</span></td>
+              <td class="n"><span class="cell src">2</span></td><td class="n"><span class="cell none">·</span></td>
+              <td class="n"><span class="cell none">·</span></td><td class="n"><span class="cell none">·</span></td>
+              <td class="n"><span class="cell src">2</span></td></tr>
+            <tr><td>Deep CDR / sanitization</td>
+              <td class="n"><span class="cell src">10</span></td><td class="n"><span class="cell none">·</span></td>
+              <td class="n"><span class="cell src">5</span></td><td class="n"><span class="cell src">3</span></td>
+              <td class="n"><span class="cell none">·</span></td><td class="n"><span class="cell none">·</span></td>
+              <td class="n"><span class="cell none">·</span></td><td class="n"><span class="cell none">·</span></td>
+              <td class="n"><span class="cell src">2</span></td></tr>
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+
+    <div class="ann" style="margin:0 20px 8px">
+      <b>The blue cells are the point.</b> Ten utility and power accounts and you have no removable-media
+      adaptation for them, despite having written one for a law firm and a poultry processor. That's a
+      concrete, prioritised piece of work — and it's the view that makes the library pay for itself
+      before a single deck is exported.
+    </div>
+    <div class="ann" style="margin:0 20px 20px">
+      Vertical counts come from the company profiles. They firm up after the Settings backfill runs —
+      about half your accounts still have a blank or hand-typed industry ("Governemnt", "Utility -"),
+      so treat these numbers as provisional.
+    </div>
+  </div>
+
+  <!-- ========================================================== -->
+  <!-- VIEW 3 — PATTERN DETAIL                                    -->
+  <!-- ========================================================== -->
+  <div class="view" id="v-pat">
+    <div class="hdr between">
+      <div>
+        <div class="row"><span class="dim">←</span><h1>File upload scanning</h1></div>
+        <div class="muted" style="font-size:11px;margin-top:4px">
+          5 source accounts · 5 vertical adaptations · MetaDefender Core, MFT, Kiosk, Cloud
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn">Edit</button>
+        <button class="btn" disabled title="Later — patterns first, deck renderer second">Export deck ▾</button>
+      </div>
+    </div>
+
+    <div class="vtabs">
+      <span class="dim" style="font-size:10px;align-self:center;margin-right:4px">ADAPTATION</span>
+      <span class="tab on">Legal</span>
+      <span class="tab">Energy regulation</span>
+      <span class="tab">Food manufacturing</span>
+      <span class="tab">Business process svcs</span>
+      <span class="tab">Labor union</span>
+      <span class="tab" style="border:1px dashed var(--border)">+ add vertical</span>
+    </div>
+
+    <div class="ann" style="margin:12px 20px">
+      One core pattern, five adaptations. The diagram barely changes between verticals; the words change
+      completely — so only the words get regenerated. That's why the pattern is use-case-first and the
+      vertical is a layer on top, not the other way round.
+    </div>
+
+    <div class="grid2">
+      <div class="col">
+        <div class="card">
+          <h3>Problem — as a law firm experiences it</h3>
+          <div class="body sec" style="line-height:1.6">
+            Firms take in documents from outside counsel, clients and opposing parties all day, through
+            portals and shared mailboxes nobody in IT controls. The files are the business, so blocking
+            them isn't an option, and the senders can't be vetted. One weaponised document in a discovery
+            set reaches a partner's workstation with full access to client matter files.
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Solution value</h3>
+          <div class="body">
+            <div class="stmt"><div class="p">Can't refuse files from unvetted senders</div>
+              <div class="v">Every inbound document is scanned by multiple engines before it reaches a
+                workstation, so the firm keeps accepting files without trusting their source.</div></div>
+            <div class="stmt"><div class="p">Detection alone misses targeted documents</div>
+              <div class="v">Deep CDR rebuilds each file rather than judging it, so a macro or embedded
+                object is removed whether or not any engine has seen it before.</div></div>
+            <div class="stmt"><div class="p">Client confidentiality obligations</div>
+              <div class="v">Files are processed inside the firm's own environment — nothing is sent to a
+                cloud service for analysis.</div></div>
+            <div class="ann">
+              Generated once, then editable. Three statements, each tied to a problem the source POVs
+              actually named — not a product feature list.
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Architecture <span class="row"><button class="btn mini">regenerate</button><button class="btn mini">edit spec</button></span></h3>
+          <div class="body">
+            <div class="diagram">
+              <div class="zone"><div class="zl">Untrusted</div>
+                <div class="node plain">Client portal</div><div class="node plain">Email gateway</div></div>
+              <span class="arrow">→</span>
+              <div class="zone" style="border-color:rgba(92,155,255,.4)"><div class="zl">DMZ</div>
+                <div class="node">MetaDefender Core</div><div class="node">Deep CDR</div></div>
+              <span class="arrow">→</span>
+              <div class="zone"><div class="zl">Trusted</div>
+                <div class="node plain">Document mgmt</div><div class="node plain">Workstations</div></div>
+            </div>
+            <div class="ann" style="margin-top:10px">
+              Placeholder for the real thing. The stored artifact is a <code>diagram_spec</code> — products
+              placed into fixed zones (Untrusted / DMZ / Trusted / OT / Endpoint), not coordinates — which
+              the <code>opswat-architecture-diagram</code> skill renders with real product icons. AI
+              generates it; you regenerate if it's wrong. No dragging boxes.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="card">
+          <h3>This adaptation</h3>
+          <div class="body">
+            <div style="font-size:11px;color:var(--t2);line-height:1.6">
+              <b>Vertical:</b> Legal<br>
+              <b>Described as:</b> “a Canadian full-service law firm”<br>
+              <b>Products:</b> Core, MFT, Kiosk<br>
+              <b>Deployment:</b> On-prem, Windows Server 2022<br>
+              <b>Reviewed:</b> —
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Naming</h3>
+          <div class="body">
+            <label class="toggle" style="margin-bottom:8px"><span class="switch"><i></i></span> name the customer</label>
+            <div class="note muted" style="font-size:10px;line-height:1.5">
+              Off: renders as “a Canadian full-service law firm.” On: renders as BLG — available only where
+              the account is marked reference-approved.
+            </div>
+            <div class="ann" style="margin-top:9px">
+              Anonymised is the stored form, naming is a substitution at render time. One pattern serves
+              both, and a mistake means over-anonymising rather than leaking.
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Export check</h3>
+          <div class="body">
+            <div class="gate">
+              ✓ No account, contact or partner name found in this adaptation.<br>
+              <span class="dim">Checked against all 67 accounts and 300+ contacts.</span>
+            </div>
+            <div class="ann" style="margin-top:9px">
+              Runs at export, not as an approval step — you said no draft/approved workflow, so this is the
+              seatbelt at the one moment a file leaves the app.
+            </div>
+          </div>
+        </div>
+
+        <div class="lineage">
+          <div class="hl">Source lineage — internal only</div>
+          <div class="src"><span>BLG</span><span class="dim">POV · Erika</span></div>
+          <div class="src"><span>Maple Lodge Farms</span><span class="dim">POV · A. Budhram, OT Lead</span></div>
+          <div class="src"><span>Alberta Energy Regulator</span><span class="dim">POV · N. Todorov</span></div>
+          <div class="src"><span>Conduent</span><span class="dim">POV · L. Sharma</span></div>
+          <div class="src"><span>IUOE Local 793</span><span class="dim">POV · S. Yousefi, CIO</span></div>
+          <div class="note dim" style="margin-top:8px;font-size:10px;line-height:1.5">
+            Never rendered into a deck. Kept so you can see what a pattern was built from — and re-seed it
+            when a sixth account lands in the same cluster.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  </div><!-- /main -->
+</div><!-- /shell -->
+
+<script>
+function show(v){
+  document.querySelectorAll('.view').forEach(function(e){e.classList.remove('on')});
+  document.getElementById('v-'+v).classList.add('on');
+  window.scrollTo(0,0);
+}
+</script>
+</body>
+</html>
