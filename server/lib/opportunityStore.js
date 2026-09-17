@@ -32,7 +32,19 @@ const DEAL_FIELDS = [
 // Fields a client may set directly on an opportunity.
 const EDITABLE_FIELDS = DEAL_FIELDS.concat(['name', 'sugar_opportunity_id', 'sort_order']);
 
-const STATUSES = ['active', 'won', 'lost'];
+// 'dead' joins won/lost: a deal that ended without a commercial decision
+// (no budget, reorg, champion gone). Tracking it as an outcome rather than
+// leaving it 'active' forever is what stops the board filling with ghosts.
+const STATUSES = ['active', 'won', 'lost', 'dead'];
+
+// The closed statuses, and the snooze reason each one writes. Setting an
+// outcome snoozes the deal indefinitely -- a finished deal should leave the
+// board without anyone having to remember to hide it.
+const OUTCOMES = ['won', 'lost', 'dead'];
+const OUTCOME_SNOOZE_REASON = { won: 'Closed won', lost: 'Closed loss', dead: 'Dead' };
+// Clearing an outcome only lifts a snooze this code wrote. A snooze the SE set
+// by hand ("waiting on procurement") is theirs and survives the reopen.
+const OUTCOME_REASONS = new Set(Object.values(OUTCOME_SNOOZE_REASON));
 
 function listForAccount(db, accountId) {
   return db.prepare(`
@@ -108,6 +120,42 @@ function mirrorToAccount(db, accountId) {
   db.prepare(`
     UPDATE accounts SET ${DEAL_FIELDS.map(f => `${f} = ?`).join(', ')} WHERE id = ?
   `).run(...DEAL_FIELDS.map(f => primary[f] ?? null), accountId);
+  // Mirrored by hand rather than via DEAL_FIELDS because the two columns are
+  // named differently: `status` on the opportunity carries 'active', which is
+  // the absence of an outcome, so it lands on the account as NULL.
+  db.prepare('UPDATE accounts SET deal_outcome = ? WHERE id = ?')
+    .run(primary.status && primary.status !== 'active' ? primary.status : null, accountId);
+}
+
+// Set or clear a deal's outcome. One implementation for both callers (the
+// account edit form and the opportunity bar's close button) so the two can't
+// drift into doing different things to the same field.
+function setOutcome(db, opportunityId, outcome) {
+  const existing = db.prepare('SELECT * FROM opportunities WHERE id = ?').get(opportunityId);
+  if (!existing) return;
+
+  if (!outcome) {
+    // Reopen: back to active, and lift the snooze only if we were the one who
+    // set it.
+    const ours = OUTCOME_REASONS.has(existing.snooze_reason);
+    db.prepare(`
+      UPDATE opportunities
+         SET status = 'active', closed_at = NULL, archived_at = NULL
+             ${ours ? ', snoozed_at = NULL, snoozed_until = NULL, snooze_reason = NULL' : ''}
+       WHERE id = ?
+    `).run(opportunityId);
+    return;
+  }
+
+  // snoozed_until stays NULL: a finished deal is hidden indefinitely, not
+  // until a date. Nothing here touches presales_stage -- the two are separate
+  // axes and the stage records how far the evaluation actually got.
+  db.prepare(`
+    UPDATE opportunities
+       SET status = ?, closed_at = CURRENT_TIMESTAMP, archived_at = CURRENT_TIMESTAMP,
+           snoozed_at = CURRENT_TIMESTAMP, snoozed_until = NULL, snooze_reason = ?
+     WHERE id = ?
+  `).run(outcome, OUTCOME_SNOOZE_REASON[outcome], opportunityId);
 }
 
 // Create an opportunity. `seed` may carry any editable field; everything else
@@ -132,6 +180,7 @@ function create(db, accountId, seed = {}) {
 }
 
 module.exports = {
+  OUTCOMES, setOutcome,
   DEAL_FIELDS, EDITABLE_FIELDS, STATUSES,
   listForAccount, primaryFor, defaultFor, resolveId, accountIdFor, countFor,
   mirrorToAccount, create

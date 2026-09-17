@@ -94,6 +94,19 @@ addColumn('accounts', 'website_url', 'TEXT DEFAULT NULL');
 addColumn('accounts', 'company_profile', 'TEXT DEFAULT NULL');
 addColumn('accounts', 'company_profile_fetched_at', 'TIMESTAMP DEFAULT NULL');
 
+// --- deal outcome -----------------------------------------------------------
+// A mirror of the primary opportunity's `status` ('won' | 'lost' | 'dead'),
+// NULL while the deal is still active. Deliberately a mirror and not a second
+// source of truth: the outcome is a property of the deal, so it lives on
+// opportunities.status, and mirrorToAccount() in lib/opportunityStore.js keeps
+// this column in step the same way it does presales_stage.
+//
+// Independent of presales_stage by design -- an account can sit at 2-Demo and
+// be closed won, or at 7-Technical Win and be closed lost. Those are answers
+// to two different questions (how far the evaluation got, and what happened
+// commercially) and collapsing them loses one of them.
+addColumn('accounts', 'deal_outcome', 'TEXT DEFAULT NULL');
+
 // --- contacts additions ---
 // meddpicc_role: internal qualification role; never surfaced as "MEDDPICC" in UI.
 // Values: 'decision_maker' | 'champion' | 'technical_lead' | 'influencer' | 'procurement' | NULL

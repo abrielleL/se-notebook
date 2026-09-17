@@ -99,16 +99,12 @@ router.post('/opportunities/:id/close', (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Opportunity not found' });
 
   const status = req.body.status;
-  if (status !== 'won' && status !== 'lost') {
-    return res.status(400).json({ error: "status must be 'won' or 'lost'" });
+  if (!store.OUTCOMES.includes(status)) {
+    return res.status(400).json({ error: `status must be one of ${store.OUTCOMES.join(', ')}` });
   }
 
   db.transaction(() => {
-    db.prepare(`
-      UPDATE opportunities
-      SET status = ?, closed_at = CURRENT_TIMESTAMP, archived_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(status, req.params.id);
+    store.setOutcome(db, req.params.id, status);
     store.mirrorToAccount(db, existing.account_id);
   })();
 
@@ -120,9 +116,7 @@ router.post('/opportunities/:id/reopen', (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Opportunity not found' });
 
   db.transaction(() => {
-    db.prepare(`
-      UPDATE opportunities SET status = 'active', closed_at = NULL, archived_at = NULL WHERE id = ?
-    `).run(req.params.id);
+    store.setOutcome(db, req.params.id, null);
     store.mirrorToAccount(db, existing.account_id);
   })();
 

@@ -27,7 +27,7 @@ import {
   riskDot, RISK_OPTIONS, escalationStyle, ESCALATION_OPTIONS, QUAL_FIELDS,
   ROLE_BADGES, ROLE_OPTIONS, STAGE_BAR, EXTRA_STAGES, STAGE_GATES, nextStage, stageBarStyle,
   agingColor, PRESALES_STAGES, CONTACT_TYPE_OPTIONS, ACCOUNT_TYPES, ACCOUNT_TYPE_TABS, accountType,
-  STEP_OWNERS, stepOwner, stepOwnerLabel
+  STEP_OWNERS, stepOwner, stepOwnerLabel, OUTCOME_OPTIONS, outcomeStyle
 } from '../lib/constants.js';
 
 // Accent color for a terminal stage when it is the account's current stage.
@@ -324,6 +324,14 @@ export default function AccountDetail() {
               </span>
             )}
             {!isPartner && account.presales_stage && <span className="text-[10px] px-2 py-0.5 rounded bg-[#0c295f] text-accent-blue shrink-0">{account.presales_stage}</span>}
+            {outcomeStyle(account.deal_outcome) && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0"
+                style={{ background: `${outcomeStyle(account.deal_outcome).color}22`,
+                         color: outcomeStyle(account.deal_outcome).color,
+                         border: `1px solid ${outcomeStyle(account.deal_outcome).color}55` }}>
+                {outcomeStyle(account.deal_outcome).label}
+              </span>
+            )}
             {account.is_snoozed && (
               <span className="text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 bg-accent-blue/15 text-accent-blue border border-accent-blue/30"
                 title={account.snooze_reason || ''}>
@@ -415,6 +423,7 @@ export default function AccountDetail() {
             <Section title="Account info" icon={Icon.Folder} right={<button onClick={() => setEditOpen(true)} className="text-text-dim hover:text-accent-blue"><Icon.Edit width={12} height={12} /></button>}>
               <div className="flex flex-col gap-1.5 text-[11px]">
                 <Row label="Industry" value={account.industry} />
+                <Row label="Outcome" value={outcomeStyle(account.deal_outcome)?.label} />
                 <Row label="AE" value={account.ae_name || account.account_executive} />
                 <Row label="Close date" value={account.close_date && formatDate(account.close_date)} />
                 <Row label="Value" value={account.opportunity_value != null ? `$${Number(account.opportunity_value).toLocaleString()}` : null} />
@@ -1480,6 +1489,7 @@ function buildAccountForm(account) {
     account_type: accountType(account),
     industry: account.industry || '',
     website_url: account.website_url || '',
+    deal_outcome: account.deal_outcome || '',
     // Existing accounts store the AE in the legacy `account_executive` column;
     // fall back to it (same as the detail view) so the field pre-fills.
     ae_name: account.ae_name || account.account_executive || '',
@@ -1510,6 +1520,7 @@ function EditAccountModal({ account, onClose, onSave }) {
         <Field label="AE"><AeNameInput className={inputCls} value={form.ae_name} onChange={set('ae_name')} /></Field>
         <Field label="Close date"><DatePicker selected={parseISODate(form.close_date)} onChange={(d) => setForm(f => ({ ...f, close_date: toISODate(d) }))} dateFormat="MMM d, yyyy" placeholderText="Select date" className={inputCls} popperPlacement="bottom-start" /></Field>
         <Field label="Opportunity value"><input type="number" className={inputCls} value={form.opportunity_value} onChange={set('opportunity_value')} /></Field>
+        <Field label="Outcome"><select className={inputCls} value={form.deal_outcome} onChange={set('deal_outcome')}><option value="">— still active</option>{OUTCOME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
         <Field label="Risk"><select className={inputCls} value={form.risk} onChange={set('risk')}><option value="">—</option>{RISK_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}</select></Field>
         {/* Stage follows the type picked in this same form, so switching to
             Partner hides it immediately rather than after a save. */}
@@ -1520,6 +1531,10 @@ function EditAccountModal({ account, onClose, onSave }) {
         <Field label="Website" wide><input className={inputCls} value={form.website_url} onChange={set('website_url')} placeholder="company.com" /></Field>
         <Field label="POV success plan URL" wide><input className={inputCls} value={form.pov_success_plan_url} onChange={set('pov_success_plan_url')} /></Field>
       </div>
+      {form.deal_outcome && form.deal_outcome !== (account.deal_outcome || '') &&
+        <div className="text-[11px] text-text-muted mt-3">
+          Saving this snoozes the deal so it leaves the stage board. The presales stage is left alone.
+        </div>}
       {(form.escalation === 'Tech Blocked' || form.escalation === 'Tech Challenged') && !form.jira_ticket_url.trim() &&
         <div className="text-[11px] text-accent-yellow mt-3">Jira ticket URL is required for this escalation.</div>}
     </Modal>

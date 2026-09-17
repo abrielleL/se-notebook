@@ -42,6 +42,17 @@ export function riskDot(risk) {
 }
 
 export const ESCALATION_OPTIONS = ['Tech Blocked', 'Tech Challenged', 'Not Needed'];
+
+// Deal outcome — a second axis alongside the presales stage, not a stage value.
+// An account can be at 2-Demo and closed won, or 7-Technical Win and closed
+// loss: the stage says how far the evaluation got, the outcome says what
+// happened commercially. Setting one snoozes the deal (server-side).
+export const OUTCOME_OPTIONS = [
+  { value: 'won',  label: 'Closed won',  color: '#4fd15c' },
+  { value: 'lost', label: 'Closed loss', color: '#ff6b66' },
+  { value: 'dead', label: 'Dead',        color: '#838892' }
+];
+export const outcomeStyle = (v) => OUTCOME_OPTIONS.find(o => o.value === v) || null;
 export function escalationStyle(esc) {
   if (esc === 'Tech Blocked') return { bg: '#290b17', text: '#ff6b66' };
   if (esc === 'Tech Challenged') return { bg: '#2e1d18', text: '#ff9a4d' };

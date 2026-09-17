@@ -383,7 +383,20 @@ router.put('/:id', (req, res) => {
     updates.push('tags = ?');
     values.push(tags.length ? JSON.stringify(tags) : null);
   }
-  if (!updates.length) return res.json(withTags(existing));
+  // deal_outcome ('won' | 'lost' | 'dead', or null to reopen) is handled apart
+  // from the columns above because the account's copy is a mirror: the write
+  // lands on the opportunity's `status` and comes back via mirrorToAccount.
+  // Setting one also snoozes the deal -- see setOutcome in lib/opportunityStore.
+  let outcomeChange;
+  if ('deal_outcome' in req.body) {
+    const raw = (req.body.deal_outcome || '').trim();
+    if (raw && !opportunities.OUTCOMES.includes(raw)) {
+      return res.status(400).json({ error: `Invalid deal_outcome: ${raw}` });
+    }
+    outcomeChange = raw || null;
+  }
+
+  if (!updates.length && outcomeChange === undefined) return res.json(withTags(existing));
   values.push(req.params.id);
 
   // Deal fields (stage, risk, close date, value, the AI summary, snooze,
@@ -399,11 +412,20 @@ router.put('/:id', (req, res) => {
   const targetOpportunityId = opportunities.resolveId(db, req.params.id, req.body.opportunity_id);
 
   db.transaction(() => {
-    db.prepare(`UPDATE accounts SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    if (updates.length) {
+      db.prepare(`UPDATE accounts SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    }
     if (targetOpportunityId && dealFields.length) {
       const written = db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.id);
       db.prepare(`UPDATE opportunities SET ${dealFields.map(f => `${f} = ?`).join(', ')} WHERE id = ?`)
         .run(...dealFields.map(f => written[f] ?? null), targetOpportunityId);
+    }
+    // After the deal fields, so that setting an outcome and its snooze in the
+    // same request isn't overwritten by the account's older snooze values.
+    if (outcomeChange !== undefined && targetOpportunityId) {
+      opportunities.setOutcome(db, targetOpportunityId, outcomeChange);
+    }
+    if (targetOpportunityId && (dealFields.length || outcomeChange !== undefined)) {
       opportunities.mirrorToAccount(db, req.params.id);
     }
   })();

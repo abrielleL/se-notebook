@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { initials, colorForName } from '../lib/stage.js';
-import { agingColor, accountType, ACCOUNT_TYPES } from '../lib/constants.js';
+import { agingColor, accountType, ACCOUNT_TYPES, OUTCOME_OPTIONS, outcomeStyle } from '../lib/constants.js';
 import { stageBadgeClass } from '../lib/stages.js';
 import { useAccountUpdates } from '../lib/accountStore.js';
 import AccountTypeTabs from '../components/AccountTypeTabs.jsx';
@@ -15,6 +15,7 @@ export default function Accounts() {
   const [tagCatalog, setTagCatalog] = useState([]);
   const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState(params.get('q') || '');
+  const [outcomeFilter, setOutcomeFilter] = useState('All');
   const [aeFilter, setAeFilter] = useState('All');
   const [tagFilter, setTagFilter] = useState('All');
   // Which tab is open. Shareable via ?type=partner so a partner list can be
@@ -68,6 +69,9 @@ export default function Accounts() {
     return byType.filter(a => {
       if (aeFilter !== 'All' && (a.account_executive || '') !== aeFilter) return false;
       if (tagFilter !== 'All' && !(a.tags || []).includes(tagFilter)) return false;
+      // 'Active' is the absence of an outcome, so it can't be matched by value.
+      if (outcomeFilter === 'Active' && a.deal_outcome) return false;
+      if (outcomeFilter !== 'All' && outcomeFilter !== 'Active' && a.deal_outcome !== outcomeFilter) return false;
       if (!q) return true;
       // Linked names are searchable in both directions, so "Presidio" finds
       // the accounts Presidio is on, and vice versa.
@@ -77,7 +81,7 @@ export default function Accounts() {
              (a.tags || []).some(t => t.toLowerCase().includes(q)) ||
              linked.some(l => (l.account_name || '').toLowerCase().includes(q));
     });
-  }, [byType, query, aeFilter, tagFilter, typeTab]);
+  }, [byType, query, aeFilter, tagFilter, outcomeFilter, typeTab]);
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
@@ -113,6 +117,26 @@ export default function Accounts() {
             {ae}
           </button>
         ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5 mb-4">
+        <span className="text-[10px] text-text-dim mr-1">Outcome:</span>
+        {['All', 'Active', ...OUTCOME_OPTIONS.map(o => o.value)].map(v => {
+          const o = outcomeStyle(v);
+          const active = outcomeFilter === v;
+          const n = v === 'All' ? byType.length
+            : v === 'Active' ? byType.filter(a => !a.deal_outcome).length
+            : byType.filter(a => a.deal_outcome === v).length;
+          return (
+            <button key={v} onClick={() => setOutcomeFilter(v)}
+              className="px-2.5 py-1 rounded text-[11px] border transition"
+              style={active && o ? { background: `${o.color}22`, color: o.color, borderColor: `${o.color}55` }
+                : active ? { background: 'rgba(29,107,252,.15)', color: '#5c9bff', borderColor: 'rgba(92,155,255,.3)' }
+                : { background: '#081938', color: '#838892', borderColor: '#273454' }}>
+              {o ? o.label : v} <span className="opacity-60">{n}</span>
+            </button>
+          );
+        })}
       </div>
 
       {tagCatalog.length > 0 && (
@@ -195,6 +219,14 @@ export default function Accounts() {
                 )}
                 {/* The Accounts page stays the full inventory -- a snoozed
                     account is badged here, not filtered out. */}
+                {outcomeStyle(a.deal_outcome) && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0"
+                    style={{ background: `${outcomeStyle(a.deal_outcome).color}22`,
+                             color: outcomeStyle(a.deal_outcome).color,
+                             border: `1px solid ${outcomeStyle(a.deal_outcome).color}55` }}>
+                    {outcomeStyle(a.deal_outcome).label}
+                  </span>
+                )}
                 {a.is_snoozed && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 bg-accent-blue/15 text-accent-blue border border-accent-blue/30"
                     title={snoozeTitle(a)}>
