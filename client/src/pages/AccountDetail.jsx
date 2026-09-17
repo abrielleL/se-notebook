@@ -412,6 +412,26 @@ export default function AccountDetail() {
             </button>
           );
         })}
+        {/* Deal outcome -- a second axis, so it sits apart from the stages
+            rather than among them. Clicking the active one clears it, which is
+            the only way back to an active deal from here. */}
+        <span className="ml-auto pl-3 shrink-0 flex items-center gap-1">
+          <span className="w-px h-5 bg-border mr-1 shrink-0" />
+          {OUTCOME_OPTIONS.map(o => {
+            const isCurrent = account.deal_outcome === o.value;
+            return (
+              <button key={o.value}
+                onClick={() => patchAccount({ deal_outcome: isCurrent ? null : o.value })}
+                title={isCurrent ? `Clear "${o.label}" and reopen the deal` : `Mark ${o.label} -- this also snoozes the deal`}
+                className="text-[10px] px-2.5 py-1 rounded whitespace-nowrap border transition hover:opacity-80"
+                style={isCurrent
+                  ? { background: `${o.color}26`, color: o.color, borderColor: `${o.color}88` }
+                  : { background: 'transparent', color: '#838892', borderColor: '#273454' }}>
+                {o.label}
+              </button>
+            );
+          })}
+        </span>
       </div>
       )}
 
@@ -423,7 +443,6 @@ export default function AccountDetail() {
             <Section title="Account info" icon={Icon.Folder} right={<button onClick={() => setEditOpen(true)} className="text-text-dim hover:text-accent-blue"><Icon.Edit width={12} height={12} /></button>}>
               <div className="flex flex-col gap-1.5 text-[11px]">
                 <Row label="Industry" value={account.industry} />
-                <Row label="Outcome" value={outcomeStyle(account.deal_outcome)?.label} />
                 <Row label="AE" value={account.ae_name || account.account_executive} />
                 <Row label="Close date" value={account.close_date && formatDate(account.close_date)} />
                 <Row label="Value" value={account.opportunity_value != null ? `$${Number(account.opportunity_value).toLocaleString()}` : null} />
@@ -1489,7 +1508,6 @@ function buildAccountForm(account) {
     account_type: accountType(account),
     industry: account.industry || '',
     website_url: account.website_url || '',
-    deal_outcome: account.deal_outcome || '',
     // Existing accounts store the AE in the legacy `account_executive` column;
     // fall back to it (same as the detail view) so the field pre-fills.
     ae_name: account.ae_name || account.account_executive || '',
@@ -1520,7 +1538,6 @@ function EditAccountModal({ account, onClose, onSave }) {
         <Field label="AE"><AeNameInput className={inputCls} value={form.ae_name} onChange={set('ae_name')} /></Field>
         <Field label="Close date"><DatePicker selected={parseISODate(form.close_date)} onChange={(d) => setForm(f => ({ ...f, close_date: toISODate(d) }))} dateFormat="MMM d, yyyy" placeholderText="Select date" className={inputCls} popperPlacement="bottom-start" /></Field>
         <Field label="Opportunity value"><input type="number" className={inputCls} value={form.opportunity_value} onChange={set('opportunity_value')} /></Field>
-        <Field label="Outcome"><select className={inputCls} value={form.deal_outcome} onChange={set('deal_outcome')}><option value="">— still active</option>{OUTCOME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
         <Field label="Risk"><select className={inputCls} value={form.risk} onChange={set('risk')}><option value="">—</option>{RISK_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}</select></Field>
         {/* Stage follows the type picked in this same form, so switching to
             Partner hides it immediately rather than after a save. */}
@@ -1531,10 +1548,6 @@ function EditAccountModal({ account, onClose, onSave }) {
         <Field label="Website" wide><input className={inputCls} value={form.website_url} onChange={set('website_url')} placeholder="company.com" /></Field>
         <Field label="POV success plan URL" wide><input className={inputCls} value={form.pov_success_plan_url} onChange={set('pov_success_plan_url')} /></Field>
       </div>
-      {form.deal_outcome && form.deal_outcome !== (account.deal_outcome || '') &&
-        <div className="text-[11px] text-text-muted mt-3">
-          Saving this snoozes the deal so it leaves the stage board. The presales stage is left alone.
-        </div>}
       {(form.escalation === 'Tech Blocked' || form.escalation === 'Tech Challenged') && !form.jira_ticket_url.trim() &&
         <div className="text-[11px] text-accent-yellow mt-3">Jira ticket URL is required for this escalation.</div>}
     </Modal>
