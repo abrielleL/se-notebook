@@ -4,6 +4,7 @@ const db = require('../db/database');
 const { PRESALES_STAGES } = require('../lib/stages');
 const { contactsForAccount, promotePartnerContacts } = require('../lib/contactStore');
 const opportunities = require('../lib/opportunityStore');
+const { normalizeWebsiteUrl } = require('../lib/companyProfile');
 
 const router = express.Router();
 
@@ -22,7 +23,7 @@ const EDITABLE_FIELDS = [
   'account_name', 'account_executive', 'industry', 'opportunity_stage',
   'ai_summary', 'ai_technical_drivers', 'ai_environment', 'ai_summary_updated_at',
   'risk', 'presales_stage', 'escalation', 'jira_ticket_url', 'close_date',
-  'opportunity_value', 'ae_name', 'pov_success_plan_url', 'color'
+  'opportunity_value', 'ae_name', 'pov_success_plan_url', 'color', 'website_url'
 ];
 
 // account_type: 'customer' | 'partner'. Anything else (including the NULL that
@@ -270,6 +271,22 @@ router.put('/:id', (req, res) => {
     }
   }
 
+  // A pasted website is normalized here (bare host -> https URL, tracking
+  // params dropped) so the stored value is canonical no matter which entry
+  // point wrote it.
+  if ('website_url' in req.body) {
+    const raw = (req.body.website_url || '').trim();
+    if (!raw) {
+      req.body.website_url = null;
+    } else {
+      const normalized = normalizeWebsiteUrl(raw);
+      if (!normalized) {
+        return res.status(400).json({ error: `That doesn't look like a website address: ${raw}` });
+      }
+      req.body.website_url = normalized;
+    }
+  }
+
   if ('account_type' in req.body) {
     const at = req.body.account_type;
     if (at && !ACCOUNT_TYPES.includes(at)) {
@@ -314,6 +331,22 @@ router.put('/:id', (req, res) => {
     updates.push('snoozed_at = ?', 'snoozed_until = ?', 'snooze_reason = ?');
     values.push(null, null, null);
   }
+  // company_profile is outside EDITABLE_FIELDS so that editing it by hand
+  // clears company_profile_fetched_at. That timestamp means "read from the
+  // website on this date" -- leaving it on hand-written text would label the
+  // SE's own words as something the website said. Sites that block automated
+  // fetches (and pages that need JavaScript to render) land here, so this is
+  // a normal path, not a fallback.
+  if ('company_profile' in req.body) {
+    const profile = (req.body.company_profile || '').trim() || null;
+    updates.push('company_profile = ?');
+    values.push(profile);
+    if (profile !== (existing.company_profile || null)) {
+      updates.push('company_profile_fetched_at = ?');
+      values.push(null);
+    }
+  }
+
   // status_note is handled outside EDITABLE_FIELDS so that a cleared note
   // normalizes to NULL rather than an empty string, and so its timestamp is
   // stamped from the server clock -- "updated 3 days ago" shouldn't depend on

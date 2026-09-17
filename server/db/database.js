@@ -84,6 +84,16 @@ addColumn('accounts', 'snoozed_at', 'TIMESTAMP DEFAULT NULL');
 addColumn('accounts', 'snoozed_until', 'DATE DEFAULT NULL');
 addColumn('accounts', 'snooze_reason', 'TEXT DEFAULT NULL');
 
+// --- company profile (derived from the company's own website) -------------
+// Deliberately separate from the ai_* columns above. Those are generated from
+// notes and transcripts and are regenerated as the deal moves, so company
+// facts written there would be overwritten on the next summary run. A
+// company's profile changes roughly never, so it gets its own field, its own
+// refresh, and its own timestamp.
+addColumn('accounts', 'website_url', 'TEXT DEFAULT NULL');
+addColumn('accounts', 'company_profile', 'TEXT DEFAULT NULL');
+addColumn('accounts', 'company_profile_fetched_at', 'TIMESTAMP DEFAULT NULL');
+
 // --- contacts additions ---
 // meddpicc_role: internal qualification role; never surfaced as "MEDDPICC" in UI.
 // Values: 'decision_maker' | 'champion' | 'technical_lead' | 'influencer' | 'procurement' | NULL

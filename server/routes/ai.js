@@ -4,6 +4,7 @@ const { callAnthropic, getKey, extractJson, DEFAULT_MODEL } = require('../lib/an
 const { normalizeName, nameKey, tokenCount } = require('../lib/contactNames');
 const { upsertContact } = require('../lib/contactStore');
 const dealIntel = require('./dealIntelligence');
+const { normalizeWebsiteUrl, readSite } = require('../lib/companyProfile');
 
 const router = express.Router();
 
@@ -368,6 +369,122 @@ router.post('/accounts/:id/run-extraction', async (req, res, next) => {
 
     console.log(`[contacts] result: ${contacts.length} contact(s) created/updated, ${fieldsUpdated.length} deal field(s)`);
     res.json({ fields_updated: fieldsUpdated, contacts });
+  } catch (err) {
+    next(err);
+  }
+});
+
+
+// ---------------------------------------------------------------------------
+// Company profile from the company's own website.
+//
+// This is company information, not deal information: what the business does
+// and what industry it's in. It is stored apart from ai_summary /
+// ai_technical_drivers / ai_environment, which are regenerated from notes and
+// transcripts as the deal moves and would overwrite anything put there.
+//
+// A once-and-done fetch, run by hand from the account page -- a company's
+// profile changes roughly never, so there is no refresh loop and nothing is
+// re-read on a schedule.
+// ---------------------------------------------------------------------------
+
+const COMPANY_PROFILE_SYSTEM = `You are reading text scraped from a company's own public website to record who the company is. This is background reference for a pre-sales engineer, so accuracy matters far more than completeness.
+
+Return JSON only:
+{
+  "summary": "2-4 sentences: what the company does, what it makes or sells, who its customers are, and anything about its scale or footprint that the page actually states.",
+  "industry": "A short industry label, 1-4 words, e.g. 'Poultry processing', 'Law firm', 'Municipal water utility', 'Regional bank'.",
+  "confident": true
+}
+
+Rules:
+- Use ONLY what the supplied page text states or plainly implies. Never fill gaps from prior knowledge of the company, even if you recognise the name.
+- If the text is too thin to tell what the company does (a parked domain, a login wall, pure marketing slogans with no substance), set "confident": false and leave "summary" and "industry" as empty strings. An honest blank is worth more than a plausible guess.
+- Describe the company, not its website. No "the site explains that...".
+- Plain prose, no markdown, no headings, no bullet points.
+- Do not mention OPSWAT, security products, or anything about selling to them. This is a neutral description of the business.
+No explanation, JSON only.`;
+
+router.post('/accounts/:id/company-profile', async (req, res, next) => {
+  try {
+    const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.id);
+    if (!account) return res.status(404).json({ error: 'Account not found' });
+
+    // The URL can come with the request (typed straight into the card) or be
+    // whatever is already stored on the account.
+    const raw = (req.body && req.body.website_url) || account.website_url || '';
+    const websiteUrl = normalizeWebsiteUrl(raw);
+    if (!websiteUrl) {
+      return res.status(400).json({
+        error: raw
+          ? `That doesn't look like a website address: ${raw}`
+          : 'Add the company website first.'
+      });
+    }
+
+    // Checked before the fetch, not after: there is no point reading someone's
+    // website if we can't summarize it once we have it.
+    const key = getKey(req);
+    if (!key) {
+      return res.status(400).json({ error: 'Anthropic API key required. Add it in Settings.' });
+    }
+
+    const { text, pages } = await readSite(websiteUrl);
+    if (text.replace(/--- .*? ---/g, '').trim().length < 200) {
+      return res.status(422).json({
+        error: `${new URL(websiteUrl).hostname} returned almost no readable text ` +
+               '(it may need JavaScript to render). Write the company profile by hand instead.'
+      });
+    }
+
+    const reply = await callAnthropic({
+      key, model: DEFAULT_MODEL, max_tokens: 800,
+      system: COMPANY_PROFILE_SYSTEM,
+      messages: [{
+        role: 'user',
+        content: `Company name (as recorded in our notebook): ${account.account_name}\n\n` +
+                 `Website text follows.\n\n${text}`
+      }]
+    });
+
+    const parsed = extractJson(reply);
+    const summary = String(parsed.summary || '').trim();
+    const industry = String(parsed.industry || '').trim();
+
+    if (parsed.confident === false || !summary) {
+      return res.status(422).json({
+        error: `Couldn't tell what ${account.account_name} does from ${new URL(websiteUrl).hostname}. ` +
+               'Write the company profile by hand instead.',
+        website_url: websiteUrl,
+        pages
+      });
+    }
+
+    const fetchedAt = new Date().toISOString();
+    // Industry is only filled in when it is empty. A value the SE typed is a
+    // deliberate choice and outranks anything derived from a marketing page.
+    const existingIndustry = (account.industry || '').trim();
+    const industryWritten = !existingIndustry && industry ? industry : null;
+
+    db.prepare(`
+      UPDATE accounts
+         SET website_url = ?, company_profile = ?, company_profile_fetched_at = ?,
+             industry = COALESCE(?, industry)
+       WHERE id = ?
+    `).run(websiteUrl, summary, fetchedAt, industryWritten, req.params.id);
+
+    console.log(`[company-profile] ${account.account_name}: read ${pages.length} page(s), ${text.length} chars`);
+
+    res.json({
+      website_url: websiteUrl,
+      company_profile: summary,
+      company_profile_fetched_at: fetchedAt,
+      industry: industryWritten || existingIndustry || null,
+      // Present when the model proposed an industry we did not write, so the
+      // UI can offer it rather than silently discarding it.
+      industry_suggested: !industryWritten && industry && industry !== existingIndustry ? industry : null,
+      pages
+    });
   } catch (err) {
     next(err);
   }

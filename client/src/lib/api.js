@@ -41,6 +41,13 @@ export const api = {
   deleteOpportunity: (id) => request(`/api/opportunities/${id}`, { method: 'DELETE' }),
   createAccount: (body) => request('/api/accounts', { method: 'POST', body: json(body) }),
   updateAccount: (id, body) => request(`/api/accounts/${id}`, { method: 'PUT', body: json(body) }),
+  // Reads the company's own website and writes a short company profile (what
+  // the business does, what industry it's in). Company info, kept apart from
+  // the note-derived ai_summary fields. Pass a URL to save and use a new one;
+  // omit it to re-read whatever is stored on the account.
+  fetchCompanyProfile: (accountId, website_url) =>
+    request(`/api/accounts/${accountId}/company-profile`,
+      { method: 'POST', headers: aiHeaders(), body: json({ website_url }) }),
   // Snooze hides an account from the stage board. days omitted = indefinite.
   snoozeAccount: (id, { days, reason, opportunityId } = {}) =>
     request(`/api/accounts/${id}/snooze`, {

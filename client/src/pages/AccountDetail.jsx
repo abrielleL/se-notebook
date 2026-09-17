@@ -429,6 +429,8 @@ export default function AccountDetail() {
               </div>
             </Section>
 
+            <CompanyCard account={account} onChange={loadAll} />
+
             {/* Same relation, shown from whichever end this account sits on:
                 a customer lists the partners on the deal, a partner lists the
                 deals it's working. */}
@@ -986,6 +988,117 @@ function StageGateCard({ account, onAdvance }) {
   );
 }
 
+// Company information, derived from the company's own website: what the
+// business does and what industry it's in.
+//
+// Deliberately separate from the AI summary card. That one is generated from
+// notes and transcripts and moves with the deal; this one describes the
+// company and changes roughly never, so it is fetched once by hand rather
+// than on every extraction run.
+function CompanyCard({ account, onChange }) {
+  const toast = useToast();
+  const online = useOnline();
+  const [url, setUrl] = useState(account.website_url || '');
+  const [busy, setBusy] = useState(false);
+  // An industry the model proposed but did not write, because the account
+  // already had one. Offered rather than applied -- a value the SE typed wins.
+  const [suggestion, setSuggestion] = useState(null);
+
+  useEffect(() => {
+    setUrl(account.website_url || '');
+    setSuggestion(null);
+  }, [account?.id, account?.website_url]);
+
+  const stored = account.website_url || '';
+  const typed = url.trim();
+  const dirty = typed !== stored;
+  const profile = account.company_profile || '';
+  const inputCls = 'flex-1 min-w-0 bg-[#040d1c] border border-border rounded px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:border-accent-blue/50';
+  const btnCls = 'text-[10px] px-2 py-1 rounded border border-border text-text-secondary hover:text-accent-blue hover:border-accent-blue/40 disabled:opacity-40 disabled:hover:text-text-secondary disabled:hover:border-border';
+
+  async function saveUrl() {
+    setBusy(true);
+    try {
+      await api.updateAccount(account.id, { website_url: typed || null });
+      await onChange();
+      toast(typed ? 'Website saved' : 'Website cleared', 'success');
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function readWebsite() {
+    setBusy(true);
+    setSuggestion(null);
+    try {
+      const r = await api.fetchCompanyProfile(account.id, typed || undefined);
+      setSuggestion(r.industry_suggested || null);
+      await onChange();
+      toast(r.industry_suggested
+        ? `Company profile added — suggested industry: ${r.industry_suggested}`
+        : 'Company profile added', 'success');
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function acceptIndustry() {
+    try {
+      await api.updateAccount(account.id, { industry: suggestion });
+      setSuggestion(null);
+      await onChange();
+      toast('Industry updated', 'success');
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  }
+
+  let host = '';
+  try { host = stored ? new URL(stored).hostname.replace(/^www\./, '') : ''; } catch { host = stored; }
+
+  return (
+    <Section title="Company" icon={Icon.Link}
+      right={account.company_profile_fetched_at
+        ? <span className="text-[10px] text-text-dim">{formatDate(account.company_profile_fetched_at)}</span>
+        : profile ? <span className="text-[10px] text-text-dim">By hand</span> : null}>
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-1.5">
+          <input
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !busy) (dirty ? saveUrl() : readWebsite()); }}
+            placeholder="company.com"
+            spellCheck={false}
+            className={inputCls} />
+          {dirty && <button onClick={saveUrl} disabled={busy} className={btnCls}>Save</button>}
+        </div>
+        {stored && !dirty &&
+          <a href={stored} target="_blank" rel="noreferrer" className="text-[10px] text-accent-blue hover:underline truncate">{host} ↗</a>}
+
+        {profile
+          ? <Markdown className="text-[11px] text-text-secondary">{profile}</Markdown>
+          : <span className="text-[11px] text-text-dim">No company profile yet.</span>}
+
+        {suggestion &&
+          <div className="flex items-center justify-between gap-2 border border-accent-blue/30 bg-accent-blue/10 rounded px-2 py-1">
+            <span className="text-[10px] text-text-secondary truncate">Industry: {suggestion}?</span>
+            <button onClick={acceptIndustry} className="text-[10px] text-accent-blue hover:underline shrink-0">Use it</button>
+          </div>}
+
+        <button onClick={readWebsite} disabled={busy || !online || !typed}
+          className="flex items-center justify-center gap-1.5 text-[10px] text-text-secondary hover:text-accent-blue border border-border hover:border-accent-blue/40 rounded px-2 py-1 disabled:opacity-40 disabled:hover:text-text-secondary disabled:hover:border-border">
+          <Icon.Sparkles width={11} height={11} />
+          {busy ? 'Reading website…' : profile ? 'Re-read website' : 'Read website'}
+        </button>
+      </div>
+    </Section>
+  );
+}
+
 function CrmSnapshotCard({ account, snapshot, onChange }) {
   const toast = useToast();
   const online = useOnline();
@@ -1365,6 +1478,7 @@ function buildAccountForm(account) {
     account_name: account.account_name || '',
     account_type: accountType(account),
     industry: account.industry || '',
+    website_url: account.website_url || '',
     // Existing accounts store the AE in the legacy `account_executive` column;
     // fall back to it (same as the detail view) so the field pre-fills.
     ae_name: account.ae_name || account.account_executive || '',
@@ -1402,6 +1516,7 @@ function EditAccountModal({ account, onClose, onSave }) {
           <Field label="Presales stage"><select className={inputCls} value={form.presales_stage} onChange={set('presales_stage')}><option value="">—</option>{PRESALES_STAGES.map(s => <option key={s} value={s}>{s}</option>)}</select></Field>}
         <Field label="Escalation"><select className={inputCls} value={form.escalation} onChange={set('escalation')}><option value="">—</option>{ESCALATION_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}</select></Field>
         <Field label="Jira ticket URL"><input className={inputCls} value={form.jira_ticket_url} onChange={set('jira_ticket_url')} /></Field>
+        <Field label="Website" wide><input className={inputCls} value={form.website_url} onChange={set('website_url')} placeholder="company.com" /></Field>
         <Field label="POV success plan URL" wide><input className={inputCls} value={form.pov_success_plan_url} onChange={set('pov_success_plan_url')} /></Field>
       </div>
       {(form.escalation === 'Tech Blocked' || form.escalation === 'Tech Challenged') && !form.jira_ticket_url.trim() &&
