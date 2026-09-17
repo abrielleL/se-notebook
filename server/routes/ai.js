@@ -392,7 +392,7 @@ const COMPANY_PROFILE_SYSTEM = `You are reading text scraped from a company's ow
 
 Return JSON only:
 {
-  "summary": "2-4 sentences: what the company does, what it makes or sells, who its customers are, and anything about its scale or footprint that the page actually states.",
+  "summary": "1-3 sentences, 60 words maximum: what the company does and what it makes or sells. Add scale or footprint only if the page states it and it fits inside the limit.",
   "industry": "A short industry label, 1-4 words, e.g. 'Poultry processing', 'Law firm', 'Municipal water utility', 'Regional bank'.",
   "confident": true
 }
@@ -402,6 +402,7 @@ Rules:
 - If the text is too thin to tell what the company does (a parked domain, a login wall, pure marketing slogans with no substance), set "confident": false and leave "summary" and "industry" as empty strings. An honest blank is worth more than a plausible guess.
 - Describe the company, not its website. No "the site explains that...".
 - Plain prose, no markdown, no headings, no bullet points.
+- Be brief. This is a reference line an SE reads at a glance, not a company overview -- three tight sentences beat six thorough ones. Do not pad with marketing language from the page.
 - Do not mention OPSWAT, security products, or anything about selling to them. This is a neutral description of the business.
 No explanation, JSON only.`;
 
@@ -438,7 +439,7 @@ router.post('/accounts/:id/company-profile', async (req, res, next) => {
     }
 
     const reply = await callAnthropic({
-      key, model: DEFAULT_MODEL, max_tokens: 800,
+      key, model: DEFAULT_MODEL, max_tokens: 400,
       system: COMPANY_PROFILE_SYSTEM,
       messages: [{
         role: 'user',

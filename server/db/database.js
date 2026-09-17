@@ -245,6 +245,18 @@ db.exec(`
 
   -- Generic key/value app settings. JSON in the value column so a setting can
   -- grow fields without a migration. Currently holds the backup schedule.
+  -- Account Executives you work with, kept as a roster so the AE field can be
+  -- filled from a first name. Accounts still store the AE as text (in ae_name,
+  -- or account_executive on older rows) rather than a foreign key: an account
+  -- may name someone who was never added here, and deleting a roster entry
+  -- must not blank the AE on historical deals.
+  CREATE TABLE IF NOT EXISTS ae_roster (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    full_name TEXT NOT NULL UNIQUE,
+    sort_order INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,

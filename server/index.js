@@ -59,6 +59,7 @@ app.use('/api', require('./routes/dealIntelligence'));
 app.use('/api', require('./routes/stageGate'));
 app.use('/api', require('./routes/povConfig'));
 app.use('/api', require('./routes/tags'));
+app.use('/api', require('./routes/aeRoster'));
 app.use('/api', require('./routes/ai'));
 app.use('/api', require('./routes/pov'));
 app.use('/api', require('./routes/export'));

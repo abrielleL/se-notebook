@@ -181,6 +181,13 @@ export const api = {
   updateTag: (id, body) => request(`/api/tags/${id}`, { method: 'PUT', body: json(body) }),
   deleteTag: (id) => request(`/api/tags/${id}`, { method: 'DELETE' }),
 
+  // Account Executive roster. Accounts still store the AE as free text; this
+  // is the list of full names that a typed first name expands against.
+  listAeRoster: () => request('/api/ae-roster'),
+  createAe: (body) => request('/api/ae-roster', { method: 'POST', body: json(body) }),
+  updateAe: (id, body) => request(`/api/ae-roster/${id}`, { method: 'PUT', body: json(body) }),
+  deleteAe: (id) => request(`/api/ae-roster/${id}`, { method: 'DELETE' }),
+
   // pov config
   getPovConfig: () => request('/api/pov-config'),
   createPovConfig: (body) => request('/api/pov-config', { method: 'POST', body: json(body) }),

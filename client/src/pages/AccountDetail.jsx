@@ -12,6 +12,7 @@ import Markdown, { stripMarkdown } from '../components/Markdown.jsx';
 import AccountTagEditor from '../components/AccountTagEditor.jsx';
 import AccountLinkEditor from '../components/AccountLinkEditor.jsx';
 import SnoozeMenu from '../components/SnoozeMenu.jsx';
+import AeNameInput from '../components/AeNameInput.jsx';
 import OpportunityBar, { NewOpportunityModal } from '../components/OpportunityBar.jsx';
 import StatusNote from '../components/StatusNote.jsx';
 import ContactDrawer, { ContactTypeBadge } from '../components/ContactDrawer.jsx';
@@ -1506,7 +1507,7 @@ function EditAccountModal({ account, onClose, onSave }) {
         <Field label="Account name" wide><input className={inputCls} value={form.account_name} onChange={set('account_name')} /></Field>
         <Field label="Account type"><select className={inputCls} value={form.account_type} onChange={set('account_type')}>{ACCOUNT_TYPE_TABS.map(t => <option key={t.value} value={t.value}>{t.singular}</option>)}</select></Field>
         <Field label="Industry"><input className={inputCls} value={form.industry} onChange={set('industry')} /></Field>
-        <Field label="AE"><input className={inputCls} value={form.ae_name} onChange={set('ae_name')} /></Field>
+        <Field label="AE"><AeNameInput className={inputCls} value={form.ae_name} onChange={set('ae_name')} /></Field>
         <Field label="Close date"><DatePicker selected={parseISODate(form.close_date)} onChange={(d) => setForm(f => ({ ...f, close_date: toISODate(d) }))} dateFormat="MMM d, yyyy" placeholderText="Select date" className={inputCls} popperPlacement="bottom-start" /></Field>
         <Field label="Opportunity value"><input type="number" className={inputCls} value={form.opportunity_value} onChange={set('opportunity_value')} /></Field>
         <Field label="Risk"><select className={inputCls} value={form.risk} onChange={set('risk')}><option value="">—</option>{RISK_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}</select></Field>

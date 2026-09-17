@@ -5,6 +5,7 @@ const { PRESALES_STAGES } = require('../lib/stages');
 const { contactsForAccount, promotePartnerContacts } = require('../lib/contactStore');
 const opportunities = require('../lib/opportunityStore');
 const { normalizeWebsiteUrl } = require('../lib/companyProfile');
+const { resolveAeName } = require('../lib/aeRoster');
 
 const router = express.Router();
 
@@ -164,6 +165,7 @@ const DEFAULT_RISK = 'green';
 
 router.post('/', (req, res) => {
   const { account_name, account_executive, industry, opportunity_stage, presales_stage, risk, account_type } = req.body;
+  const aeName = resolveAeName(account_executive);
   if (!account_name) return res.status(400).json({ error: 'account_name required' });
   if (presales_stage && !PRESALES_STAGES.includes(presales_stage)) {
     return res.status(400).json({ error: `Invalid presales_stage: ${presales_stage}` });
@@ -188,7 +190,7 @@ router.post('/', (req, res) => {
   db.prepare(`
     INSERT INTO accounts (id, account_name, account_executive, industry, opportunity_stage, presales_stage, color, risk, account_type, tags)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, account_name, account_executive || null, industry || null, opportunity_stage || null, stage, color, initialRisk,
+  `).run(id, account_name, aeName, industry || null, opportunity_stage || null, stage, color, initialRisk,
          type, tags.length ? JSON.stringify(tags) : null);
 
   const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(id);
@@ -269,6 +271,14 @@ router.put('/:id', (req, res) => {
     if (ps && !PRESALES_STAGES.includes(ps)) {
       return res.status(400).json({ error: `Invalid presales_stage: ${ps}` });
     }
+  }
+
+  // The AE is usually typed as a first name. Expanded here rather than in the
+  // form so every entry point gets it, and only when exactly one person on the
+  // roster can be meant -- see lib/aeRoster.js. Both columns are handled:
+  // ae_name is current, account_executive is where older rows keep it.
+  for (const f of ['ae_name', 'account_executive']) {
+    if (f in req.body) req.body[f] = resolveAeName(req.body[f]);
   }
 
   // A pasted website is normalized here (bare host -> https URL, tracking

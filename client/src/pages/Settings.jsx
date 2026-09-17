@@ -4,6 +4,7 @@ import { api } from '../lib/api.js';
 import Card from '../components/Card.jsx';
 import PovConfigSettings from './PovConfigSettings.jsx';
 import TagSettings from './TagSettings.jsx';
+import AeSettings from './AeSettings.jsx';
 import BackupSettings from './BackupSettings.jsx';
 
 export default function Settings() {
@@ -69,6 +70,8 @@ export default function Settings() {
       </Card>
 
       <BackupSettings />
+
+      <AeSettings />
 
       <TagSettings />
 

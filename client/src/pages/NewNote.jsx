@@ -9,6 +9,7 @@ import { ACCOUNT_TYPE_TABS, accountType } from '../lib/constants.js';
 import Card, { CardHeader } from '../components/Card.jsx';
 import Icon from '../components/Icons.jsx';
 import AccountTagEditor from '../components/AccountTagEditor.jsx';
+import AeNameInput from '../components/AeNameInput.jsx';
 import { upsertDraft, deleteDraft, getDraft, newDraftId } from '../lib/drafts.js';
 
 const emptyContact = () => ({ name: '', title: '' });
@@ -285,7 +286,7 @@ export default function NewNote() {
           </div>
           <div>
             <Label>Account Executive</Label>
-            <input className={inputCls} value={form.account_executive} onChange={e => setForm(f => ({ ...f, account_executive: e.target.value }))} />
+            <AeNameInput className={inputCls} value={form.account_executive} onChange={e => setForm(f => ({ ...f, account_executive: e.target.value }))} />
           </div>
           <div>
             <Label>Industry</Label>
