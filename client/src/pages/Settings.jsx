@@ -5,6 +5,7 @@ import Card from '../components/Card.jsx';
 import PovConfigSettings from './PovConfigSettings.jsx';
 import TagSettings from './TagSettings.jsx';
 import AeSettings from './AeSettings.jsx';
+import CompanyProfileSettings from './CompanyProfileSettings.jsx';
 import BackupSettings from './BackupSettings.jsx';
 
 export default function Settings() {
@@ -70,6 +71,8 @@ export default function Settings() {
       </Card>
 
       <BackupSettings />
+
+      <CompanyProfileSettings />
 
       <AeSettings />
 
