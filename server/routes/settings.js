@@ -4,6 +4,7 @@ const path = require('path');
 const db = require('../db/database');
 const backup = require('../lib/backupConfig');
 const seProfile = require('../lib/seProfile');
+const docsSync = require('../lib/docsSync');
 
 const router = express.Router();
 
@@ -146,5 +147,32 @@ function prune(dir, keep) {
     .sort((a, b) => b.m - a.m);
   for (const { f } of files.slice(keep)) discard(path.join(dir, f));
 }
+
+// ── docs corpus sync ───────────────────────────────────────────────────────
+// The collection is refreshed from docs-rag rather than re-ingested locally.
+// Run is fire-and-forget: a full refresh moves ~90 MB and takes a minute or
+// two, far too long to hold an HTTP request open, so the client polls status.
+router.get('/docs-sync', async (req, res) => {
+  try {
+    res.json(await docsSync.status());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/docs-sync/run', async (req, res) => {
+  const chromaUrl = req.app.locals.chromaUrl;
+  try {
+    const state = await docsSync.status();
+    if (state.running) return res.status(409).json({ error: 'a sync is already running' });
+
+    docsSync.run({ chromaUrl, onProgress: (m) => console.log(`[docs-sync] ${m}`) })
+      .catch(e => console.error('[docs-sync] failed:', e.message));
+
+    res.status(202).json({ started: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 module.exports = router;

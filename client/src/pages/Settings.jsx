@@ -7,6 +7,7 @@ import TagSettings from './TagSettings.jsx';
 import AeSettings from './AeSettings.jsx';
 import CompanyProfileSettings from './CompanyProfileSettings.jsx';
 import BackupSettings from './BackupSettings.jsx';
+import DocsSyncSettings from './DocsSyncSettings.jsx';
 
 export default function Settings() {
   const [value, setValue] = useState(localStorage.getItem(ANTHROPIC_KEY_STORAGE) || '');
@@ -69,6 +70,8 @@ export default function Settings() {
           className="w-full bg-[#040d1c] border border-border rounded px-3 py-2 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50"
         />
       </Card>
+
+      <DocsSyncSettings />
 
       <BackupSettings />
 

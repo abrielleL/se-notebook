@@ -127,6 +127,10 @@ export const api = {
   getBackupSettings: () => request('/api/settings/backup'),
   saveBackupSettings: (body) => request('/api/settings/backup', { method: 'PUT', body: json(body) }),
   runBackupNow: () => request('/api/settings/backup/run', { method: 'POST' }),
+
+  // docs corpus sync (opswat_docs collection <- docs-rag)
+  getDocsSync: () => request('/api/settings/docs-sync'),
+  runDocsSync: () => request('/api/settings/docs-sync/run', { method: 'POST' }),
   listNextSteps: (accountId) => request(`/api/next-steps/${accountId}`),
   createNextStep: (body) => request('/api/next-steps', { method: 'POST', body: json(body) }),
   updateNextStep: (id, body) => request(`/api/next-steps/${id}`, { method: 'PUT', body: json(body) }),
