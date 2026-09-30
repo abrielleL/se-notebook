@@ -294,6 +294,21 @@ export default function AccountDetail() {
     }
   }
 
+  // Re-run extraction against a transcript already on the account. Without this
+  // the only way to (re)feed one through the pipeline is to upload it again,
+  // which leaves a duplicate behind.
+  async function reExtractTranscript(transcriptId) {
+    if (!online) { toast('Offline — reconnect to run extraction.', 'warn'); return; }
+    setExtracting(true);
+    try {
+      const r = await runFullExtraction(id, null, transcriptId).catch(() => null);
+      await loadAll();
+      toast(extractionMessage('Transcript re-processed', r), extractionSeverity(r));
+    } finally {
+      setExtracting(false);
+    }
+  }
+
   function openFieldDrawer({ title, value, footNote, save }) {
     setDrawer({ title, value, history: splitHistory(value), footNote, save });
   }
@@ -517,7 +532,7 @@ export default function AccountDetail() {
                   const has = !!(entry.value && entry.value.trim());
                   return (
                     <button key={f.key} onClick={() => openFieldDrawer({
-                      title: f.label, value: entry.value, footNote: 'AI extracted · merges on note save',
+                      title: f.label, value: entry.value, footNote: 'AI extracted · merges on note save or transcript upload',
                       save: (t) => api.updateDealIntelligence(id, f.key, { value: t, mode: 'replace' }).then(() => loadAll())
                     })} className="text-left border border-border rounded p-2 hover:border-accent-blue/40 transition">
                       <div className="flex items-center gap-1.5 mb-1">
@@ -575,7 +590,10 @@ export default function AccountDetail() {
             >
               <div className="flex flex-col gap-2">
                 {(account.transcripts || []).length === 0 && <div className="text-[11px] text-text-dim">No transcripts yet.</div>}
-                {(account.transcripts || []).map(t => <TranscriptRow key={t.id} transcript={t} />)}
+                {(account.transcripts || []).map(t => (
+                  <TranscriptRow key={t.id} transcript={t} busy={extracting}
+                    onReExtract={() => reExtractTranscript(t.id)} />
+                ))}
               </div>
             </Section>
 
@@ -658,7 +676,7 @@ const TRANSCRIPT_SOURCES = {
   paste: 'Pasted'
 };
 
-function TranscriptRow({ transcript: t }) {
+function TranscriptRow({ transcript: t, onReExtract, busy }) {
   const [open, setOpen] = useState(false);
   const uploaded = (t.created_at || '').slice(0, 10);
   // The call date is the useful one; surface the upload date only when it
@@ -686,6 +704,14 @@ function TranscriptRow({ transcript: t }) {
           <div className="text-[11px] text-text-secondary whitespace-pre-wrap leading-relaxed font-mono overflow-y-auto border border-border-inset rounded bg-[#040d1c] px-2 py-1.5" style={{ maxHeight: 280 }}>
             {t.content || <span className="text-text-dim">empty</span>}
           </div>
+          {onReExtract && (
+            <div className="flex justify-end mt-2">
+              <button onClick={onReExtract} disabled={busy}
+                className="bg-card border border-border rounded px-2 py-1 text-[10px] text-text-primary hover:border-accent-blue/40 disabled:opacity-50">
+                {busy ? 'Extracting…' : 'Re-run AI extract'}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

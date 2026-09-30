@@ -10,8 +10,9 @@ const router = express.Router();
 
 const FIELDS = dealIntel.DEAL_INTELLIGENCE_FIELDS;
 
-const DEAL_INTEL_SYSTEM_PROMPT = `You are analyzing sales call notes for an enterprise cybersecurity software company. Extract deal qualification information to help the solutions engineer track deal health and identify gaps that could risk the sale.
-For each field below, extract any NEW information found ONLY in the [LATEST] note. Do not repeat information already captured in the existing field values shown. Return only fields where genuinely new information was found. If nothing new was found for a field, omit it.
+const DEAL_INTEL_SYSTEM_PROMPT = `You are analyzing sales call notes and call transcripts for an enterprise cybersecurity software company. Extract deal qualification information to help the solutions engineer track deal health and identify gaps that could risk the sale.
+For each field below, extract any NEW information found ONLY in the [LATEST] material, which may be a written note, a raw call transcript, or both. Do not repeat information already captured in the existing field values shown. Return only fields where genuinely new information was found. If nothing new was found for a field, omit it.
+A raw transcript is spoken conversation: pull out what was actually stated or committed to and ignore small talk, scheduling chatter and thinking out loud. Never infer a fact nobody said.
 
 Fields to extract:
 - success_metrics: Quantifiable outcomes the customer needs (ROI targets, compliance deadlines, KPIs, risk reduction targets, cost savings)
@@ -22,6 +23,8 @@ Fields to extract:
 - business_pain: Urgent problems driving this evaluation (what breaks if they do nothing, compliance risk, incidents, audit findings, operational pain)
 - internal_champion: Person actively advocating for the solution internally (name, title, specific actions they have taken on our behalf)
 - competitive_landscape: Alternative solutions being evaluated (competitor names, customer sentiment, where we stand relative to alternatives)
+
+Attribute information to the customer, not to us: in a transcript, what an OPSWAT presenter says about their own product is not a customer requirement.
 
 Return JSON only:
 { field_updates: { field_name: 'new content to append' } }
@@ -281,11 +284,82 @@ if (process.env.NODE_ENV !== 'production') {
   try { runParserSelfTest(); } catch (e) { console.warn('[contacts-test] error:', e.message); }
 }
 
+// --- qualification-field (deal intelligence) extraction ---
+
+// How much of a transcript the qualification pass sees. The signal is spread
+// across a whole call rather than bunched at the top, so the transcript a run
+// is *about* goes in near-whole; older ones are only context for reading it and
+// get a much shorter window.
+const DEAL_INTEL_LATEST_CHARS = 40000;
+const DEAL_INTEL_PRIOR_CHARS = 6000;
+// Older transcripts kept as context. Existing field values already carry what
+// was extracted from the rest, so there is no need to re-read the archive.
+const DEAL_INTEL_PRIOR_TRANSCRIPTS = 3;
+
+function clip(text, max) {
+  const t = String(text || '');
+  return t.length > max ? `${t.slice(0, max)}\n\n[truncated]` : t;
+}
+
+const noteBlock = (n, tag) => `[${tag} ${n.date}]\n${n.raw_notes || ''}`;
+
+const transcriptBlock = (t, tag, max) =>
+  `[${tag} TRANSCRIPT ${t.call_date || (t.created_at || '').slice(0, 10)}` +
+  `${t.title && t.title.trim() ? ` \u2014 ${t.title.trim()}` : ''}]\n` +
+  clip(t.content, max);
+
+// Merge new qualification information out of the [LATEST] material. Writes
+// through upsertDealIntelligence, which appends with a date stamp, so nothing
+// already recorded is overwritten.
+async function runDealIntel(accountId, key, latestBlocks, priorBlocks, sourceNoteId) {
+  const current = {};
+  for (const f of FIELDS) current[f] = '';
+  db.prepare('SELECT field, value FROM deal_intelligence WHERE account_id = ?')
+    .all(accountId)
+    .forEach(r => { current[r.field] = r.value; });
+
+  const existingValues = FIELDS.map(f => `- ${f}: ${current[f] || '(none)'}`).join('\n');
+  const userContent =
+    `EXISTING FIELD VALUES (do not repeat):\n${existingValues}\n\n` +
+    (priorBlocks.length ? `${priorBlocks.join('\n\n')}\n\n` : '') +
+    latestBlocks.join('\n\n');
+
+  const fieldsUpdated = [];
+  try {
+    const text = await callAnthropic({
+      key, model: DEFAULT_MODEL, max_tokens: 1500,
+      system: DEAL_INTEL_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userContent }]
+    });
+    let parsed = {};
+    try { parsed = extractJson(text); } catch { parsed = {}; }
+    const updates = (parsed && parsed.field_updates) || {};
+    for (const field of FIELDS) {
+      const val = updates[field];
+      if (val && String(val).trim()) {
+        dealIntel.upsertDealIntelligence(accountId, field, String(val).trim(), sourceNoteId);
+        fieldsUpdated.push(field);
+      }
+    }
+  } catch (e) {
+    console.warn('[ai] deal-intelligence extraction failed:', e.message);
+  }
+  return fieldsUpdated;
+}
+
 // POST /api/accounts/:id/run-extraction
-// Body: { note_id? }. Runs the server-side extractions that need DB access:
-// deal-intelligence merge (Anthropic) + contact extraction (heuristic) and
-// clears pending_ai_extraction. The existing summary / next-steps / CRM
+// Body: { note_id?, transcript_id? }. Runs the server-side extractions that
+// need DB access: the qualification-field merge (Anthropic) + contact
+// extraction, and clears pending_ai_extraction. The summary / next-steps / CRM
 // snapshot extractions remain client-side and are unchanged.
+//
+// A transcript is a first-class source for the qualification fields, not just
+// for participants. It used to be the latter only: the qualification pass sat
+// inside `if (notes.length)` and read note text exclusively, so uploading a
+// transcript filled in contacts and the AI summary (built client-side from
+// notes AND transcripts) while the eight qualification fields stayed empty --
+// and on an account with transcripts but no written notes, nothing ever filled
+// them in at all.
 router.post('/accounts/:id/run-extraction', async (req, res, next) => {
   try {
     const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.id);
@@ -298,73 +372,73 @@ router.post('/accounts/:id/run-extraction', async (req, res, next) => {
     const notes = db.prepare(
       'SELECT * FROM notes WHERE account_id = ? AND deleted_at IS NULL ORDER BY created_at ASC'
     ).all(req.params.id);
+    const transcripts = db.prepare(
+      'SELECT * FROM transcripts WHERE account_id = ? ORDER BY created_at ASC'
+    ).all(req.params.id);
 
-    let contacts = [];
-    const fieldsUpdated = [];
-
-    // --- Note-based extraction (contacts always; deal-intel needs key) ---
-    if (notes.length) {
-      const latest = body.note_id
-        ? notes.find(n => n.id === body.note_id) || notes[notes.length - 1]
-        : notes[notes.length - 1];
-      const prior = notes.filter(n => n.id !== latest.id);
-
-      contacts = contacts.concat(extractContacts(req.params.id, latest.raw_notes, notes));
-
-      if (key) {
-        const current = {};
-        for (const f of FIELDS) current[f] = '';
-        db.prepare('SELECT field, value FROM deal_intelligence WHERE account_id = ?')
-          .all(req.params.id)
-          .forEach(r => { current[r.field] = r.value; });
-
-        const priorText = prior.map(n => `[PRIOR ${n.date}]\n${n.raw_notes || ''}`).join('\n\n');
-        const existingValues = FIELDS.map(f => `- ${f}: ${current[f] || '(none)'}`).join('\n');
-        const userContent =
-          `EXISTING FIELD VALUES (do not repeat):\n${existingValues}\n\n` +
-          `${priorText ? priorText + '\n\n' : ''}` +
-          `[LATEST ${latest.date}]\n${latest.raw_notes || ''}`;
-
-        try {
-          const text = await callAnthropic({
-            key, model: DEFAULT_MODEL, max_tokens: 1500,
-            system: DEAL_INTEL_SYSTEM_PROMPT,
-            messages: [{ role: 'user', content: userContent }]
-          });
-          let parsed = {};
-          try { parsed = extractJson(text); } catch { parsed = {}; }
-          const updates = (parsed && parsed.field_updates) || {};
-          for (const field of FIELDS) {
-            const val = updates[field];
-            if (val && String(val).trim()) {
-              dealIntel.upsertDealIntelligence(req.params.id, field, String(val).trim(), latest.id);
-              fieldsUpdated.push(field);
-            }
-          }
-        } catch (e) {
-          console.warn('[ai] deal-intelligence extraction failed:', e.message);
-        }
-      }
-
-      // Clear the pending flags only when a key was actually available, i.e.
-      // when the deal-intelligence pass above really ran. Clearing them on a
-      // keyless request would burn the retry and lose the qualification
-      // extraction silently -- the note would look processed but no fields
-      // would ever be filled.
-      if (key) {
-        db.prepare('UPDATE notes SET pending_ai_extraction = 0 WHERE account_id = ? AND pending_ai_extraction = 1')
-          .run(req.params.id);
+    // What this run is *about*. An explicit id picks it (a note save passes a
+    // note, a transcript upload passes a transcript, and NewNote can pass both
+    // at once); with neither, fall back to whichever was created most recently.
+    const pick = (rows, id) => rows.find(r => r.id === id) || null;
+    let latestNote = body.note_id ? pick(notes, body.note_id) : null;
+    let latestTranscript = body.transcript_id ? pick(transcripts, body.transcript_id) : null;
+    if (!latestNote && !latestTranscript) {
+      const newestNote = notes[notes.length - 1] || null;
+      const newestTranscript = transcripts[transcripts.length - 1] || null;
+      if (newestNote && newestTranscript) {
+        const transcriptIsNewer =
+          String(newestTranscript.created_at || '') > String(newestNote.created_at || '');
+        if (transcriptIsNewer) latestTranscript = newestTranscript;
+        else latestNote = newestNote;
+      } else {
+        latestNote = newestNote;
+        latestTranscript = newestTranscript;
       }
     }
 
-    // --- Transcript-based participant extraction (needs key) ---
-    if (body.transcript_id && key) {
-      const t = db.prepare('SELECT * FROM transcripts WHERE id = ? AND account_id = ?')
-        .get(body.transcript_id, req.params.id);
-      if (t && t.content) {
-        const tc = await extractTranscriptContacts(req.params.id, t.content, key, notes);
-        contacts = contacts.concat(tc);
+    let contacts = [];
+    let fieldsUpdated = [];
+
+    // --- Contacts (notes are heuristic and free; transcripts need the key) ---
+    if (latestNote) {
+      contacts = contacts.concat(extractContacts(req.params.id, latestNote.raw_notes, notes));
+    }
+    if (latestTranscript && latestTranscript.content && key) {
+      contacts = contacts.concat(
+        await extractTranscriptContacts(req.params.id, latestTranscript.content, key, notes)
+      );
+    }
+
+    // --- Qualification fields (needs the key) ---
+    if (key && (latestNote || latestTranscript)) {
+      const latestBlocks = [];
+      if (latestNote) latestBlocks.push(noteBlock(latestNote, 'LATEST'));
+      if (latestTranscript) {
+        latestBlocks.push(transcriptBlock(latestTranscript, 'LATEST', DEAL_INTEL_LATEST_CHARS));
       }
+
+      const priorBlocks = [
+        ...notes
+          .filter(n => !latestNote || n.id !== latestNote.id)
+          .map(n => noteBlock(n, 'PRIOR')),
+        ...transcripts
+          .filter(t => !latestTranscript || t.id !== latestTranscript.id)
+          .slice(-DEAL_INTEL_PRIOR_TRANSCRIPTS)
+          .map(t => transcriptBlock(t, 'PRIOR', DEAL_INTEL_PRIOR_CHARS))
+      ];
+
+      fieldsUpdated = await runDealIntel(
+        req.params.id, key, latestBlocks, priorBlocks, latestNote ? latestNote.id : null
+      );
+    }
+
+    // Clear the pending flags only when a key was actually available, i.e. when
+    // the qualification pass above really ran. Clearing them on a keyless
+    // request would burn the retry and lose the extraction silently -- the note
+    // would look processed but no fields would ever be filled.
+    if (key && latestNote) {
+      db.prepare('UPDATE notes SET pending_ai_extraction = 0 WHERE account_id = ? AND pending_ai_extraction = 1')
+        .run(req.params.id);
     }
 
     console.log(`[contacts] result: ${contacts.length} contact(s) created/updated, ${fieldsUpdated.length} deal field(s)`);
