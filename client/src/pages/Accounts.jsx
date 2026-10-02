@@ -10,9 +10,28 @@ import { snoozeTitle } from '../components/SnoozeMenu.jsx';
 
 const PARTNER_COLOR = ACCOUNT_TYPES.partner.color;
 
+const fold = (s) => String(s == null ? '' : s).trim().replace(/\s+/g, ' ').toLowerCase();
+
+// Rows saved before the AE roster existed still hold a bare first name, so the
+// chips showed "Cody" next to "Cody Castaldo". Mirror the server's expansion
+// (server/lib/aeRoster.js): adopt the roster spelling of a known full name, and
+// expand a first name only when exactly one roster entry owns it.
+function resolveAe(account, roster) {
+  const typed = String(account.ae_name || account.account_executive || '').trim().replace(/\s+/g, ' ');
+  if (!typed) return '';
+  const exact = roster.find(n => fold(n) === fold(typed));
+  if (exact) return exact;
+  if (!typed.includes(' ')) {
+    const matches = roster.filter(n => fold(n).split(' ')[0] === fold(typed));
+    if (matches.length === 1) return matches[0];
+  }
+  return typed;
+}
+
 export default function Accounts() {
   const [accounts, setAccounts] = useState([]);
   const [tagCatalog, setTagCatalog] = useState([]);
+  const [aeRoster, setAeRoster] = useState([]);
   const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState(params.get('q') || '');
   const [outcomeFilter, setOutcomeFilter] = useState('All');
@@ -24,6 +43,7 @@ export default function Accounts() {
 
   useEffect(() => { api.listAccounts().then(setAccounts); }, []);
   useEffect(() => { api.listTags().then(setTagCatalog).catch(() => {}); }, []);
+  useEffect(() => { api.listAeRoster().then(r => setAeRoster(r.map(a => a.full_name))).catch(() => {}); }, []);
 
   const tagColor = useMemo(() => Object.fromEntries(tagCatalog.map(t => [t.label, t.color])), [tagCatalog]);
   const inactiveLabels = useMemo(() => new Set(tagCatalog.filter(t => t.is_inactive).map(t => t.label)), [tagCatalog]);
@@ -51,11 +71,14 @@ export default function Accounts() {
 
   // Everything below the tabs — AE chips, search, tag chips, the list — works
   // within the open tab, so a filter never shows a count from the other side.
-  const byType = useMemo(() => accounts.filter(a => accountType(a) === typeTab), [accounts, typeTab]);
+  const byType = useMemo(
+    () => accounts.filter(a => accountType(a) === typeTab).map(a => ({ ...a, _ae: resolveAe(a, aeRoster) })),
+    [accounts, typeTab, aeRoster]
+  );
 
   const aes = useMemo(() => {
     const s = new Set();
-    byType.forEach(a => a.account_executive && s.add(a.account_executive));
+    byType.forEach(a => a._ae && s.add(a._ae));
     return ['All', ...Array.from(s).sort()];
   }, [byType]);
 
@@ -67,7 +90,7 @@ export default function Accounts() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return byType.filter(a => {
-      if (aeFilter !== 'All' && (a.account_executive || '') !== aeFilter) return false;
+      if (aeFilter !== 'All' && a._ae !== aeFilter) return false;
       if (tagFilter !== 'All' && !(a.tags || []).includes(tagFilter)) return false;
       // 'Active' is the absence of an outcome, so it can't be matched by value.
       if (outcomeFilter === 'Active' && a.deal_outcome) return false;
@@ -77,7 +100,7 @@ export default function Accounts() {
       // the accounts Presidio is on, and vice versa.
       const linked = typeTab === 'partner' ? (a.linked_accounts || []) : (a.partners || []);
       return (a.account_name || '').toLowerCase().includes(q) ||
-             (a.account_executive || '').toLowerCase().includes(q) ||
+             a._ae.toLowerCase().includes(q) ||
              (a.tags || []).some(t => t.toLowerCase().includes(q)) ||
              linked.some(l => (l.account_name || '').toLowerCase().includes(q));
     });
@@ -235,7 +258,7 @@ export default function Accounts() {
                 )}
               </div>
               <div className="text-[11px] text-text-muted truncate">
-                {(a.ae_name || a.account_executive) ? `AE: ${a.ae_name || a.account_executive}` : 'No AE'}
+                {a._ae ? `AE: ${a._ae}` : 'No AE'}
                 {' · '}
                 {a.note_count} {a.note_count === 1 ? 'entry' : 'entries'}
                 {' · '}
