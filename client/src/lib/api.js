@@ -178,6 +178,13 @@ export const api = {
     request(`/api/accounts/${accountId}/deal-review${opportunityId ? `?opportunity_id=${encodeURIComponent(opportunityId)}` : ''}`),
   saveDealReviewAnswer: (accountId, key, body) =>
     request(`/api/accounts/${accountId}/deal-review/${encodeURIComponent(key)}`, { method: 'PUT', body: json(body) }),
+  exportDealReviewDocx: async (accountId, opportunityId) => {
+    const res = await fetch(`/api/accounts/${accountId}/deal-review/export${opportunityId ? `?opportunity_id=${encodeURIComponent(opportunityId)}` : ''}`);
+    if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+    const blob = await res.blob();
+    const match = (res.headers.get('content-disposition') || '').match(/filename="?([^"]+)"?/);
+    return { blob, filename: match ? match[1] : 'DealReview.docx' };
+  },
   // Reads the deal's notes, transcripts and internal calls; takes a minute or two.
   refreshDealReview: (accountId, opportunityId) =>
     request(`/api/accounts/${accountId}/deal-review/refresh`, {

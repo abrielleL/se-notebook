@@ -6,6 +6,7 @@ const opportunities = require('../lib/opportunityStore');
 const { getKey } = require('../lib/anthropic');
 const { extractUploadText } = require('../lib/extractText');
 const { fillDealReview } = require('../lib/dealReviewFill');
+const { renderDealReviewDocx, dealReviewFilename } = require('../lib/dealReviewDocx');
 const { SECTIONS, BY_KEY, STATUSES, VOICES, APPLIES_LABEL } = require('../lib/dealReviewQuestions');
 
 const router = express.Router();
@@ -120,6 +121,27 @@ router.post('/accounts/:id/deal-review/refresh', async (req, res, next) => {
     if (e.status && e.status < 500) return res.status(e.status).json({ error: e.message });
     next(e);
   }
+});
+
+// GET the review as a Word document: this deal's review only, nothing else
+// from the account.
+router.get('/accounts/:id/deal-review/export', async (req, res, next) => {
+  try {
+    const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.id);
+    if (!account) return res.status(404).json({ error: 'Account not found' });
+    const opp = resolveOpportunity(account.id, req.query.opportunity_id);
+    if (!opp) return res.status(404).json({ error: 'No opportunity on this account' });
+    // Name the deal only when the account has more than one; otherwise it's
+    // just the account's name repeated.
+    const showOpportunity = opportunities.countFor(db, account.id) > 1;
+    const buffer = await renderDealReviewDocx({
+      account, opportunity: opp, sections: SECTIONS, answers: loadAnswers(opp.id),
+      forecast: computeForecast(opp), showOpportunity
+    });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${dealReviewFilename(account, opp, showOpportunity)}"`);
+    res.send(buffer);
+  } catch (e) { next(e); }
 });
 
 // --- internal calls -----------------------------------------------------------

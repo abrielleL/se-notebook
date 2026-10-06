@@ -204,6 +204,7 @@ export default function DealReview({ accountId, opportunityId, multipleOpportuni
   const [editingKey, setEditingKey] = useState(null);
   const [filter, setFilter] = useState('all');
   const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   async function load() {
     try {
@@ -249,6 +250,22 @@ export default function DealReview({ accountId, opportunityId, multipleOpportuni
     }
   }
 
+  async function exportDocx() {
+    setExporting(true);
+    try {
+      const { blob, filename } = await api.exportDealReviewDocx(accountId, oppId);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url; link.download = filename;
+      document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const totals = useMemo(() => {
     if (!data) return null;
     const all = data.sections.map(s => sectionCounts(s, answers));
@@ -276,7 +293,8 @@ export default function DealReview({ accountId, opportunityId, multipleOpportuni
       <div className="flex flex-col gap-3 min-w-0 self-start sticky top-0">
         <div className="bg-card border border-border rounded-lg p-3">
           <RefreshButton counts={data.source_counts} internalCount={data.internal_calls.length}
-            busy={refreshing} onClick={refresh} />
+            busy={refreshing} onClick={refresh}
+            onExport={exportDocx} exporting={exporting} />
           {multipleOpportunities && (
             <div className="text-[10px] text-text-dim mb-2">Review for <span className="text-text-secondary">{data.opportunity.name}</span></div>
           )}
@@ -392,7 +410,7 @@ function refreshMessage(r) {
   return parts.join(' · ');
 }
 
-function RefreshButton({ counts, internalCount, busy, onClick }) {
+function RefreshButton({ counts, internalCount, busy, onClick, onExport, exporting }) {
   const total = counts.notes + counts.transcripts + internalCount;
   const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
   return (
@@ -409,6 +427,12 @@ function RefreshButton({ counts, internalCount, busy, onClick }) {
             ? `Reads ${plural(counts.notes, 'note')}, ${plural(counts.transcripts, 'transcript')} and ${plural(internalCount, 'internal call')}. Hand-edited answers are left alone.`
             : 'Add a note, transcript or internal call first.'}
       </div>
+      <button onClick={onExport} disabled={exporting}
+        title="Download this deal review as a Word document"
+        className="w-full mt-2 flex items-center justify-center gap-1.5 bg-card border border-border rounded px-3 py-1.5 text-[12px] text-text-primary hover:border-accent-blue/40 disabled:opacity-50">
+        <Icon.Export width={12} height={12} />
+        {exporting ? 'Exporting…' : 'Export to Word'}
+      </button>
     </div>
   );
 }
