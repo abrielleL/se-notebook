@@ -15,6 +15,7 @@ import SnoozeMenu from '../components/SnoozeMenu.jsx';
 import AeNameInput from '../components/AeNameInput.jsx';
 import OpportunityBar, { NewOpportunityModal } from '../components/OpportunityBar.jsx';
 import StatusNote from '../components/StatusNote.jsx';
+import DealReview from '../components/DealReview.jsx';
 import ContactDrawer, { ContactTypeBadge } from '../components/ContactDrawer.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { useOnline } from '../lib/offline.jsx';
@@ -110,6 +111,8 @@ export default function AccountDetail() {
   // been split returns, so its page is unchanged.
   const [oppId, setOppId] = useState(null);
   const [newOppOpen, setNewOppOpen] = useState(false);
+  // 'overview' is the page as it has always been; 'review' is the deal review.
+  const [tab, setTab] = useState('overview');
   const autoPicked = useRef(null);
   const [extracting, setExtracting] = useState(false);
   const [tagCatalog, setTagCatalog] = useState([]);
@@ -450,7 +453,27 @@ export default function AccountDetail() {
       </div>
       )}
 
-      {/* THREE COLUMNS */}
+      {/* TABS — the deal review is customer-only, like the stage bar */}
+      {!isPartner && (
+        <div className="px-5 border-b border-border flex items-center gap-4">
+          {[{ value: 'overview', label: 'Overview' }, { value: 'review', label: 'Deal review' }].map(t => (
+            <button key={t.value} onClick={() => setTab(t.value)}
+              className={`text-[12px] py-2 border-b-2 -mb-px transition ${tab === t.value
+                ? 'border-accent-blue-solid text-text-primary font-medium'
+                : 'border-transparent text-text-muted hover:text-text-primary'}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!isPartner && tab === 'review' ? (
+        <div className="flex-1 overflow-auto p-3">
+          <DealReview accountId={id} opportunityId={oppId}
+            multipleOpportunities={(account.opportunities || []).length > 1} />
+        </div>
+      ) : (
+      /* THREE COLUMNS */
       <div className="flex-1 overflow-auto p-3">
         <div className="grid gap-3" style={{ gridTemplateColumns: '220px 1fr 240px' }}>
           {/* LEFT */}
@@ -607,6 +630,7 @@ export default function AccountDetail() {
           </div>
         </div>
       </div>
+      )}
 
       {drawer && <FieldDrawer title={drawer.title} value={drawer.value} history={drawer.history} footNote={drawer.footNote}
         onSave={async (t) => { await drawer.save(t); }} onClose={() => setDrawer(null)} />}

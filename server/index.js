@@ -56,6 +56,7 @@ app.use('/api/search', require('./routes/search'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api', require('./routes/crmSnapshots'));
 app.use('/api', require('./routes/dealIntelligence'));
+app.use('/api', require('./routes/dealReview'));
 app.use('/api', require('./routes/stageGate'));
 app.use('/api', require('./routes/povConfig'));
 app.use('/api', require('./routes/tags'));

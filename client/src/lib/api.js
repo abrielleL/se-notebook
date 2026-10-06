@@ -173,6 +173,14 @@ export const api = {
   updateDealIntelligence: (accountId, field, body) =>
     request(`/api/accounts/${accountId}/deal-intelligence/${field}`, { method: 'PUT', body: json(body) }),
 
+  // deal review (one review per opportunity; no opportunity id = the live deal)
+  getDealReview: (accountId, opportunityId) =>
+    request(`/api/accounts/${accountId}/deal-review${opportunityId ? `?opportunity_id=${encodeURIComponent(opportunityId)}` : ''}`),
+  saveDealReviewAnswer: (accountId, key, body) =>
+    request(`/api/accounts/${accountId}/deal-review/${encodeURIComponent(key)}`, { method: 'PUT', body: json(body) }),
+  clearDealReviewAnswer: (accountId, key, opportunityId) =>
+    request(`/api/accounts/${accountId}/deal-review/${encodeURIComponent(key)}${opportunityId ? `?opportunity_id=${encodeURIComponent(opportunityId)}` : ''}`, { method: 'DELETE' }),
+
   // stage gates
   getStageGates: (accountId, stage) => request(`/api/accounts/${accountId}/stage-gates/${encodeURIComponent(stage)}`),
   updateStageGate: (accountId, stage, gateKey, completed) =>

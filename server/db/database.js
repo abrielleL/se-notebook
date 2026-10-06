@@ -969,4 +969,83 @@ const rebuildSearchIndex = db.transaction(() => {
 });
 rebuildSearchIndex();
 
+// ---------------------------------------------------------------------------
+// Deal review: one answer per question per opportunity. The questions
+// themselves are code (server/lib/dealReviewQuestions.js); only answers live
+// here. Keyed by opportunity from the start -- deal_intelligence being UNIQUE
+// per account is exactly the problem a split account runs into.
+//
+// locked = 1 once the SE has edited an answer by hand. The AI fill skips
+// locked rows, so a correction is never quietly overwritten.
+// ---------------------------------------------------------------------------
+db.exec(`
+  CREATE TABLE IF NOT EXISTS deal_review_answers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    opportunity_id TEXT NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    question_key TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'unanswered',
+    answer TEXT DEFAULT NULL,
+    evidence TEXT DEFAULT NULL,
+    -- Where the evidence came from: 'note' | 'transcript' | 'internal_call' | 'manual'
+    source_type TEXT DEFAULT NULL,
+    source_id TEXT DEFAULT NULL,
+    source_label TEXT DEFAULT NULL,
+    source_date TEXT DEFAULT NULL,
+    -- 'customer' (their words) | 'team' (our read) | 'inferred'
+    voice TEXT DEFAULT NULL,
+    locked INTEGER DEFAULT 0,
+    updated_by TEXT DEFAULT 'user',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(opportunity_id, question_key)
+  );
+  CREATE INDEX IF NOT EXISTS idx_deal_review_answers_account ON deal_review_answers(account_id);
+`);
+
+// Stage and close-date history, for the forecast questions (time in stage,
+// slips). Nothing recorded this before, so history starts now: each
+// opportunity gets a 'baseline' row the first time this runs, and the deal
+// review reads "at least N days" until a real change has been seen.
+// Triggers rather than route code because deal fields are written from several
+// routes (account PUT, opportunity PUT, the stage gate) and a trigger can't be
+// forgotten by the next one.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS opportunity_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    opportunity_id TEXT NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
+    field TEXT NOT NULL,
+    old_value TEXT DEFAULT NULL,
+    new_value TEXT DEFAULT NULL,
+    baseline INTEGER DEFAULT 0,
+    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_opportunity_history_opp ON opportunity_history(opportunity_id, field);
+
+  CREATE TRIGGER IF NOT EXISTS opportunities_stage_history_au
+  AFTER UPDATE OF presales_stage ON opportunities
+  WHEN OLD.presales_stage IS NOT NEW.presales_stage BEGIN
+    INSERT INTO opportunity_history (opportunity_id, field, old_value, new_value)
+    VALUES (NEW.id, 'presales_stage', OLD.presales_stage, NEW.presales_stage);
+  END;
+
+  CREATE TRIGGER IF NOT EXISTS opportunities_close_date_history_au
+  AFTER UPDATE OF close_date ON opportunities
+  WHEN OLD.close_date IS NOT NEW.close_date BEGIN
+    INSERT INTO opportunity_history (opportunity_id, field, old_value, new_value)
+    VALUES (NEW.id, 'close_date', OLD.close_date, NEW.close_date);
+  END;
+`);
+
+// Baseline every opportunity that has no history for a field yet, including
+// ones created since the last boot. Idempotent.
+for (const field of ['presales_stage', 'close_date']) {
+  db.prepare(`
+    INSERT INTO opportunity_history (opportunity_id, field, new_value, baseline)
+    SELECT o.id, ?, o.${field}, 1 FROM opportunities o
+    WHERE NOT EXISTS (
+      SELECT 1 FROM opportunity_history h WHERE h.opportunity_id = o.id AND h.field = ?
+    )
+  `).run(field, field);
+}
+
 module.exports = db;
