@@ -37,6 +37,48 @@ async function callAnthropic({ key, model = DEFAULT_MODEL, max_tokens = 2048, sy
   return (json.content || []).map(b => b.text || '').join('').trim();
 }
 
+// Full-response caller for structured, cache-aware requests. Returns the raw
+// message so callers can read usage and stop_reason. `system` may be an array
+// of blocks carrying cache_control; `output_config` carries effort and a JSON
+// schema format. Refusals are retried server-side on Anthropic's recommended
+// fallback model, and a refusal that survives that is thrown, not parsed.
+async function callAnthropicMessage({ key, model, max_tokens = 16000, system, messages, output_config }) {
+  if (!key) {
+    const e = new Error('Anthropic API key required. Add it in Settings.');
+    e.status = 400;
+    throw e;
+  }
+  const res = await fetch(ANTHROPIC_URL, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'server-side-fallback-2026-07-01'
+    },
+    body: JSON.stringify({ model, max_tokens, system, messages, output_config, fallbacks: 'default' })
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    const e = new Error(`Anthropic API error ${res.status}: ${text}`);
+    e.status = 502;
+    throw e;
+  }
+  const json = await res.json();
+  if (json.stop_reason === 'refusal') {
+    const e = new Error('The model declined this request.');
+    e.status = 502;
+    throw e;
+  }
+  if (json.stop_reason === 'max_tokens') {
+    const e = new Error('The AI response was cut off before it finished.');
+    e.status = 502;
+    throw e;
+  }
+  json.text = (json.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
+  return json;
+}
+
 // Best-effort JSON extraction from a model response that may be fenced or
 // surrounded by prose.
 function extractJson(text) {
@@ -52,4 +94,4 @@ function extractJson(text) {
   throw new Error('Failed to parse JSON from AI response');
 }
 
-module.exports = { callAnthropic, getKey, extractJson, DEFAULT_MODEL };
+module.exports = { callAnthropic, callAnthropicMessage, getKey, extractJson, DEFAULT_MODEL };

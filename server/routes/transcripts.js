@@ -1,11 +1,9 @@
 const express = require('express');
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const mammoth = require('mammoth');
 const { v4: uuid } = require('uuid');
 const db = require('../db/database');
 const opportunities = require('../lib/opportunityStore');
+const { extractUploadText } = require('../lib/extractText');
 
 const router = express.Router();
 
@@ -23,26 +21,11 @@ router.post('/', upload.single('file'), async (req, res, next) => {
     let resolvedTitle = title || '';
 
     if (req.file) {
-      const ext = path.extname(req.file.originalname).toLowerCase();
-      if (ext === '.docx') {
-        const result = await mammoth.extractRawText({ buffer: req.file.buffer });
-        content = result.value;
-      } else if (ext === '.txt' || ext === '.md') {
-        content = req.file.buffer.toString('utf8');
-      } else if (ext === '.pdf') {
-        // pdf-parse is required lazily so a missing optional dependency never
-        // blocks server startup or the .txt/.md/.docx paths.
-        try {
-          const pdfParse = require('pdf-parse');
-          const parsed = await pdfParse(req.file.buffer);
-          content = parsed.text || '';
-        } catch (e) {
-          return res.status(400).json({ error: 'PDF parsing unavailable: ' + e.message });
-        }
-      } else {
-        return res.status(400).json({ error: 'Unsupported file type. Use .txt, .md, .pdf or .docx' });
-      }
-      if (!resolvedTitle) resolvedTitle = path.basename(req.file.originalname, ext);
+      let extracted;
+      try { extracted = await extractUploadText(req.file); }
+      catch (e) { if (e.status === 400) return res.status(400).json({ error: e.message }); throw e; }
+      content = extracted.content;
+      if (!resolvedTitle) resolvedTitle = extracted.title;
     }
 
     if (!content || !content.trim()) {

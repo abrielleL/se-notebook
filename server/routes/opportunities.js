@@ -10,11 +10,11 @@ const CHILD_TABLES = [
   'pov_jobs', 'stage_gate_progress', 'deal_intelligence', 'crm_snapshots'
 ];
 
-// Deal review answers count as content (deleting the deal would cascade them
-// away) but are not in CHILD_TABLES: they belong to one deal's review and
-// make no sense moved onto another.
+// Deal review answers and internal calls count as content (deleting the deal
+// would cascade them away) but are not in CHILD_TABLES: they belong to one
+// deal's review and make no sense moved onto another.
 function contentCount(opportunityId) {
-  return CHILD_TABLES.concat(['deal_review_answers']).reduce((total, table) => total +
+  return CHILD_TABLES.concat(['deal_review_answers', 'internal_calls']).reduce((total, table) => total +
     db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE opportunity_id = ?`).get(opportunityId).n, 0);
 }
 

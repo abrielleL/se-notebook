@@ -178,6 +178,17 @@ export const api = {
     request(`/api/accounts/${accountId}/deal-review${opportunityId ? `?opportunity_id=${encodeURIComponent(opportunityId)}` : ''}`),
   saveDealReviewAnswer: (accountId, key, body) =>
     request(`/api/accounts/${accountId}/deal-review/${encodeURIComponent(key)}`, { method: 'PUT', body: json(body) }),
+  // Reads the deal's notes, transcripts and internal calls; takes a minute or two.
+  refreshDealReview: (accountId, opportunityId) =>
+    request(`/api/accounts/${accountId}/deal-review/refresh`, {
+      method: 'POST', headers: aiHeaders(), body: json({ opportunity_id: opportunityId })
+    }),
+  // Internal (AE/SE) calls, read only by the deal review. Both writes return
+  // the deal's refreshed list.
+  addInternalCall: (accountId, form) =>
+    request(`/api/accounts/${accountId}/internal-calls`, { method: 'POST', body: form }),
+  getInternalCall: (id) => request(`/api/internal-calls/${id}`),
+  deleteInternalCall: (id) => request(`/api/internal-calls/${id}`, { method: 'DELETE' }),
   clearDealReviewAnswer: (accountId, key, opportunityId) =>
     request(`/api/accounts/${accountId}/deal-review/${encodeURIComponent(key)}${opportunityId ? `?opportunity_id=${encodeURIComponent(opportunityId)}` : ''}`, { method: 'DELETE' }),
 

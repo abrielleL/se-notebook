@@ -1,9 +1,19 @@
 const express = require('express');
+const multer = require('multer');
+const { v4: uuid } = require('uuid');
 const db = require('../db/database');
 const opportunities = require('../lib/opportunityStore');
+const { getKey } = require('../lib/anthropic');
+const { extractUploadText } = require('../lib/extractText');
+const { fillDealReview } = require('../lib/dealReviewFill');
 const { SECTIONS, BY_KEY, STATUSES, VOICES, APPLIES_LABEL } = require('../lib/dealReviewQuestions');
 
 const router = express.Router();
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }
+});
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -88,8 +98,81 @@ router.get('/accounts/:id/deal-review', (req, res) => {
     sections: SECTIONS,
     applies_labels: APPLIES_LABEL,
     answers: loadAnswers(opp.id),
-    forecast: computeForecast(opp)
+    forecast: computeForecast(opp),
+    internal_calls: listInternalCalls(opp.id),
+    source_counts: {
+      notes: db.prepare('SELECT COUNT(*) AS n FROM notes WHERE opportunity_id = ? AND deleted_at IS NULL').get(opp.id).n,
+      transcripts: db.prepare('SELECT COUNT(*) AS n FROM transcripts WHERE opportunity_id = ?').get(opp.id).n
+    }
   });
+});
+
+// POST: fill the review from the deal's notes, transcripts and internal
+// calls. On demand only -- it reads everything and makes one model call per
+// section. Locked answers are left alone.
+router.post('/accounts/:id/deal-review/refresh', async (req, res, next) => {
+  try {
+    const opp = resolveOpportunity(req.params.id, req.body && req.body.opportunity_id);
+    if (!opp) return res.status(404).json({ error: 'No opportunity on this account' });
+    const result = await fillDealReview({ key: getKey(req), opp });
+    res.json({ ...result, answers: loadAnswers(opp.id) });
+  } catch (e) {
+    if (e.status && e.status < 500) return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
+});
+
+// --- internal calls -----------------------------------------------------------
+// AE/SE conversations about the deal. Read only by the deal review; see the
+// internal_calls table in db/database.js for why they're kept apart.
+
+function listInternalCalls(opportunityId) {
+  return db.prepare(`
+    SELECT id, title, call_date, created_at, length(content) AS chars
+    FROM internal_calls WHERE opportunity_id = ?
+    ORDER BY COALESCE(call_date, created_at) DESC, created_at DESC
+  `).all(opportunityId);
+}
+
+router.post('/accounts/:id/internal-calls', upload.single('file'), async (req, res, next) => {
+  try {
+    const account = db.prepare('SELECT id FROM accounts WHERE id = ?').get(req.params.id);
+    if (!account) return res.status(404).json({ error: 'Account not found' });
+    const opp = resolveOpportunity(account.id, req.body.opportunity_id);
+    if (!opp) return res.status(404).json({ error: 'No opportunity on this account' });
+
+    let content = req.body.content || '';
+    let title = (req.body.title || '').trim();
+    if (req.file) {
+      let extracted;
+      try { extracted = await extractUploadText(req.file); }
+      catch (e) { if (e.status === 400) return res.status(400).json({ error: e.message }); throw e; }
+      content = extracted.content;
+      if (!title) title = extracted.title;
+    }
+    if (!content || !content.trim()) return res.status(400).json({ error: 'No call content provided' });
+
+    const id = uuid();
+    db.prepare(`
+      INSERT INTO internal_calls (id, account_id, opportunity_id, title, call_date, content)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, account.id, opp.id, title || 'Internal call',
+           req.body.call_date || new Date().toISOString().slice(0, 10), content);
+    res.status(201).json(listInternalCalls(opp.id));
+  } catch (e) { next(e); }
+});
+
+router.get('/internal-calls/:callId', (req, res) => {
+  const row = db.prepare('SELECT * FROM internal_calls WHERE id = ?').get(req.params.callId);
+  if (!row) return res.status(404).json({ error: 'Internal call not found' });
+  res.json(row);
+});
+
+router.delete('/internal-calls/:callId', (req, res) => {
+  const row = db.prepare('SELECT opportunity_id FROM internal_calls WHERE id = ?').get(req.params.callId);
+  if (!row) return res.status(404).json({ error: 'Internal call not found' });
+  db.prepare('DELETE FROM internal_calls WHERE id = ?').run(req.params.callId);
+  res.json(listInternalCalls(row.opportunity_id));
 });
 
 // PUT one answer by hand. Body: { opportunity_id?, status, answer?, evidence?,

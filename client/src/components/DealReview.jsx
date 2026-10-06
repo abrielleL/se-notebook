@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import Icon from './Icons.jsx';
 import Markdown from './Markdown.jsx';
+import Modal from './Modal.jsx';
 import { useToast } from './Toast.jsx';
 import { formatDate } from '../lib/stage.js';
 
@@ -161,7 +162,7 @@ function QuestionRow({ question, killer, answer, forecast, appliesLabels, editin
           <div className={`text-[11px] leading-snug ${question.headline ? 'text-text-primary font-medium' : 'text-text-secondary'}`}>
             {question.text}
           </div>
-          {(question.applies || question.manual || (answer && answer.locked)) && (
+          {(question.applies || question.manual || !!answer?.locked) && (
             <div className="flex flex-wrap items-center gap-1 mt-1">
               {question.applies && <Badge>{appliesLabels[question.applies] || question.applies}</Badge>}
               {question.manual && !question.computed && <Badge>Manual</Badge>}
@@ -179,10 +180,11 @@ function QuestionRow({ question, killer, answer, forecast, appliesLabels, editin
           {!editing && answer && answer.evidence && (
             <div className="text-[10px] text-text-muted italic mt-1 border-l-2 border-border pl-2">“{answer.evidence.replace(/^["“]|["”]$/g, '')}”</div>
           )}
-          {!editing && answer && (answer.voice || source) && (
+          {!editing && answer && (answer.voice || source || answer.updated_by === 'ai') && (
             <div className="flex items-center gap-1.5 mt-1 text-[9px] text-text-dim">
               {answer.voice && <Badge color={answer.voice === 'customer' ? '#4fd15c' : answer.voice === 'team' ? '#5c9bff' : '#838892'}>{VOICE_LABEL[answer.voice]}</Badge>}
               {source && <span>{source}{answer.source_date ? ` · ${formatDate(answer.source_date)}` : ''}</span>}
+              {answer.updated_by === 'ai' && <span>· AI-filled {formatDate(answer.updated_at)}</span>}
             </div>
           )}
         </div>
@@ -201,6 +203,7 @@ export default function DealReview({ accountId, opportunityId, multipleOpportuni
   const [error, setError] = useState(null);
   const [editingKey, setEditingKey] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [refreshing, setRefreshing] = useState(false);
 
   async function load() {
     try {
@@ -233,6 +236,19 @@ export default function DealReview({ accountId, opportunityId, multipleOpportuni
     await save(key, { status: a.status, answer: a.answer, evidence: a.evidence, voice: a.voice, locked: false });
   }
 
+  async function refresh() {
+    setRefreshing(true);
+    try {
+      const r = await api.refreshDealReview(accountId, oppId);
+      setData(d => ({ ...d, answers: r.answers }));
+      toast(refreshMessage(r), r.errors.length ? 'warn' : 'success');
+    } catch (e) {
+      toast(`Refresh failed: ${e.message}`, 'error');
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   const totals = useMemo(() => {
     if (!data) return null;
     const all = data.sections.map(s => sectionCounts(s, answers));
@@ -257,8 +273,10 @@ export default function DealReview({ accountId, opportunityId, multipleOpportuni
   return (
     <div className="grid gap-3" style={{ gridTemplateColumns: '220px 1fr' }}>
       {/* LEFT: summary + section nav */}
-      <div className="flex flex-col gap-3 min-w-0">
-        <div className="bg-card border border-border rounded-lg p-3 sticky top-0">
+      <div className="flex flex-col gap-3 min-w-0 self-start sticky top-0">
+        <div className="bg-card border border-border rounded-lg p-3">
+          <RefreshButton counts={data.source_counts} internalCount={data.internal_calls.length}
+            busy={refreshing} onClick={refresh} />
           {multipleOpportunities && (
             <div className="text-[10px] text-text-dim mb-2">Review for <span className="text-text-secondary">{data.opportunity.name}</span></div>
           )}
@@ -302,6 +320,9 @@ export default function DealReview({ accountId, opportunityId, multipleOpportuni
             })}
           </div>
         </div>
+
+        <InternalCallsCard accountId={accountId} opportunityId={oppId} calls={data.internal_calls}
+          onChange={(internal_calls) => setData(d => ({ ...d, internal_calls }))} />
       </div>
 
       {/* RIGHT: the questions */}
@@ -360,5 +381,144 @@ function TrackingFootnote({ forecast }) {
     <div className="text-[10px] text-text-dim px-1">
       Stage and close-date changes are tracked from {formatDate(forecast.tracked_since.slice(0, 10))}; earlier history isn’t known.
     </div>
+  );
+}
+
+function refreshMessage(r) {
+  const parts = [`Filled ${r.written} answer${r.written === 1 ? '' : 's'} from ${r.sources_read} source${r.sources_read === 1 ? '' : 's'}`];
+  if (r.quotes_dropped) parts.push(`${r.quotes_dropped} quote${r.quotes_dropped === 1 ? '' : 's'} couldn't be found in the source and ${r.quotes_dropped === 1 ? 'was' : 'were'} left out`);
+  if (r.sources_omitted.length) parts.push(`${r.sources_omitted.length} older call${r.sources_omitted.length === 1 ? '' : 's'} didn't fit and ${r.sources_omitted.length === 1 ? 'was' : 'were'} skipped`);
+  if (r.errors.length) parts.push(`${r.errors.length} section${r.errors.length === 1 ? '' : 's'} failed (${r.errors[0].section}: ${r.errors[0].error.slice(0, 120)})`);
+  return parts.join(' · ');
+}
+
+function RefreshButton({ counts, internalCount, busy, onClick }) {
+  const total = counts.notes + counts.transcripts + internalCount;
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  return (
+    <div className="mb-3 pb-3 border-b border-border">
+      <button onClick={onClick} disabled={busy || !total}
+        className="w-full flex items-center justify-center gap-1.5 bg-accent-blue/15 text-accent-blue border border-accent-blue/30 rounded px-3 py-1.5 text-[12px] font-medium hover:bg-accent-blue/25 disabled:opacity-50">
+        <Icon.Sparkles width={12} height={12} />
+        {busy ? 'Reading the deal…' : 'Refresh from notes'}
+      </button>
+      <div className="text-[9px] text-text-dim mt-1.5 leading-snug">
+        {busy
+          ? 'Takes a minute or two. Answers you edited by hand are left alone.'
+          : total
+            ? `Reads ${plural(counts.notes, 'note')}, ${plural(counts.transcripts, 'transcript')} and ${plural(internalCount, 'internal call')}. Hand-edited answers are left alone.`
+            : 'Add a note, transcript or internal call first.'}
+      </div>
+    </div>
+  );
+}
+
+// Internal (AE/SE) calls about this deal. They feed the deal review only --
+// never the summary, POV or next steps -- and what they say counts as the
+// team's read, not the customer's words.
+function InternalCallsCard({ accountId, opportunityId, calls, onChange }) {
+  const toast = useToast();
+  const [adding, setAdding] = useState(false);
+  const [viewing, setViewing] = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
+  const fileRef = useRef(null);
+
+  async function add({ text, title, file }) {
+    const form = new FormData();
+    if (opportunityId) form.append('opportunity_id', opportunityId);
+    if (file) form.append('file', file);
+    else { form.append('content', text); form.append('title', title || 'Internal call'); }
+    try {
+      onChange(await api.addInternalCall(accountId, form));
+      setAdding(false);
+      toast('Internal call added', 'success');
+    } catch (e) { toast(e.message, 'error'); }
+  }
+  async function remove(id) {
+    try { onChange(await api.deleteInternalCall(id)); setConfirmId(null); }
+    catch (e) { toast(e.message, 'error'); }
+  }
+  async function view(id) {
+    try { setViewing(await api.getInternalCall(id)); }
+    catch (e) { toast(e.message, 'error'); }
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-lg">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+        <div className="flex items-center gap-2">
+          <Icon.Mic width={13} height={13} className="text-text-muted" />
+          <span className="text-[11px] font-medium text-text-primary">Internal calls ({calls.length})</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => fileRef.current?.click()} title="Upload a call file (.txt, .md, .pdf, .docx)"
+            className="text-text-dim hover:text-accent-blue"><Icon.Upload width={12} height={12} /></button>
+          <button onClick={() => setAdding(true)} title="Paste an internal call"
+            className="text-text-dim hover:text-accent-blue"><Icon.Plus width={12} height={12} /></button>
+          <input ref={fileRef} type="file" accept=".txt,.md,.pdf,.docx" className="hidden"
+            onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) add({ file: f }); }} />
+        </div>
+      </div>
+      <div className="p-3 flex flex-col gap-1.5">
+        {!calls.length && (
+          <div className="text-[10px] text-text-dim leading-snug">
+            Calls between you and the AE about this deal. Used only here, and counted as the team’s read rather than the customer’s words.
+          </div>
+        )}
+        {calls.map(c => (
+          <div key={c.id} className="group flex items-center gap-2 text-[11px]">
+            <button onClick={() => view(c.id)} className="min-w-0 flex-1 text-left hover:text-accent-blue">
+              <div className="truncate text-text-secondary group-hover:text-accent-blue">{c.title}</div>
+              <div className="text-[9px] text-text-dim">{formatDate(c.call_date || c.created_at)}</div>
+            </button>
+            {confirmId === c.id ? (
+              <span className="flex items-center gap-1.5 text-[10px] shrink-0">
+                <button onClick={() => remove(c.id)} className="text-accent-red">Delete</button>
+                <button onClick={() => setConfirmId(null)} className="text-text-muted">Keep</button>
+              </span>
+            ) : (
+              <button onClick={() => setConfirmId(c.id)} title="Delete this call"
+                className="text-text-dim hover:text-accent-red opacity-0 group-hover:opacity-100 shrink-0">
+                <Icon.Trash width={11} height={11} />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      {adding && <PasteInternalCallModal onClose={() => setAdding(false)} onSave={add} />}
+      {viewing && (
+        <Modal title={viewing.title || 'Internal call'} onClose={() => setViewing(null)} width="max-w-2xl">
+          <div className="text-[10px] text-text-dim mb-2">{formatDate(viewing.call_date || viewing.created_at)}</div>
+          <pre className="whitespace-pre-wrap text-[11px] text-text-secondary font-mono leading-relaxed max-h-[60vh] overflow-auto">{viewing.content}</pre>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function PasteInternalCallModal({ onClose, onSave }) {
+  const [title, setTitle] = useState('');
+  const [text, setText] = useState('');
+  const [saving, setSaving] = useState(false);
+  async function save() {
+    if (!text.trim()) return;
+    setSaving(true);
+    try { await onSave({ text, title: title.trim() }); }
+    finally { setSaving(false); }
+  }
+  const input = 'w-full bg-[#040d1c] border border-border rounded px-3 py-2 text-[11px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50';
+  return (
+    <Modal title="Add internal call" onClose={onClose} width="max-w-2xl"
+      footer={<>
+        <button onClick={onClose} className="text-[12px] text-text-muted hover:text-text-primary">Cancel</button>
+        <button onClick={save} disabled={saving || !text.trim()}
+          className="bg-accent-blue/15 text-accent-blue border border-accent-blue/30 rounded px-3 py-1.5 text-[12px] font-medium hover:bg-accent-blue/25 disabled:opacity-40">
+          {saving ? 'Saving…' : 'Add call'}
+        </button>
+      </>}>
+      <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Title, e.g. Deal sync with AE" className={`${input} mb-2`} />
+      <textarea value={text} onChange={e => setText(e.target.value)} rows={16} placeholder="Paste the call transcript or notes…"
+        className={`${input} font-mono leading-relaxed resize-y`} />
+    </Modal>
   );
 }

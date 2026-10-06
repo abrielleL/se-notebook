@@ -1002,6 +1002,25 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_deal_review_answers_account ON deal_review_answers(account_id);
 `);
 
+// Internal calls: AE/SE conversations about a deal, uploaded on the Deal
+// review tab. Deliberately a table of their own rather than a flag on
+// transcripts -- everything that reads transcripts (summary, POV, next steps,
+// CRM snapshot, search) would otherwise have to remember to exclude them, and
+// an internal call is the team's read of a deal, never something to put in
+// front of the customer. The deal review is the only reader.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS internal_calls (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    opportunity_id TEXT NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
+    title TEXT,
+    call_date DATE,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_internal_calls_opportunity ON internal_calls(opportunity_id);
+`);
+
 // Stage and close-date history, for the forecast questions (time in stage,
 // slips). Nothing recorded this before, so history starts now: each
 // opportunity gets a 'baseline' row the first time this runs, and the deal
