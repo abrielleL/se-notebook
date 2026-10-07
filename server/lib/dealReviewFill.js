@@ -15,7 +15,8 @@
 //     as settled context instead.
 
 const db = require('../db/database');
-const { callAnthropicMessage } = require('./anthropic');
+const { callAnthropicMessage, extractJson } = require('./anthropic');
+const llm = require('./llm');
 const { SECTIONS, BY_KEY, APPLIES_LABEL } = require('./dealReviewQuestions');
 
 const MODEL = 'claude-opus-5-5';
@@ -25,6 +26,14 @@ const EFFORT = 'medium';
 // run reports exactly which ones.
 const CORPUS_CHAR_BUDGET = 600000;
 const PARALLEL = 4;
+
+// Running locally, the corpus has to fit the model's context alongside the
+// instructions, the section's questions and the answer. Budgeted at 3 chars a
+// token, more cautious than llm.js's 3.5-char estimate, because transcripts
+// (names, timestamps) tokenize densely and an overflow fails the whole run.
+const LOCAL_MAX_OUTPUT = 6000;
+const LOCAL_RESERVE_TOKENS = 3000; // deal header + section questions + settled answers
+const LOCAL_CHARS_PER_TOKEN = 3;
 
 const SYSTEM_PROMPT = `You are helping an OPSWAT presales solutions engineer prepare a deal review. OPSWAT sells cybersecurity products for critical infrastructure and enterprise IT: MetaDefender (multiscanning, Deep CDR, sandboxing), MetaDefender Kiosk and other removable-media controls, Managed File Transfer, the Unidirectional and Bilateral Security Gateways (data diodes), DLP, and OT/ICS security.
 
@@ -117,14 +126,14 @@ function loadSources(opp) {
 // Keep everything that fits, newest first. Notes are short and always fit in
 // practice; the long items that get dropped are the oldest calls, whose
 // substance has usually been repeated in later ones.
-function fitToBudget(sources) {
+function fitToBudget(sources, budgetChars = CORPUS_CHAR_BUDGET) {
   const byNewest = [...sources].sort((a, b) => String(b.date).localeCompare(String(a.date)));
   let used = 0;
   const kept = new Set();
   const omitted = [];
   for (const s of byNewest) {
     const len = (s.content || '').length + 200;
-    if (used + len <= CORPUS_CHAR_BUDGET) { kept.add(s); used += len; }
+    if (used + len <= budgetChars) { kept.add(s); used += len; }
     else omitted.push(s);
   }
   return { kept: sources.filter(s => kept.has(s)), omitted };
@@ -179,7 +188,22 @@ function sectionPrompt(section, askable, settled) {
   return parts.join('\n');
 }
 
-async function askSection({ key, corpus, section, askable, settled }) {
+async function askSection({ key, corpus, section, askable, settled, local }) {
+  if (local) {
+    // One system message (no cache blocks locally) and the schema passed as an
+    // OpenAI-style response_format, which LM Studio enforces while generating.
+    const text = await llm.callLocal({
+      config: local,
+      system: `${SYSTEM_PROMPT}\n\n${corpus}`,
+      messages: [{ role: 'user', content: sectionPrompt(section, askable, settled) }],
+      max_tokens: LOCAL_MAX_OUTPUT,
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: 'deal_review_section', strict: true, schema: OUTPUT_SCHEMA }
+      }
+    });
+    return { parsed: extractJson(text), usage: {} };
+  }
   const msg = await callAnthropicMessage({
     key,
     model: MODEL,
@@ -235,8 +259,21 @@ async function fillDealReview({ key, opp }) {
     e.status = 400;
     throw e;
   }
-  const { kept: sources, omitted } = fitToBudget(all);
+  // Anthropic or the local model, per Settings → AI models.
+  const local = llm.providerFor('deal_review') === 'local' ? llm.read() : null;
+  const budgetChars = local
+    ? Math.max(0, local.local_context_tokens - llm.estimateTokens(SYSTEM_PROMPT) - LOCAL_RESERVE_TOKENS - LOCAL_MAX_OUTPUT) * LOCAL_CHARS_PER_TOKEN
+    : CORPUS_CHAR_BUDGET;
+  const { kept: sources, omitted } = fitToBudget(all, budgetChars);
+  if (!sources.length) {
+    const e = new Error(local
+      ? 'Even the newest note or transcript is too long for the local model’s context. Load it with a longer context in LM Studio, or run the deal review on Anthropic.'
+      : 'Nothing to read for this deal.');
+    e.status = 400;
+    throw e;
+  }
   const corpus = corpusText(opp, sources);
+  const modelLabel = local ? `local:${local.local_model}` : MODEL;
 
   const existing = {};
   for (const row of db.prepare('SELECT * FROM deal_review_answers WHERE opportunity_id = ?').all(opp.id)) {
@@ -260,7 +297,7 @@ async function fillDealReview({ key, opp }) {
   const errors = [];
   const run = async (job) => {
     try {
-      const r = await askSection({ key, corpus, ...job });
+      const r = await askSection({ key, corpus, local, ...job });
       for (const k of Object.keys(usage)) usage[k] += r.usage[k] || 0;
       return { job, answers: (r.parsed && r.parsed.answers) || [] };
     } catch (e) {
@@ -271,7 +308,8 @@ async function fillDealReview({ key, opp }) {
   };
 
   // The first call writes the cache; running the rest alongside it would have
-  // each of them pay for the whole corpus.
+  // each of them pay for the whole corpus. Locally the sections run one at a
+  // time, so the laptop isn't asked to hold several long prompts at once.
   const [first, ...rest] = jobs;
   const results = [await run(first)];
   // If the first call failed (bad key, rejected request, outage), the rest
@@ -281,18 +319,18 @@ async function fillDealReview({ key, opp }) {
     e.status = /API key|error 40[13]/.test(errors[0].error) ? 400 : 502;
     throw e;
   }
-  results.push(...await inBatches(rest, PARALLEL, run));
+  results.push(...await inBatches(rest, local ? 1 : PARALLEL, run));
 
   const upsert = db.prepare(`
     INSERT INTO deal_review_answers (
       opportunity_id, account_id, question_key, status, answer, evidence,
-      source_type, source_id, source_label, source_date, voice, locked, updated_by, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'ai', CURRENT_TIMESTAMP)
+      source_type, source_id, source_label, source_date, voice, locked, updated_by, ai_model, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'ai', ?, CURRENT_TIMESTAMP)
     ON CONFLICT(opportunity_id, question_key) DO UPDATE SET
       status = excluded.status, answer = excluded.answer, evidence = excluded.evidence,
       source_type = excluded.source_type, source_id = excluded.source_id,
       source_label = excluded.source_label, source_date = excluded.source_date,
-      voice = excluded.voice, updated_by = 'ai', updated_at = CURRENT_TIMESTAMP
+      voice = excluded.voice, updated_by = 'ai', ai_model = excluded.ai_model, updated_at = CURRENT_TIMESTAMP
     WHERE deal_review_answers.locked = 0
   `);
 
@@ -328,7 +366,7 @@ async function fillDealReview({ key, opp }) {
         upsert.run(
           opp.id, opp.account_id, q.key, a.status, (a.answer || '').trim() || null, quote,
           source ? source.type : null, source ? source.id : null,
-          source ? source.label : null, source ? source.date : null, voice
+          source ? source.label : null, source ? source.date : null, voice, modelLabel
         );
         stats.written++;
       }
@@ -343,7 +381,8 @@ async function fillDealReview({ key, opp }) {
     sources_omitted: omitted.map(s => ({ type: s.type, label: s.label, date: s.date })),
     errors,
     usage,
-    model: MODEL
+    model: modelLabel,
+    provider: local ? 'local' : 'anthropic'
   };
 }
 

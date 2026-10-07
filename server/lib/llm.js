@@ -26,8 +26,8 @@ const FEATURES = [
   { key: 'kickoff', label: 'POV kickoff agenda', where: 'POV calendar' },
   { key: 'company_profile', label: 'Company profile from website', where: 'Account page → Company' },
   { key: 'contact_profile', label: 'Contact profile parsing', where: 'Contact drawer → parse profile' },
-  { key: 'deal_review', label: 'Deal review fill', where: 'Deal review → Refresh from notes', localOk: false,
-    reason: 'Reads a whole deal at once (up to ~150k tokens), far past a local model’s context.' },
+  { key: 'deal_review', label: 'Deal review fill',
+    where: 'Deal review → Refresh from notes. Locally it reads only the newest material that fits the model’s context; the refresh says what was skipped.' },
   { key: 'pov', label: 'POV generation', where: 'POV generator', localOk: false,
     reason: 'Kept on Anthropic until local quality is proven on everything else.' }
 ];
@@ -106,7 +106,8 @@ const estimateTokens = (s) => Math.ceil(String(s || '').length / 3.5);
 // Some local models think out loud in <think> tags before answering.
 const stripThinking = (t) => String(t || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
-async function callLocal({ system, messages, max_tokens = 2048, config = read() }) {
+// `response_format` (OpenAI shape) constrains the reply, e.g. to a JSON schema.
+async function callLocal({ system, messages, max_tokens = 2048, config = read(), response_format }) {
   if (!config.local_model) {
     const e = new Error('No local model chosen. Pick one in Settings → Local model.');
     e.status = 400;
@@ -133,7 +134,10 @@ async function callLocal({ system, messages, max_tokens = 2048, config = read() 
     res = await fetch(`${config.local_base_url}/chat/completions`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model: config.local_model, messages: msgs, max_tokens, temperature: 0.3, stream: false }),
+      body: JSON.stringify({
+        model: config.local_model, messages: msgs, max_tokens, temperature: 0.3, stream: false,
+        ...(response_format ? { response_format } : {})
+      }),
       // Local generation on a laptop can take minutes for a long transcript.
       signal: AbortSignal.timeout(10 * 60 * 1000)
     });

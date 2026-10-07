@@ -1001,6 +1001,9 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_deal_review_answers_account ON deal_review_answers(account_id);
 `);
+// Which model wrote an AI answer ('claude-…' or 'local:<model id>'), so
+// answers from a local-model trial can be told apart from Anthropic's.
+addColumn('deal_review_answers', 'ai_model', 'TEXT DEFAULT NULL');
 
 // Internal calls: AE/SE conversations about a deal, uploaded on the Deal
 // review tab. Deliberately a table of their own rather than a flag on

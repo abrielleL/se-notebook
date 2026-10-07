@@ -39,6 +39,8 @@ const FILTERS = [
 ];
 
 const statusOf = (a) => (a && a.status) || 'unanswered';
+// 'local:<model id>' for the local model, a Claude model id otherwise.
+const modelLabel = (m) => (!m ? '' : m.startsWith('local:') ? 'Local model' : 'Claude');
 const isResolved = (s) => s === 'answered' || s === 'clear' || s === 'na';
 const isGap = (s) => s === 'unanswered' || s === 'partial';
 
@@ -184,7 +186,7 @@ function QuestionRow({ question, killer, answer, forecast, appliesLabels, editin
             <div className="flex items-center gap-1.5 mt-1 text-[9px] text-text-dim">
               {answer.voice && <Badge color={answer.voice === 'customer' ? '#4fd15c' : answer.voice === 'team' ? '#5c9bff' : '#838892'}>{VOICE_LABEL[answer.voice]}</Badge>}
               {source && <span>{source}{answer.source_date ? ` · ${formatDate(answer.source_date)}` : ''}</span>}
-              {answer.updated_by === 'ai' && <span>· AI-filled {formatDate(answer.updated_at)}</span>}
+              {answer.updated_by === 'ai' && <span>· AI-filled{answer.ai_model ? ` by ${modelLabel(answer.ai_model)}` : ''} {formatDate(answer.updated_at)}</span>}
             </div>
           )}
         </div>
@@ -205,6 +207,13 @@ export default function DealReview({ accountId, opportunityId, multipleOpportuni
   const [filter, setFilter] = useState('all');
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
+  // Which model a refresh will use, from Settings → AI models.
+  const [reviewModel, setReviewModel] = useState(null);
+  useEffect(() => {
+    api.getLlmSettings().then(r => setReviewModel(r.config.providers.deal_review === 'local'
+      ? { local: true, name: r.config.local_model }
+      : { local: false })).catch(() => {});
+  }, [accountId]);
 
   async function load() {
     try {
@@ -294,7 +303,7 @@ export default function DealReview({ accountId, opportunityId, multipleOpportuni
         <div className="bg-card border border-border rounded-lg p-3">
           <RefreshButton counts={data.source_counts} internalCount={data.internal_calls.length}
             busy={refreshing} onClick={refresh}
-            onExport={exportDocx} exporting={exporting} />
+            onExport={exportDocx} exporting={exporting} model={reviewModel} />
           {multipleOpportunities && (
             <div className="text-[10px] text-text-dim mb-2">Review for <span className="text-text-secondary">{data.opportunity.name}</span></div>
           )}
@@ -403,14 +412,14 @@ function TrackingFootnote({ forecast }) {
 }
 
 function refreshMessage(r) {
-  const parts = [`Filled ${r.written} answer${r.written === 1 ? '' : 's'} from ${r.sources_read} source${r.sources_read === 1 ? '' : 's'}`];
+  const parts = [`${r.provider === 'local' ? 'Local model' : 'Claude'} filled ${r.written} answer${r.written === 1 ? '' : 's'} from ${r.sources_read} source${r.sources_read === 1 ? '' : 's'}`];
   if (r.quotes_dropped) parts.push(`${r.quotes_dropped} quote${r.quotes_dropped === 1 ? '' : 's'} couldn't be found in the source and ${r.quotes_dropped === 1 ? 'was' : 'were'} left out`);
   if (r.sources_omitted.length) parts.push(`${r.sources_omitted.length} older call${r.sources_omitted.length === 1 ? '' : 's'} didn't fit and ${r.sources_omitted.length === 1 ? 'was' : 'were'} skipped`);
   if (r.errors.length) parts.push(`${r.errors.length} section${r.errors.length === 1 ? '' : 's'} failed (${r.errors[0].section}: ${r.errors[0].error.slice(0, 120)})`);
   return parts.join(' · ');
 }
 
-function RefreshButton({ counts, internalCount, busy, onClick, onExport, exporting }) {
+function RefreshButton({ counts, internalCount, busy, onClick, onExport, exporting, model }) {
   const total = counts.notes + counts.transcripts + internalCount;
   const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
   return (
@@ -421,8 +430,15 @@ function RefreshButton({ counts, internalCount, busy, onClick, onExport, exporti
         {busy ? 'Reading the deal…' : 'Refresh from notes'}
       </button>
       <div className="text-[9px] text-text-dim mt-1.5 leading-snug">
+        {model && (
+          <span className={`block mb-0.5 ${model.local ? 'text-accent-green' : 'text-text-muted'}`}>
+            Runs on {model.local ? `the local model${model.name ? ` (${model.name})` : ''} — stays on this Mac` : 'Anthropic'}
+          </span>
+        )}
         {busy
-          ? 'Takes a minute or two. Answers you edited by hand are left alone.'
+          ? (model && model.local
+            ? 'Takes several minutes locally, one section at a time. Answers you edited by hand are left alone.'
+            : 'Takes a minute or two. Answers you edited by hand are left alone.')
           : total
             ? `Reads ${plural(counts.notes, 'note')}, ${plural(counts.transcripts, 'transcript')} and ${plural(internalCount, 'internal call')}. Hand-edited answers are left alone.`
             : 'Add a note, transcript or internal call first.'}

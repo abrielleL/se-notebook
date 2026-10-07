@@ -47,6 +47,8 @@ function sourceLine(a) {
     : (a.source_label || SOURCE_LABEL[a.source_type]);
   if (label) parts.push(label.trim());
   if (a.source_date) parts.push(fmtDate(a.source_date));
+  // Lets two exports of the same deal (local trial vs. Claude) be told apart.
+  if (a.updated_by === 'ai' && a.ai_model) parts.push(`AI: ${a.ai_model.startsWith('local:') ? 'Local model' : 'Claude'}`);
   return parts.join(' · ');
 }
 
