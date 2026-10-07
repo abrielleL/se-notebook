@@ -2,8 +2,6 @@ import { api } from './api.js';
 import { stepOwner } from './constants.js';
 
 export const ANTHROPIC_KEY_STORAGE = 'anthropic_api_key';
-export const ANTHROPIC_MODEL = 'claude-sonnet-4-6';
-export const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 
 export function getApiKey() {
   return localStorage.getItem(ANTHROPIC_KEY_STORAGE) || '';
@@ -11,6 +9,29 @@ export function getApiKey() {
 
 export function hasApiKey() {
   return Boolean(getApiKey());
+}
+
+// Every AI call goes through the server (POST /api/llm/complete), which sends
+// it to Anthropic or the local model depending on the feature's setting. The
+// browser never talks to an AI provider itself, so account data can only
+// leave the machine through a feature you've left on Anthropic.
+async function llmText({ feature, system, user, maxTokens = 1024 }) {
+  const r = await api.llmComplete({ feature, system, user, max_tokens: maxTokens });
+  return r.text || '';
+}
+
+// Whether a feature can run: a local feature needs no key; an Anthropic one
+// does. Settings are read fresh each time so a switch takes effect at once.
+async function canRunFeature(feature) {
+  try {
+    const { config } = await api.getLlmSettings();
+    if (config.providers[feature] === 'local') return true;
+  } catch { /* fall through to the key check */ }
+  return hasApiKey();
+}
+
+async function requireFeature(feature) {
+  if (!(await canRunFeature(feature))) throw new Error('Anthropic API key not set. Add it in Settings.');
 }
 
 // Stage-aware CRM snapshot guidance. Keyed to Sugar CRM presales stages.
@@ -87,7 +108,7 @@ function trimToSentence(text, max) {
 // Ask the model to rewrite an over-long/cut-off note into a complete, in-budget one.
 async function compressSnapshot(text) {
   const system = `Rewrite this CRM note to AT MOST 240 characters. Keep the technical-validation status and the next step. It MUST end with a complete sentence and a period — never trail off. Plain prose, no labels, and do not include any account name or the word "MetaDefender". Return only the rewritten note.`;
-  return generateText({ system, user: text, maxTokens: 256 });
+  return llmText({ feature: 'crm_snapshot', system, user: text, maxTokens: 256 });
 }
 
 // The next-steps half of this contract is a reconciliation, not an append.
@@ -243,43 +264,34 @@ function extractJson(text) {
   throw new Error('Failed to parse JSON from AI response');
 }
 
-export async function runAIExtraction(accountId) {
-  const key = getApiKey();
-  if (!key) throw new Error('Anthropic API key not set. Add it in Settings.');
-
-  const account = await api.getAccount(accountId);
+// The summary request exactly as extraction sends it, so the side-by-side
+// comparison judges the real prompt rather than an approximation of it.
+export function buildSummaryRequest(account) {
   const corpus = buildCorpus(account);
-  if (!corpus.trim()) {
-    throw new Error('No notes or transcripts to analyze yet.');
-  }
+  if (!corpus.trim()) throw new Error('No notes or transcripts to analyze yet.');
   // The open steps travel with the corpus so the model can reconcile against
   // them rather than re-proposing work that's already recorded.
   const stepHandles = openStepHandles(account);
-
-  const body = {
-    model: ANTHROPIC_MODEL,
-    max_tokens: 4096,
+  return {
+    feature: 'summary',
     system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: corpus + renderOpenSteps(stepHandles.byHandle) }]
+    user: corpus + renderOpenSteps(stepHandles.byHandle),
+    maxTokens: 4096,
+    stepHandles
   };
+}
 
-  const res = await fetch(ANTHROPIC_URL, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Anthropic API error ${res.status}: ${text}`);
-  }
-  const json = await res.json();
-  const text = (json.content || []).map(b => b.text || '').join('').trim();
-  const parsed = extractJson(text);
+// Parse a summary reply into its fields (also used by the comparison view).
+export function parseSummaryReply(text) {
+  return extractJson(text);
+}
+
+export async function runAIExtraction(accountId) {
+  await requireFeature('summary');
+
+  const account = await api.getAccount(accountId);
+  const { stepHandles, ...request } = buildSummaryRequest(account);
+  const parsed = extractJson(await llmText(request));
 
   const now = new Date().toISOString();
   await api.updateAccount(accountId, {
@@ -327,8 +339,7 @@ function parseProposedStep(step) {
 // "Consolidate" button on the account page runs. Same contract as the full
 // extraction; the summary fields that come back are simply ignored.
 export async function consolidateNextSteps(accountId) {
-  const key = getApiKey();
-  if (!key) throw new Error('Anthropic API key not set. Add it in Settings.');
+  await requireFeature('summary');
 
   const account = await api.getAccount(accountId);
   const stepHandles = openStepHandles(account);
@@ -337,7 +348,8 @@ export async function consolidateNextSteps(accountId) {
   const corpus = buildCorpus(account);
   if (!corpus.trim()) return { closed: [], assigned: [], added: [], openBefore: stepHandles.open.length };
 
-  const text = await generateText({
+  const text = await llmText({
+    feature: 'summary',
     system: SYSTEM_PROMPT,
     user: corpus + renderOpenSteps(stepHandles.byHandle),
     maxTokens: 4096
@@ -350,27 +362,9 @@ export async function consolidateNextSteps(accountId) {
 
 export const CRM_SNAPSHOT_MAX = 255;
 
-// Generic browser-side Anthropic text call (key stays in the browser).
-export async function generateText({ system, user, maxTokens = 1024 }) {
-  const key = getApiKey();
-  if (!key) throw new Error('Anthropic API key not set. Add it in Settings.');
-  const res = await fetch(ANTHROPIC_URL, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] })
-  });
-  if (!res.ok) throw new Error(`Anthropic API error ${res.status}: ${await res.text()}`);
-  const json = await res.json();
-  return (json.content || []).map(b => b.text || '').join('').trim();
-}
-
 export function generateKickoffAgenda(context) {
-  return generateText({
+  return llmText({
+    feature: 'kickoff',
     maxTokens: 1024,
     system: 'You are an OPSWAT Solutions Engineer creating a focused 45-minute POV kickoff agenda with explicit time slots (e.g. "0:00–0:05 Introductions"). Return only the agenda, no preamble.',
     user: context
@@ -391,39 +385,30 @@ function buildSnapshotCorpus(account) {
     .join('\n\n');
 }
 
-export async function generateCRMSnapshot(accountId) {
-  const key = getApiKey();
-  if (!key) throw new Error('Anthropic API key not set. Add it in Settings.');
-
-  const account = await api.getAccount(accountId);
+export function buildSnapshotRequest(account) {
   const corpus = buildSnapshotCorpus(account);
   if (!corpus.trim() || (!(account.notes || []).length && !(account.transcripts || []).length)) {
     throw new Error('No notes or transcripts to summarize yet.');
   }
-
-  const body = {
-    model: ANTHROPIC_MODEL,
-    max_tokens: 512,
+  return {
+    feature: 'crm_snapshot',
     system: buildSnapshotSystemPrompt(account.presales_stage),
-    messages: [{ role: 'user', content: `Account notes and transcripts:\n\n${corpus}` }]
+    user: `Account notes and transcripts:\n\n${corpus}`,
+    maxTokens: 512
   };
+}
 
-  const res = await fetch(ANTHROPIC_URL, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Anthropic API error ${res.status}: ${text}`);
-  }
-  const json = await res.json();
-  const raw = (json.content || []).map(b => b.text || '').join('');
+// The same cleanup the saved snapshot gets, minus the compress retry, for the
+// comparison view.
+export function tidySnapshotReply(raw, accountName) {
+  return tidySnapshot(raw, accountName);
+}
+
+export async function generateCRMSnapshot(accountId) {
+  await requireFeature('crm_snapshot');
+
+  const account = await api.getAccount(accountId);
+  const raw = await llmText(buildSnapshotRequest(account));
   let text = tidySnapshot(raw, account.account_name);
 
   // Guarantee a complete, in-budget snapshot. If it exceeds the ceiling or got
@@ -460,7 +445,7 @@ export async function runAIWithSnapshot(accountId) {
 //   4. Deal intelligence merge + contact extraction    [server, key forwarded]
 // Returns a summary used for the "Note saved. X fields updated." toast.
 export async function runFullExtraction(accountId, noteId, transcriptId) {
-  const key = getApiKey();
+  const [summaryOk, snapshotOk] = await Promise.all([canRunFeature('summary'), canRunFeature('crm_snapshot')]);
   const body = {};
   if (noteId) body.note_id = noteId;
   if (transcriptId) body.transcript_id = transcriptId;
@@ -476,7 +461,7 @@ export async function runFullExtraction(accountId, noteId, transcriptId) {
   let summaryError = null;
   let stepChanges = { closed: [], added: [], assigned: [] };
   const aiTasks = [];
-  if (key) {
+  if (summaryOk) {
     aiTasks.push(runAIExtraction(accountId).then(acct => {
       // Reconciliation happens inside runAIExtraction; carry the outcome out so
       // the toast can say what was closed rather than leaving the list to
@@ -488,6 +473,8 @@ export async function runFullExtraction(accountId, noteId, transcriptId) {
       summaryError = e.message || String(e);
       return null;
     }));
+  }
+  if (snapshotOk) {
     aiTasks.push(generateCRMSnapshot(accountId).catch(e => { console.warn('Snapshot failed:', e); return null; }));
   }
   const [serverRes] = await Promise.all([serverPromise, ...aiTasks]);
@@ -495,7 +482,7 @@ export async function runFullExtraction(accountId, noteId, transcriptId) {
   return {
     fieldsUpdated: serverRes ? (serverRes.fields_updated || []) : [],
     contacts: serverRes ? (serverRes.contacts || []) : [],
-    hasKey: Boolean(key),
+    hasKey: summaryOk,
     summaryError,
     stepsClosed: stepChanges.closed,
     stepsAdded: stepChanges.added,

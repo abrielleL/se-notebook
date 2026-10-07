@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db/database');
-const { callAnthropic, getKey, extractJson, DEFAULT_MODEL } = require('../lib/anthropic');
+const { getKey, extractJson } = require('../lib/anthropic');
+const llm = require('../lib/llm');
 const { normalizeName, nameKey, tokenCount } = require('../lib/contactNames');
 const { upsertContact } = require('../lib/contactStore');
 const dealIntel = require('./dealIntelligence');
@@ -218,8 +219,8 @@ No explanation, JSON only.`;
 
   let parsed = {};
   try {
-    const text = await callAnthropic({
-      key, model: DEFAULT_MODEL, max_tokens: 1200, system,
+    const text = await llm.completeText({
+      feature: 'participants', key, max_tokens: 1200, system,
       messages: [{ role: 'user', content: userContent }]
     });
     parsed = extractJson(text);
@@ -326,8 +327,8 @@ async function runDealIntel(accountId, key, latestBlocks, priorBlocks, sourceNot
 
   const fieldsUpdated = [];
   try {
-    const text = await callAnthropic({
-      key, model: DEFAULT_MODEL, max_tokens: 1500,
+    const text = await llm.completeText({
+      feature: 'qualification', key, max_tokens: 1500,
       system: DEAL_INTEL_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userContent }]
     });
@@ -399,18 +400,20 @@ router.post('/accounts/:id/run-extraction', async (req, res, next) => {
     let contacts = [];
     let fieldsUpdated = [];
 
-    // --- Contacts (notes are heuristic and free; transcripts need the key) ---
+    // --- Contacts (notes are heuristic and free; transcripts need a model:
+    // the local one, or Anthropic with a key) ---
     if (latestNote) {
       contacts = contacts.concat(extractContacts(req.params.id, latestNote.raw_notes, notes));
     }
-    if (latestTranscript && latestTranscript.content && key) {
+    if (latestTranscript && latestTranscript.content && llm.canRun('participants', key)) {
       contacts = contacts.concat(
         await extractTranscriptContacts(req.params.id, latestTranscript.content, key, notes)
       );
     }
 
-    // --- Qualification fields (needs the key) ---
-    if (key && (latestNote || latestTranscript)) {
+    // --- Qualification fields (needs a model) ---
+    const qualificationRan = llm.canRun('qualification', key) && Boolean(latestNote || latestTranscript);
+    if (qualificationRan) {
       const latestBlocks = [];
       if (latestNote) latestBlocks.push(noteBlock(latestNote, 'LATEST'));
       if (latestTranscript) {
@@ -432,11 +435,11 @@ router.post('/accounts/:id/run-extraction', async (req, res, next) => {
       );
     }
 
-    // Clear the pending flags only when a key was actually available, i.e. when
-    // the qualification pass above really ran. Clearing them on a keyless
+    // Clear the pending flags only when the qualification pass above really
+    // ran (a local model, or Anthropic with a key). Clearing them on a keyless
     // request would burn the retry and lose the extraction silently -- the note
     // would look processed but no fields would ever be filled.
-    if (key && latestNote) {
+    if (qualificationRan && latestNote) {
       db.prepare('UPDATE notes SET pending_ai_extraction = 0 WHERE account_id = ? AND pending_ai_extraction = 1')
         .run(req.params.id);
     }
@@ -500,7 +503,7 @@ router.post('/accounts/:id/company-profile', async (req, res, next) => {
     // Checked before the fetch, not after: there is no point reading someone's
     // website if we can't summarize it once we have it.
     const key = getKey(req);
-    if (!key) {
+    if (!llm.canRun('company_profile', key)) {
       return res.status(400).json({ error: 'Anthropic API key required. Add it in Settings.' });
     }
 
@@ -512,8 +515,8 @@ router.post('/accounts/:id/company-profile', async (req, res, next) => {
       });
     }
 
-    const reply = await callAnthropic({
-      key, model: DEFAULT_MODEL, max_tokens: 400,
+    const reply = await llm.completeText({
+      feature: 'company_profile', key, max_tokens: 400,
       system: COMPANY_PROFILE_SYSTEM,
       messages: [{
         role: 'user',

@@ -19,15 +19,18 @@ app.use(cors({
 }));
 
 // Security headers, incl. a Content-Security-Policy. Allows: same-origin assets,
-// Google Fonts (JetBrains Mono), direct browser→Anthropic API calls, and inline
-// styles (React style props / charts). No inline scripts are used by the app.
+// Google Fonts (JetBrains Mono), and inline styles (React style props /
+// charts). No inline scripts are used by the app. connect-src is same-origin
+// only: every AI call goes through the server (routes/llm.js), which picks
+// Anthropic or the local model per feature, so the browser itself can't send
+// account data anywhere.
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: blob:",
-  "connect-src 'self' https://api.anthropic.com",
+  "connect-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",
   "frame-ancestors 'none'"
@@ -57,6 +60,7 @@ app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api', require('./routes/crmSnapshots'));
 app.use('/api', require('./routes/dealIntelligence'));
 app.use('/api', require('./routes/dealReview'));
+app.use('/api', require('./routes/llm'));
 app.use('/api', require('./routes/stageGate'));
 app.use('/api', require('./routes/povConfig'));
 app.use('/api', require('./routes/tags'));

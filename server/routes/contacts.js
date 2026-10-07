@@ -7,7 +7,8 @@ const {
 } = require('../lib/contactStore');
 const { syncPrimaryAccount } = require('../db/contactsMigration');
 const { normalizeLinkedInUrl } = require('../lib/linkedin');
-const { callAnthropic, getKey, extractJson, DEFAULT_MODEL } = require('../lib/anthropic');
+const { getKey, extractJson } = require('../lib/anthropic');
+const llm = require('../lib/llm');
 
 const router = express.Router();
 
@@ -347,12 +348,12 @@ router.post('/:id/parse-profile', async (req, res, next) => {
     if (text.length < 20) return res.status(400).json({ error: 'That is too short to parse.' });
 
     const key = getKey(req);
-    if (!key) return res.status(400).json({ error: 'Add your Anthropic API key in Settings to parse profiles.' });
+    if (!llm.canRun('contact_profile', key)) return res.status(400).json({ error: 'Add your Anthropic API key in Settings to parse profiles.' });
 
     let parsed = {};
     try {
-      const raw = await callAnthropic({
-        key, model: DEFAULT_MODEL, max_tokens: 700,
+      const raw = await llm.completeText({
+        feature: 'contact_profile', key, max_tokens: 700,
         system: PROFILE_SYSTEM_PROMPT,
         messages: [{ role: 'user', content: text.slice(0, 12000) }]
       });

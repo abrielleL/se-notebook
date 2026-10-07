@@ -199,6 +199,14 @@ export const api = {
   clearDealReviewAnswer: (accountId, key, opportunityId) =>
     request(`/api/accounts/${accountId}/deal-review/${encodeURIComponent(key)}${opportunityId ? `?opportunity_id=${encodeURIComponent(opportunityId)}` : ''}`, { method: 'DELETE' }),
 
+  // AI routing (Anthropic vs local model, per feature)
+  getLlmSettings: () => request('/api/llm/settings'),
+  saveLlmSettings: (body) => request('/api/llm/settings', { method: 'PUT', body: json(body) }),
+  listLocalModels: (baseUrl) => request(`/api/llm/models${baseUrl ? `?base_url=${encodeURIComponent(baseUrl)}` : ''}`),
+  testLocalModel: (body) => request('/api/llm/test', { method: 'POST', body: json(body) }),
+  llmComplete: (body) => request('/api/llm/complete', { method: 'POST', headers: aiHeaders(), body: json(body) }),
+  llmCompare: (body) => request('/api/llm/compare', { method: 'POST', headers: aiHeaders(), body: json(body) }),
+
   // stage gates
   getStageGates: (accountId, stage) => request(`/api/accounts/${accountId}/stage-gates/${encodeURIComponent(stage)}`),
   updateStageGate: (accountId, stage, gateKey, completed) =>

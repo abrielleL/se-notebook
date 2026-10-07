@@ -16,6 +16,7 @@ import AeNameInput from '../components/AeNameInput.jsx';
 import OpportunityBar, { NewOpportunityModal } from '../components/OpportunityBar.jsx';
 import StatusNote from '../components/StatusNote.jsx';
 import DealReview from '../components/DealReview.jsx';
+import ModelCompareModal from '../components/ModelCompare.jsx';
 import ContactDrawer, { ContactTypeBadge } from '../components/ContactDrawer.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { useOnline } from '../lib/offline.jsx';
@@ -115,6 +116,7 @@ export default function AccountDetail() {
   const [tab, setTab] = useState('overview');
   const autoPicked = useRef(null);
   const [extracting, setExtracting] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
   const [tagCatalog, setTagCatalog] = useState([]);
   useEffect(() => { api.listTags().then(setTagCatalog).catch(() => {}); }, []);
   // Candidates for the partner-link picker: every other account, split by type.
@@ -536,7 +538,13 @@ export default function AccountDetail() {
           {/* CENTER */}
           <div className="flex flex-col gap-3 min-w-0">
             <Section title="AI summary" icon={Icon.Sparkles}
-              right={account.ai_summary_updated_at && <span className="text-[10px] text-text-dim">{formatDate(account.ai_summary_updated_at)}</span>}>
+              right={
+                <span className="flex items-center gap-2">
+                  {account.ai_summary_updated_at && <span className="text-[10px] text-text-dim">{formatDate(account.ai_summary_updated_at)}</span>}
+                  <button onClick={() => setCompareOpen(true)} title="Run this account through Anthropic and the local model side by side (nothing is saved)"
+                    className="text-[10px] text-text-dim hover:text-accent-blue">Compare</button>
+                </span>
+              }>
               <div className="text-[11px] text-text-secondary mb-3 max-h-32 overflow-hidden">
                 {account.ai_summary ? <Markdown>{account.ai_summary}</Markdown> : <span className="text-text-dim">No summary yet.</span>}
               </div>
@@ -632,6 +640,7 @@ export default function AccountDetail() {
       </div>
       )}
 
+      {compareOpen && <ModelCompareModal accountId={id} onClose={() => setCompareOpen(false)} />}
       {drawer && <FieldDrawer title={drawer.title} value={drawer.value} history={drawer.history} footNote={drawer.footNote}
         onSave={async (t) => { await drawer.save(t); }} onClose={() => setDrawer(null)} />}
       {exportOpen && <AccountExportModal accountId={id} accountName={account.account_name} account={account} di={di} snapshot={snapshots[0]} pov={activePov} onClose={() => setExportOpen(false)} />}

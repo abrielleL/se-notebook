@@ -8,6 +8,7 @@ import AeSettings from './AeSettings.jsx';
 import CompanyProfileSettings from './CompanyProfileSettings.jsx';
 import BackupSettings from './BackupSettings.jsx';
 import DocsSyncSettings from './DocsSyncSettings.jsx';
+import LocalModelSettings from './LocalModelSettings.jsx';
 
 export default function Settings() {
   const [value, setValue] = useState(localStorage.getItem(ANTHROPIC_KEY_STORAGE) || '');
@@ -40,8 +41,8 @@ export default function Settings() {
       <Card className="p-6">
         <div className="text-[13px] font-medium text-text-primary mb-1">Anthropic API Key</div>
         <p className="text-[12px] text-text-muted mb-4 leading-relaxed">
-          Your key is stored only in your browser and sent directly to Anthropic. It never touches this server.
-          Create one at <span className="text-accent-blue">console.anthropic.com</span>.
+          Your key is stored only in your browser. It’s passed to this app’s server with each AI request that
+          runs on Anthropic and never saved there. Create one at <span className="text-accent-blue">console.anthropic.com</span>.
         </p>
         <input
           type="password"
@@ -70,6 +71,8 @@ export default function Settings() {
           className="w-full bg-[#040d1c] border border-border rounded px-3 py-2 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50"
         />
       </Card>
+
+      <LocalModelSettings />
 
       <DocsSyncSettings />
 
