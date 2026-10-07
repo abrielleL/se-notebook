@@ -204,6 +204,10 @@ export const api = {
   saveLlmSettings: (body) => request('/api/llm/settings', { method: 'PUT', body: json(body) }),
   listLocalModels: (baseUrl) => request(`/api/llm/models${baseUrl ? `?base_url=${encodeURIComponent(baseUrl)}` : ''}`),
   testLocalModel: (body) => request('/api/llm/test', { method: 'POST', body: json(body) }),
+  // Tests a typed (possibly unsaved) key without storing it anywhere.
+  testAnthropic: (key) => request('/api/llm/test-anthropic', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-anthropic-key': key }, body: json({})
+  }),
   llmComplete: (body) => request('/api/llm/complete', { method: 'POST', headers: aiHeaders(), body: json(body) }),
   llmCompare: (body) => request('/api/llm/compare', { method: 'POST', headers: aiHeaders(), body: json(body) }),
 

@@ -1,6 +1,6 @@
 const express = require('express');
 const llm = require('../lib/llm');
-const { getKey } = require('../lib/anthropic');
+const { getKey, callAnthropic, DEFAULT_MODEL } = require('../lib/anthropic');
 
 const router = express.Router();
 
@@ -41,6 +41,27 @@ router.post('/llm/test', async (req, res) => {
     res.json({ ok: true, reply: text, ms: Date.now() - started, model: config.local_model });
   } catch (e) {
     res.status(e.status && e.status < 500 ? e.status : 502).json({ error: e.message });
+  }
+});
+
+// Same check for Anthropic, using the key in the request header (the one
+// typed in Settings, which may not be saved yet).
+router.post('/llm/test-anthropic', async (req, res) => {
+  const key = getKey(req);
+  if (!key) return res.status(400).json({ error: 'Enter an API key first.' });
+  const started = Date.now();
+  try {
+    const reply = await callAnthropic({
+      key, model: DEFAULT_MODEL, max_tokens: 20,
+      system: 'Reply with exactly the words: Anthropic ready',
+      messages: [{ role: 'user', content: 'Ready?' }]
+    });
+    res.json({ ok: true, reply, ms: Date.now() - started, model: DEFAULT_MODEL });
+  } catch (e) {
+    // Anthropic's 401 body is long JSON; the status is what matters here.
+    const m = /error (\d{3})/.exec(e.message);
+    const msg = m && m[1] === '401' ? 'Anthropic rejected this key (401). Check it was copied in full.' : e.message;
+    res.status(400).json({ error: msg.slice(0, 400) });
   }
 });
 

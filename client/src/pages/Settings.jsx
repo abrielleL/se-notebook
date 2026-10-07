@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { ANTHROPIC_KEY_STORAGE } from '../lib/ai.js';
 import { api } from '../lib/api.js';
 import Card from '../components/Card.jsx';
 import PovConfigSettings from './PovConfigSettings.jsx';
@@ -11,10 +10,10 @@ import DocsSyncSettings from './DocsSyncSettings.jsx';
 import LocalModelSettings from './LocalModelSettings.jsx';
 
 export default function Settings() {
-  const [value, setValue] = useState(localStorage.getItem(ANTHROPIC_KEY_STORAGE) || '');
   const [saved, setSaved] = useState(false);
-  // Server-side, unlike the API key: the POV docx is rendered on the server and
-  // needs this name for the Solutions Engineer line on the cover.
+  // Server-side, unlike the API key (which lives in the AI models section): the
+  // POV docx is rendered on the server and needs this name for the Solutions
+  // Engineer line on the cover.
   const [seName, setSeName] = useState('');
 
   useEffect(() => {
@@ -22,15 +21,9 @@ export default function Settings() {
   }, []);
 
   async function save() {
-    localStorage.setItem(ANTHROPIC_KEY_STORAGE, value.trim());
-    try { await api.saveSeProfile({ name: seName.trim() }); } catch { /* key still saved */ }
+    try { await api.saveSeProfile({ name: seName.trim() }); } catch { return; }
     setSaved(true);
     setTimeout(() => setSaved(false), 2200);
-  }
-
-  function clear() {
-    localStorage.removeItem(ANTHROPIC_KEY_STORAGE);
-    setValue('');
   }
 
   return (
@@ -38,25 +31,7 @@ export default function Settings() {
       <h1 className="text-xl font-semibold text-text-primary mb-1">Settings</h1>
       <div className="text-[12px] text-text-muted mb-6">Local configuration. Nothing leaves this machine except the calls you make.</div>
 
-      <Card className="p-6">
-        <div className="text-[13px] font-medium text-text-primary mb-1">Anthropic API Key</div>
-        <p className="text-[12px] text-text-muted mb-4 leading-relaxed">
-          Your key is stored only in your browser. It’s passed to this app’s server with each AI request that
-          runs on Anthropic and never saved there. Create one at <span className="text-accent-blue">console.anthropic.com</span>.
-        </p>
-        <input
-          type="password"
-          value={value}
-          onChange={e => setValue(e.target.value)}
-          placeholder="sk-ant-..."
-          className="w-full bg-[#040d1c] border border-border rounded px-3 py-2 text-[12px] text-text-primary placeholder-text-dim font-mono focus:outline-none focus:border-accent-blue/50"
-        />
-        {value && (
-          <button onClick={clear} className="text-[12px] text-text-muted hover:text-accent-red mt-3">
-            Clear key
-          </button>
-        )}
-      </Card>
+      <LocalModelSettings />
 
       <Card className="p-6 mt-4">
         <div className="text-[13px] font-medium text-text-primary mb-1">Your name</div>
@@ -71,8 +46,6 @@ export default function Settings() {
           className="w-full bg-[#040d1c] border border-border rounded px-3 py-2 text-[12px] text-text-primary placeholder-text-dim focus:outline-none focus:border-accent-blue/50"
         />
       </Card>
-
-      <LocalModelSettings />
 
       <DocsSyncSettings />
 
