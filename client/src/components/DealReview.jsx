@@ -29,8 +29,10 @@ const VOICE_OPTIONS = [
   { value: 'team', label: 'Team’s read' },
   { value: 'inferred', label: 'Inferred' }
 ];
-const VOICE_LABEL = { customer: 'Customer’s words', team: 'Team’s read', inferred: 'Inferred' };
-const SOURCE_LABEL = { note: 'Note', transcript: 'Transcript', internal_call: 'Internal call', manual: 'Added by hand' };
+const VOICE_LABEL = { customer: 'Customer’s words', team: 'Team’s read', inferred: 'Inferred', app: 'From records' };
+// Who an excerpt came from, as stage 1 attributed it.
+const SIDE_LABEL = { customer: 'Customer', opswat: 'OPSWAT', partner: 'Partner', note: 'SE note', internal: 'Internal call', unknown: 'Unknown speaker' };
+const SOURCE_LABEL = { note: 'Note', transcript: 'Transcript', internal_call: 'Internal call', manual: 'Added by hand', app: 'Notebook records' };
 
 const FILTERS = [
   { value: 'all', label: 'All' },
@@ -40,7 +42,36 @@ const FILTERS = [
 
 const statusOf = (a) => (a && a.status) || 'unanswered';
 // 'local:<model id>' for the local model, a Claude model id otherwise.
-const modelLabel = (m) => (!m ? '' : m.startsWith('local:') ? 'Local model' : 'Claude');
+const modelLabel = (m) => (!m ? '' : m === 'app' ? 'notebook records' : m.startsWith('local:') ? 'Local model' : 'Claude');
+
+const citedIds = (a) => { try { return JSON.parse(a.evidence_ids || '[]'); } catch { return []; } };
+
+// The excerpts an answer cites, behind a toggle -- the full evidence, not just
+// the one quote shown.
+function CitedExcerpts({ answer, evidence }) {
+  const [open, setOpen] = useState(false);
+  const items = citedIds(answer).map(id => evidence[id]).filter(Boolean);
+  if (items.length < 2) return null;
+  return (
+    <div className="mt-1" onClick={e => e.stopPropagation()}>
+      <button onClick={() => setOpen(o => !o)} className="text-[9px] text-accent-blue hover:underline">
+        {open ? 'Hide' : 'Show'} all {items.length} excerpts
+      </button>
+      {open && (
+        <div className="mt-1 flex flex-col gap-1.5">
+          {items.map(e => (
+            <div key={e.id} className="text-[10px] border-l-2 border-border pl-2">
+              <div className="text-text-muted italic">“{e.excerpt}”</div>
+              <div className="text-[9px] text-text-dim">
+                {SIDE_LABEL[e.speaker_side] || 'Unknown'}{e.speaker ? ` — ${e.speaker}` : ''} · {e.source_type === 'note' ? 'Note' : e.source_label}{e.source_date ? ` · ${formatDate(e.source_date)}` : ''}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 const isResolved = (s) => s === 'answered' || s === 'clear' || s === 'na';
 const isGap = (s) => s === 'unanswered' || s === 'partial';
 
@@ -150,7 +181,7 @@ function AnswerEditor({ question, killer, answer, onSave, onClear, onCancel }) {
   );
 }
 
-function QuestionRow({ question, killer, answer, forecast, appliesLabels, editing, onEdit, onSave, onClear, onUnlock }) {
+function QuestionRow({ question, killer, answer, forecast, appliesLabels, evidence, editing, onEdit, onSave, onClear, onUnlock }) {
   const status = statusOf(answer);
   const computed = question.computed ? computedText(question.computed, forecast) : null;
   const source = answer && (answer.source_label || SOURCE_LABEL[answer.source_type]);
@@ -184,11 +215,12 @@ function QuestionRow({ question, killer, answer, forecast, appliesLabels, editin
           )}
           {!editing && answer && (answer.voice || source || answer.updated_by === 'ai') && (
             <div className="flex items-center gap-1.5 mt-1 text-[9px] text-text-dim">
-              {answer.voice && <Badge color={answer.voice === 'customer' ? '#4fd15c' : answer.voice === 'team' ? '#5c9bff' : '#838892'}>{VOICE_LABEL[answer.voice]}</Badge>}
+              {answer.voice && <Badge color={answer.voice === 'customer' ? '#4fd15c' : answer.voice === 'team' ? '#5c9bff' : answer.voice === 'app' ? '#8f47e8' : '#838892'}>{VOICE_LABEL[answer.voice]}</Badge>}
               {source && <span>{source}{answer.source_date ? ` · ${formatDate(answer.source_date)}` : ''}</span>}
-              {answer.updated_by === 'ai' && <span>· AI-filled{answer.ai_model ? ` by ${modelLabel(answer.ai_model)}` : ''} {formatDate(answer.updated_at)}</span>}
+              {answer.updated_by === 'ai' && <span>· {answer.ai_model === 'app' ? 'Set' : 'AI-filled'}{answer.ai_model ? ` by ${modelLabel(answer.ai_model)}` : ''} {formatDate(answer.updated_at)}</span>}
             </div>
           )}
+          {!editing && answer && evidence && <CitedExcerpts answer={answer} evidence={evidence} />}
         </div>
       </div>
       {editing && (
@@ -206,13 +238,14 @@ export default function DealReview({ accountId, opportunityId, multipleOpportuni
   const [editingKey, setEditingKey] = useState(null);
   const [filter, setFilter] = useState('all');
   const [refreshing, setRefreshing] = useState(false);
+  const [progress, setProgress] = useState(null);
   const [exporting, setExporting] = useState(false);
   // Which model a refresh will use, from Settings → AI models.
   const [reviewModel, setReviewModel] = useState(null);
   useEffect(() => {
     api.getLlmSettings().then(r => setReviewModel(r.config.providers.deal_review === 'local'
-      ? { local: true, name: r.config.local_model }
-      : { local: false })).catch(() => {});
+      ? { local: true, name: r.config.local_model, method: r.config.deal_review_method }
+      : { local: false, method: r.config.deal_review_method })).catch(() => {});
   }, [accountId]);
 
   async function load() {
@@ -248,13 +281,20 @@ export default function DealReview({ accountId, opportunityId, multipleOpportuni
 
   async function refresh() {
     setRefreshing(true);
+    setProgress(null);
+    // Poll where the run has got to; a local run takes several minutes.
+    const timer = setInterval(() => {
+      api.getDealReviewProgress(accountId, oppId).then(r => setProgress(r.progress)).catch(() => {});
+    }, 2000);
     try {
       const r = await api.refreshDealReview(accountId, oppId);
-      setData(d => ({ ...d, answers: r.answers }));
+      setData(d => ({ ...d, answers: r.answers, evidence: r.evidence || d.evidence }));
       toast(refreshMessage(r), r.errors.length ? 'warn' : 'success');
     } catch (e) {
       toast(`Refresh failed: ${e.message}`, 'error');
     } finally {
+      clearInterval(timer);
+      setProgress(null);
       setRefreshing(false);
     }
   }
@@ -302,8 +342,9 @@ export default function DealReview({ accountId, opportunityId, multipleOpportuni
       <div className="flex flex-col gap-3 min-w-0 self-start sticky top-0">
         <div className="bg-card border border-border rounded-lg p-3">
           <RefreshButton counts={data.source_counts} internalCount={data.internal_calls.length}
-            busy={refreshing} onClick={refresh}
+            busy={refreshing} onClick={refresh} progress={progress}
             onExport={exportDocx} exporting={exporting} model={reviewModel} />
+          <RolesHint people={data.people} />
           {multipleOpportunities && (
             <div className="text-[10px] text-text-dim mb-2">Review for <span className="text-text-secondary">{data.opportunity.name}</span></div>
           )}
@@ -362,7 +403,7 @@ export default function DealReview({ accountId, opportunityId, multipleOpportuni
           if (filter !== 'all' && !showHead && !shownDeeper.length) return null;
           const row = (q) => (
             <QuestionRow key={q.key} question={q} killer={s.killer && !q.headline} answer={answers[q.key]}
-              forecast={data.forecast} appliesLabels={data.applies_labels}
+              forecast={data.forecast} appliesLabels={data.applies_labels} evidence={data.evidence}
               editing={editingKey === q.key}
               onEdit={(k = q.key) => setEditingKey(k)}
               onSave={(body) => save(q.key, body)}
@@ -412,6 +453,16 @@ function TrackingFootnote({ forecast }) {
 }
 
 function refreshMessage(r) {
+  if (r.method === 'evidence') {
+    const who = r.provider === 'local' ? 'Local model' : 'Claude';
+    const parts = [`${who} filled ${r.written} answer${r.written === 1 ? '' : 's'} from ${r.excerpts_total} excerpt${r.excerpts_total === 1 ? '' : 's'}`];
+    parts.push(r.sources_read ? `read ${r.sources_read} new or changed source${r.sources_read === 1 ? '' : 's'}` : 'no sources needed re-reading');
+    if (r.downgraded) parts.push(`${r.downgraded} answer${r.downgraded === 1 ? '' : 's'} marked partial for lack of support`);
+    if (r.from_records) parts.push(`${r.from_records} red flag${r.from_records === 1 ? '' : 's'} set from the notebook’s records`);
+    if (r.excerpts_left_out) parts.push(`${r.excerpts_left_out} excerpt${r.excerpts_left_out === 1 ? '' : 's'} didn’t fit the model’s context`);
+    if (r.errors.length) parts.push(`${r.errors.length} step${r.errors.length === 1 ? '' : 's'} failed (${r.errors[0].section}: ${r.errors[0].error.slice(0, 120)})`);
+    return parts.join(' · ');
+  }
   const parts = [`${r.provider === 'local' ? 'Local model' : 'Claude'} filled ${r.written} answer${r.written === 1 ? '' : 's'} from ${r.sources_read} source${r.sources_read === 1 ? '' : 's'}`];
   if (r.quotes_dropped) parts.push(`${r.quotes_dropped} quote${r.quotes_dropped === 1 ? '' : 's'} couldn't be found in the source and ${r.quotes_dropped === 1 ? 'was' : 'were'} left out`);
   if (r.sources_omitted.length) parts.push(`${r.sources_omitted.length} older call${r.sources_omitted.length === 1 ? '' : 's'} didn't fit and ${r.sources_omitted.length === 1 ? 'was' : 'were'} skipped`);
@@ -419,7 +470,7 @@ function refreshMessage(r) {
   return parts.join(' · ');
 }
 
-function RefreshButton({ counts, internalCount, busy, onClick, onExport, exporting, model }) {
+function RefreshButton({ counts, internalCount, busy, onClick, onExport, exporting, model, progress }) {
   const total = counts.notes + counts.transcripts + internalCount;
   const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
   return (
@@ -427,7 +478,11 @@ function RefreshButton({ counts, internalCount, busy, onClick, onExport, exporti
       <button onClick={onClick} disabled={busy || !total}
         className="w-full flex items-center justify-center gap-1.5 bg-accent-blue/15 text-accent-blue border border-accent-blue/30 rounded px-3 py-1.5 text-[12px] font-medium hover:bg-accent-blue/25 disabled:opacity-50">
         <Icon.Sparkles width={12} height={12} />
-        {busy ? 'Reading the deal…' : 'Refresh from notes'}
+        {busy
+          ? (progress && progress.total
+            ? `${progress.stage === 'reading' ? 'Reading sources' : 'Answering sections'} ${progress.done}/${progress.total}…`
+            : progress && progress.stage === 'answering' ? 'Answering sections…' : 'Reading the deal…')
+          : 'Refresh from notes'}
       </button>
       <div className="text-[9px] text-text-dim mt-1.5 leading-snug">
         {model && (
@@ -560,5 +615,20 @@ function PasteInternalCallModal({ onClose, onSave }) {
       <textarea value={text} onChange={e => setText(e.target.value)} rows={16} placeholder="Paste the call transcript or notes…"
         className={`${input} font-mono leading-relaxed resize-y`} />
     </Modal>
+  );
+}
+
+// The review leans on contact roles (who decides, who champions). Say so when
+// they're missing rather than letting the answers quietly suffer.
+function RolesHint({ people }) {
+  if (!people) return null;
+  const missing = [!people.has_decision_maker && 'decision maker', !people.has_champion && 'champion'].filter(Boolean);
+  if (!missing.length) return null;
+  return (
+    <div className="text-[9px] text-accent-yellow leading-snug mb-3 -mt-1">
+      {people.customer_contacts
+        ? `No ${missing.join(' or ')} is marked among this account’s ${people.customer_contacts} customer contact${people.customer_contacts === 1 ? '' : 's'}. Set roles on Overview → Contacts; the review uses them.`
+        : 'No customer contacts on this account yet. Add them on Overview → Contacts; the review uses their roles.'}
+    </div>
   );
 }

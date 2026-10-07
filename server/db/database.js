@@ -1004,6 +1004,81 @@ db.exec(`
 // Which model wrote an AI answer ('claude-…' or 'local:<model id>'), so
 // answers from a local-model trial can be told apart from Anthropic's.
 addColumn('deal_review_answers', 'ai_model', 'TEXT DEFAULT NULL');
+// JSON array of the evidence ids ("E12") and app facts ("F3") an answer cites.
+addColumn('deal_review_answers', 'evidence_ids', 'TEXT DEFAULT NULL');
+
+// Evidence-based deal review (lib/dealReviewEvidence.js).
+//
+// Stage 1 reads each source on its own and keeps short verbatim excerpts per
+// review section, each one verified against the source text and attributed
+// to a speaker. They are kept per provider so a local-model trial and Claude
+// each answer from their own reading, and per source content hash so a
+// refresh only re-reads sources that are new or changed.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS deal_review_evidence (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    opportunity_id TEXT NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    source_label TEXT,
+    source_date TEXT,
+    section_key TEXT NOT NULL,
+    excerpt TEXT NOT NULL,
+    context TEXT,
+    speaker TEXT,
+    -- 'customer' | 'opswat' | 'partner' | 'note' | 'internal' | 'unknown'
+    speaker_side TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_deal_review_evidence_opp ON deal_review_evidence(opportunity_id, provider);
+
+  CREATE TABLE IF NOT EXISTS deal_review_source_runs (
+    opportunity_id TEXT NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    model TEXT,
+    proposed INTEGER DEFAULT 0,
+    verified INTEGER DEFAULT 0,
+    extracted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (opportunity_id, provider, source_type, source_id)
+  );
+
+  -- One row per Refresh from notes, for the trial numbers in Settings.
+  CREATE TABLE IF NOT EXISTS deal_review_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    opportunity_id TEXT NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL,
+    model TEXT,
+    method TEXT,
+    ms INTEGER,
+    answers_written INTEGER,
+    sources_read INTEGER,
+    sources_omitted INTEGER,
+    excerpts_proposed INTEGER,
+    excerpts_verified INTEGER,
+    downgraded INTEGER,
+    errors INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Every hand edit of an answer the AI wrote: what it said, what you made
+  -- it. The share of AI answers you had to change is the trial's main score.
+  CREATE TABLE IF NOT EXISTS deal_review_edits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    opportunity_id TEXT NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
+    question_key TEXT NOT NULL,
+    ai_model TEXT,
+    ai_status TEXT,
+    ai_answer TEXT,
+    user_status TEXT,
+    user_answer TEXT,
+    edited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+`);
 
 // Internal calls: AE/SE conversations about a deal, uploaded on the Deal
 // review tab. Deliberately a table of their own rather than a flag on

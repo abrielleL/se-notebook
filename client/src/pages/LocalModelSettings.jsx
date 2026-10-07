@@ -109,6 +109,15 @@ export default function LocalModelSettings() {
     }
   }
 
+  async function setMethod(method) {
+    try {
+      const r = await api.saveLlmSettings({ deal_review_method: method });
+      setConfig(r.config);
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  }
+
   async function setProvider(feature, provider) {
     try {
       const r = await api.saveLlmSettings({ providers: { [feature]: provider } });
@@ -220,6 +229,16 @@ export default function LocalModelSettings() {
                 <div className="min-w-0 flex-1">
                   <div className="text-[12px] text-text-secondary">{f.label}</div>
                   <div className="text-[10px] text-text-dim">{localOk ? f.where : f.reason}</div>
+                  {f.key === 'deal_review' && (
+                    <label className="flex items-center gap-2 mt-1 text-[10px] text-text-dim">
+                      Method
+                      <select value={config.deal_review_method} onChange={e => setMethod(e.target.value)}
+                        className="bg-[#040d1c] border border-border rounded px-1.5 py-0.5 text-[10px] text-text-primary focus:outline-none">
+                        <option value="evidence">Evidence-based (reads each source, answers from excerpts)</option>
+                        <option value="single">Single pass (original)</option>
+                      </select>
+                    </label>
+                  )}
                 </div>
                 <div className="flex rounded border border-border overflow-hidden shrink-0">
                   {['anthropic', 'local'].map(p => (
@@ -238,6 +257,58 @@ export default function LocalModelSettings() {
           })}
         </div>
       </div>
+
+      <DealReviewTrialStats />
     </Card>
+  );
+}
+
+// The trial's scoreboard: per model, how long refreshes take and how many of
+// its answers you went on to change by hand. "Changed" is the share of the
+// AI answers currently on file that you edited -- the closer to zero, the more
+// the model's answers held up.
+function DealReviewTrialStats() {
+  const [stats, setStats] = useState(null);
+  useEffect(() => { api.getDealReviewStats().then(setStats).catch(() => {}); }, []);
+  if (!stats || !stats.runs.length) return null;
+  const label = (m) => (!m ? '—' : m.startsWith('local:') ? `Local (${m.slice(6)})` : m);
+  const models = [...new Set(stats.runs.map(r => r.model))];
+  const rows = models.map(m => {
+    const runs = stats.runs.filter(r => r.model === m);
+    const n = runs.reduce((a, r) => a + r.runs, 0);
+    const ms = runs.reduce((a, r) => a + r.avg_ms * r.runs, 0) / n;
+    const written = runs.reduce((a, r) => a + (r.answers_written || 0), 0);
+    const edits = stats.edits.find(e => e.model === m) || { edits: 0, status_changed: 0 };
+    const live = (stats.live.find(l => l.model === m) || { answers: 0 }).answers;
+    return { m, n, ms, written, edits: edits.edits, statusChanged: edits.status_changed, live,
+      methods: [...new Set(runs.map(r => r.method))].join(', ') };
+  });
+  const cell = 'px-2 py-1.5 text-[11px] text-text-secondary border-b border-border/50';
+  const head = 'px-2 py-1 text-[10px] text-text-dim font-normal text-left border-b border-border';
+  return (
+    <div className="mt-5 border-t border-border pt-4">
+      <div className="text-[12px] font-medium text-text-primary mb-1">Deal review trial</div>
+      <div className="text-[10px] text-text-dim mb-2">
+        Every Refresh from notes is logged, and so is every AI answer you change by hand. Fewer changes means the model’s answers held up.
+      </div>
+      <table className="w-full">
+        <thead><tr>
+          <th className={head}>Model</th><th className={head}>Refreshes</th><th className={head}>Avg time</th>
+          <th className={head}>Answers written</th><th className={head}>You changed</th><th className={head}>Status changed</th>
+        </tr></thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.m}>
+              <td className={cell}>{label(r.m)}<div className="text-[9px] text-text-dim">{r.methods}</div></td>
+              <td className={cell}>{r.n}</td>
+              <td className={cell}>{(r.ms / 1000 / 60).toFixed(1)} min</td>
+              <td className={cell}>{r.written}</td>
+              <td className={cell}>{r.edits}{r.written ? <span className="text-text-dim"> ({Math.round((r.edits / r.written) * 100)}%)</span> : null}</td>
+              <td className={cell}>{r.statusChanged}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

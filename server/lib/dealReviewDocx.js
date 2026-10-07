@@ -14,8 +14,8 @@ const STATUS = {
   flagged:    { box: '☒', color: C.redUrgent, label: 'Red flag present' },
   unanswered: { box: '☐', color: C.muted }
 };
-const VOICE_LABEL = { customer: 'Customer’s words', team: 'Team’s read', inferred: 'Inferred' };
-const SOURCE_LABEL = { note: 'Note', transcript: 'Transcript', internal_call: 'Internal call', manual: 'Added by hand' };
+const VOICE_LABEL = { customer: 'Customer’s words', team: 'Team’s read', inferred: 'Inferred', app: 'From records' };
+const SOURCE_LABEL = { note: 'Note', transcript: 'Transcript', internal_call: 'Internal call', manual: 'Added by hand', app: 'Notebook records' };
 
 function fmtDate(iso) {
   if (!iso) return '';
@@ -48,7 +48,7 @@ function sourceLine(a) {
   if (label) parts.push(label.trim());
   if (a.source_date) parts.push(fmtDate(a.source_date));
   // Lets two exports of the same deal (local trial vs. Claude) be told apart.
-  if (a.updated_by === 'ai' && a.ai_model) parts.push(`AI: ${a.ai_model.startsWith('local:') ? 'Local model' : 'Claude'}`);
+  if (a.updated_by === 'ai' && a.ai_model && a.ai_model !== 'app') parts.push(`AI: ${a.ai_model.startsWith('local:') ? 'Local model' : 'Claude'}`);
   return parts.join(' · ');
 }
 

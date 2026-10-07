@@ -6,6 +6,8 @@ const opportunities = require('../lib/opportunityStore');
 const { getKey } = require('../lib/anthropic');
 const { extractUploadText } = require('../lib/extractText');
 const { fillDealReview } = require('../lib/dealReviewFill');
+const evidenceFill = require('../lib/dealReviewEvidence');
+const llm = require('../lib/llm');
 const { renderDealReviewDocx, dealReviewFilename } = require('../lib/dealReviewDocx');
 const { SECTIONS, BY_KEY, STATUSES, VOICES, APPLIES_LABEL } = require('../lib/dealReviewQuestions');
 
@@ -81,6 +83,37 @@ function loadAnswers(opportunityId) {
   return out;
 }
 
+// The excerpts the current answers cite, keyed "E<id>", for "show excerpts".
+function citedEvidence(opportunityId) {
+  const ids = new Set();
+  for (const r of db.prepare('SELECT evidence_ids FROM deal_review_answers WHERE opportunity_id = ? AND evidence_ids IS NOT NULL').all(opportunityId)) {
+    try { JSON.parse(r.evidence_ids).forEach(i => ids.add(i)); } catch { /* ignore */ }
+  }
+  const out = {};
+  for (const e of evidenceFill.evidenceFor(opportunityId, [...ids])) out[`E${e.id}`] = e;
+  return out;
+}
+
+// Whether the roles the review leans on are set, so the tab can say so.
+function peopleHint(opp) {
+  const rows = db.prepare(`
+    SELECT ca.role FROM contacts c JOIN contact_accounts ca ON ca.contact_id = c.id
+    WHERE ca.account_id = ? AND COALESCE(c.contact_type, 'customer') = 'customer'
+  `).all(opp.account_id);
+  const roles = new Set(rows.map(r => r.role).filter(Boolean));
+  return { customer_contacts: rows.length, has_decision_maker: roles.has('decision_maker'), has_champion: roles.has('champion') };
+}
+
+// Log a hand change to an answer the AI wrote -- the trial's main measure.
+function logEdit(existing, userStatus, userAnswer) {
+  if (!existing || existing.updated_by !== 'ai') return;
+  if (existing.status === userStatus && (existing.answer || '') === (userAnswer || '')) return;
+  db.prepare(`
+    INSERT INTO deal_review_edits (opportunity_id, question_key, ai_model, ai_status, ai_answer, user_status, user_answer)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(existing.opportunity_id, existing.question_key, existing.ai_model, existing.status, existing.answer, userStatus, userAnswer);
+}
+
 function resolveOpportunity(accountId, requested) {
   const oppId = opportunities.resolveId(db, accountId, requested);
   return oppId ? db.prepare('SELECT * FROM opportunities WHERE id = ?').get(oppId) : null;
@@ -101,6 +134,9 @@ router.get('/accounts/:id/deal-review', (req, res) => {
     answers: loadAnswers(opp.id),
     forecast: computeForecast(opp),
     internal_calls: listInternalCalls(opp.id),
+    evidence: citedEvidence(opp.id),
+    people: peopleHint(opp),
+    method: llm.read().deal_review_method,
     source_counts: {
       notes: db.prepare('SELECT COUNT(*) AS n FROM notes WHERE opportunity_id = ? AND deleted_at IS NULL').get(opp.id).n,
       transcripts: db.prepare('SELECT COUNT(*) AS n FROM transcripts WHERE opportunity_id = ?').get(opp.id).n
@@ -115,8 +151,23 @@ router.post('/accounts/:id/deal-review/refresh', async (req, res, next) => {
   try {
     const opp = resolveOpportunity(req.params.id, req.body && req.body.opportunity_id);
     if (!opp) return res.status(404).json({ error: 'No opportunity on this account' });
-    const result = await fillDealReview({ key: getKey(req), opp });
-    res.json({ ...result, answers: loadAnswers(opp.id) });
+    const method = llm.read().deal_review_method;
+    let result;
+    if (method === 'evidence') {
+      result = await evidenceFill.fillDealReviewFromEvidence({ key: getKey(req), opp, forecast: computeForecast(opp) });
+    } else {
+      const started = Date.now();
+      result = await fillDealReview({ key: getKey(req), opp });
+      result.method = 'single';
+      db.prepare(`
+        INSERT INTO deal_review_runs (opportunity_id, provider, model, method, ms, answers_written, sources_read,
+          sources_omitted, excerpts_proposed, excerpts_verified, downgraded, errors)
+        VALUES (?, ?, ?, 'single', ?, ?, ?, ?, ?, ?, 0, ?)
+      `).run(opp.id, result.provider || 'anthropic', result.model, Date.now() - started, result.written,
+             result.sources_read, result.sources_omitted.length, result.quotes_kept + result.quotes_dropped,
+             result.quotes_kept, result.errors.length);
+    }
+    res.json({ ...result, answers: loadAnswers(opp.id), evidence: citedEvidence(opp.id) });
   } catch (e) {
     if (e.status && e.status < 500) return res.status(e.status).json({ error: e.message });
     next(e);
@@ -221,6 +272,8 @@ router.put('/accounts/:id/deal-review/:key', (req, res) => {
   const evidence = 'evidence' in req.body ? text(req.body.evidence) : (existing ? existing.evidence : null);
   const keepSource = existing && !('evidence' in req.body && text(req.body.evidence) !== existing.evidence);
 
+  logEdit(existing, status, text(req.body.answer));
+
   db.prepare(`
     INSERT INTO deal_review_answers (
       opportunity_id, account_id, question_key, status, answer, evidence,
@@ -250,9 +303,35 @@ router.put('/accounts/:id/deal-review/:key', (req, res) => {
 router.delete('/accounts/:id/deal-review/:key', (req, res) => {
   const opp = resolveOpportunity(req.params.id, req.query.opportunity_id);
   if (!opp) return res.status(404).json({ error: 'No opportunity on this account' });
+  logEdit(db.prepare('SELECT * FROM deal_review_answers WHERE opportunity_id = ? AND question_key = ?').get(opp.id, req.params.key),
+          'cleared', null);
   db.prepare('DELETE FROM deal_review_answers WHERE opportunity_id = ? AND question_key = ?')
     .run(opp.id, req.params.key);
   res.json({ ok: true });
+});
+
+// Where a running refresh has got to, for the tab's progress line.
+router.get('/accounts/:id/deal-review/progress', (req, res) => {
+  const opp = resolveOpportunity(req.params.id, req.query.opportunity_id);
+  res.json({ progress: opp ? evidenceFill.getProgress(opp.id) : null });
+});
+
+// The trial's numbers, per model: how long refreshes take, how much of what
+// the model read survived verification, and how many AI answers you changed.
+router.get('/deal-review/stats', (_req, res) => {
+  const runs = db.prepare(`
+    SELECT model, method, COUNT(*) AS runs, AVG(ms) AS avg_ms, SUM(answers_written) AS answers_written,
+           SUM(excerpts_proposed) AS proposed, SUM(excerpts_verified) AS verified, SUM(downgraded) AS downgraded
+    FROM deal_review_runs GROUP BY model, method
+  `).all();
+  const edits = db.prepare(`
+    SELECT ai_model AS model, COUNT(*) AS edits, SUM(ai_status <> user_status) AS status_changed
+    FROM deal_review_edits GROUP BY ai_model
+  `).all();
+  const live = db.prepare(`
+    SELECT ai_model AS model, COUNT(*) AS answers FROM deal_review_answers WHERE updated_by = 'ai' GROUP BY ai_model
+  `).all();
+  res.json({ runs, edits, live });
 });
 
 module.exports = router;

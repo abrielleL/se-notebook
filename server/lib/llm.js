@@ -39,6 +39,9 @@ const DEFAULTS = {
   local_base_url: 'http://host.docker.internal:1234/v1',
   local_model: '',
   local_context_tokens: 32768,
+  // 'evidence': read each source, then answer from verified excerpts
+  // (lib/dealReviewEvidence.js). 'single': the original one-pass read.
+  deal_review_method: 'evidence',
   providers: {}
 };
 
@@ -66,6 +69,9 @@ function validate(input) {
     const n = parseInt(input.local_context_tokens, 10);
     if (!Number.isFinite(n) || n < 2048 || n > 1048576) return { error: 'Context length must be between 2,048 and 1,048,576 tokens' };
     next.local_context_tokens = n;
+  }
+  if (input.deal_review_method != null) {
+    next.deal_review_method = input.deal_review_method === 'single' ? 'single' : 'evidence';
   }
   if (input.providers && typeof input.providers === 'object') {
     next.providers = { ...cur.providers };

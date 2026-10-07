@@ -178,6 +178,9 @@ export const api = {
     request(`/api/accounts/${accountId}/deal-review${opportunityId ? `?opportunity_id=${encodeURIComponent(opportunityId)}` : ''}`),
   saveDealReviewAnswer: (accountId, key, body) =>
     request(`/api/accounts/${accountId}/deal-review/${encodeURIComponent(key)}`, { method: 'PUT', body: json(body) }),
+  getDealReviewProgress: (accountId, opportunityId) =>
+    request(`/api/accounts/${accountId}/deal-review/progress${opportunityId ? `?opportunity_id=${encodeURIComponent(opportunityId)}` : ''}`),
+  getDealReviewStats: () => request('/api/deal-review/stats'),
   exportDealReviewDocx: async (accountId, opportunityId) => {
     const res = await fetch(`/api/accounts/${accountId}/deal-review/export${opportunityId ? `?opportunity_id=${encodeURIComponent(opportunityId)}` : ''}`);
     if (!res.ok) throw new Error(`Export failed: ${res.status}`);
