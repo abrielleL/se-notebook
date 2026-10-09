@@ -229,6 +229,24 @@ async function applyStepReconciliation(accountId, byHandle, parsed) {
 
 function asArray(v) { return Array.isArray(v) ? v : []; }
 
+// The prompt asks for '- ' bullet text, but local models often answer a
+// "bullet list" field with a JSON array (or an object). Fold those back into
+// bullet text so the account update gets a string, not an array.
+function asBulletText(v) {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v)) {
+    return v.map(item => asBulletText(item).trim()).filter(Boolean)
+      .map(line => (line.startsWith('- ') ? line : `- ${line}`)).join('\n');
+  }
+  if (typeof v === 'object') {
+    return Object.entries(v)
+      .map(([k, val]) => `- ${k}: ${Array.isArray(val) ? val.map(String).join(', ') : asBulletText(val).trim()}`)
+      .join('\n');
+  }
+  return String(v);
+}
+
 // The model is asked for 'se' | 'ae' | 'customer'; anything else it invents
 // (a person's name, 'both', 'SE/AE') becomes unassigned rather than a bucket
 // nobody can see.
@@ -295,9 +313,9 @@ export async function runAIExtraction(accountId) {
 
   const now = new Date().toISOString();
   await api.updateAccount(accountId, {
-    ai_summary: parsed.summary || '',
-    ai_technical_drivers: parsed.technical_drivers || '',
-    ai_environment: parsed.environment || '',
+    ai_summary: asBulletText(parsed.summary),
+    ai_technical_drivers: asBulletText(parsed.technical_drivers),
+    ai_environment: asBulletText(parsed.environment),
     ai_summary_updated_at: now
   });
 

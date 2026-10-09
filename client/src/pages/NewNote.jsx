@@ -151,6 +151,9 @@ export default function NewNote() {
       if (!accountId) {
         const account = await api.createAccount(accountFields);
         accountId = account.id;
+        // If a later step fails and the user retries, reuse this account
+        // rather than creating a duplicate of it.
+        setForm(f => ({ ...f, account_id: accountId }));
       } else {
         await api.updateAccount(accountId, accountFields);
       }

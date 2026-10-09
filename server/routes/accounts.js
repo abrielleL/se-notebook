@@ -321,6 +321,14 @@ router.put('/:id', (req, res) => {
 
   const updates = [];
   const values = [];
+  // better-sqlite3 spreads an array binding into several parameters, so a
+  // non-scalar value would surface as an opaque "Too many parameter values".
+  for (const f of EDITABLE_FIELDS) {
+    const v = req.body[f];
+    if (v != null && typeof v === 'object') {
+      return res.status(400).json({ error: `${f} must be text, not ${Array.isArray(v) ? 'a list' : 'an object'}` });
+    }
+  }
   for (const f of EDITABLE_FIELDS) {
     if (f === 'presales_stage' && clearStage) continue;
     if (f in req.body) {
