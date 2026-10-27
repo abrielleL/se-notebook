@@ -258,6 +258,8 @@ export const api = {
   // server-side AI extraction (deal intel + contacts)
   runExtraction: (accountId, body = {}) =>
     request(`/api/accounts/${accountId}/run-extraction`, { method: 'POST', headers: aiHeaders(), body: json(body) }),
+  refreshExtraction: (accountId) =>
+    request(`/api/accounts/${accountId}/refresh-extraction`, { method: 'POST', headers: aiHeaders(), body: json({}) }),
 
 
   // export (pov_id optional — targets a specific POV draft, else the latest)

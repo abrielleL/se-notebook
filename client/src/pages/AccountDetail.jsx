@@ -59,12 +59,15 @@ function extractionMessage(prefix, r) {
   if (assigned) parts.push(`${assigned} step${assigned > 1 ? 's' : ''} assigned an owner`);
   if (!r.hasKey) parts.push('AI summary skipped — no API key set (add it in Settings)');
   else if (r.summaryError) parts.push(`AI summary failed: ${r.summaryError}`);
+  if (r.qualificationError && r.qualificationError !== r.summaryError) {
+    parts.push(`Qualification fields failed: ${r.qualificationError}`);
+  }
   return parts.join(' · ');
 }
 
 // Success only when the AI summary actually ran; otherwise warn so a swallowed
 // summary failure no longer reads as a green "success" toast.
-const extractionSeverity = (r) => (r && r.hasKey && !r.summaryError) ? 'success' : 'warn';
+const extractionSeverity = (r) => (r && r.hasKey && !r.summaryError && !r.qualificationError) ? 'success' : 'warn';
 
 function splitHistory(value) {
   if (!value) return [];
@@ -314,6 +317,21 @@ export default function AccountDetail() {
     }
   }
 
+  // Re-read the whole account -- every note and transcript -- for when an
+  // earlier extraction failed or missed things. Summary, next steps, snapshot,
+  // contacts and qualification fields all come from the full history.
+  async function refreshFromSources() {
+    if (!online) { toast('Offline — reconnect to run extraction.', 'warn'); return; }
+    setExtracting(true);
+    try {
+      const r = await runFullExtraction(id, null, null, { full: true }).catch(() => null);
+      await loadAll();
+      toast(extractionMessage('Account refreshed', r), extractionSeverity(r));
+    } finally {
+      setExtracting(false);
+    }
+  }
+
   function openFieldDrawer({ title, value, footNote, save }) {
     setDrawer({ title, value, history: splitHistory(value), footNote, save });
   }
@@ -541,6 +559,12 @@ export default function AccountDetail() {
               right={
                 <span className="flex items-center gap-2">
                   {account.ai_summary_updated_at && <span className="text-[10px] text-text-dim">{formatDate(account.ai_summary_updated_at)}</span>}
+                  <button onClick={refreshFromSources} disabled={extracting}
+                    title="Re-read every note and transcript on this account and rebuild the summary, next steps, CRM snapshot, contacts and qualification fields"
+                    className="flex items-center gap-1 text-[10px] text-text-dim hover:text-accent-blue disabled:opacity-50">
+                    <Icon.Refresh width={10} height={10} className={extracting ? 'animate-spin' : ''} />
+                    {extracting ? 'Refreshing…' : 'Refresh'}
+                  </button>
                   <button onClick={() => setCompareOpen(true)} title="Run this account through Anthropic and the local model side by side (nothing is saved)"
                     className="text-[10px] text-text-dim hover:text-accent-blue">Compare</button>
                 </span>

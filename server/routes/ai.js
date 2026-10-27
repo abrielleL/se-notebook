@@ -311,7 +311,9 @@ const transcriptBlock = (t, tag, max) =>
 
 // Merge new qualification information out of the [LATEST] material. Writes
 // through upsertDealIntelligence, which appends with a date stamp, so nothing
-// already recorded is overwritten.
+// already recorded is overwritten. Returns { fieldsUpdated, error } -- the error
+// is passed back rather than only logged, so a model that couldn't be reached
+// doesn't read as "nothing new found".
 async function runDealIntel(accountId, key, latestBlocks, priorBlocks, sourceNoteId) {
   const current = {};
   for (const f of FIELDS) current[f] = '';
@@ -326,6 +328,7 @@ async function runDealIntel(accountId, key, latestBlocks, priorBlocks, sourceNot
     latestBlocks.join('\n\n');
 
   const fieldsUpdated = [];
+  let error = null;
   try {
     const text = await llm.completeText({
       feature: 'qualification', key, max_tokens: 1500,
@@ -344,8 +347,9 @@ async function runDealIntel(accountId, key, latestBlocks, priorBlocks, sourceNot
     }
   } catch (e) {
     console.warn('[ai] deal-intelligence extraction failed:', e.message);
+    error = e.message || String(e);
   }
-  return fieldsUpdated;
+  return { fieldsUpdated, error };
 }
 
 // POST /api/accounts/:id/run-extraction
@@ -399,6 +403,7 @@ router.post('/accounts/:id/run-extraction', async (req, res, next) => {
 
     let contacts = [];
     let fieldsUpdated = [];
+    let qualificationError = null;
 
     // --- Contacts (notes are heuristic and free; transcripts need a model:
     // the local one, or Anthropic with a key) ---
@@ -430,22 +435,88 @@ router.post('/accounts/:id/run-extraction', async (req, res, next) => {
           .map(t => transcriptBlock(t, 'PRIOR', DEAL_INTEL_PRIOR_CHARS))
       ];
 
-      fieldsUpdated = await runDealIntel(
+      ({ fieldsUpdated, error: qualificationError } = await runDealIntel(
         req.params.id, key, latestBlocks, priorBlocks, latestNote ? latestNote.id : null
-      );
+      ));
     }
 
     // Clear the pending flags only when the qualification pass above really
-    // ran (a local model, or Anthropic with a key). Clearing them on a keyless
-    // request would burn the retry and lose the extraction silently -- the note
-    // would look processed but no fields would ever be filled.
-    if (qualificationRan && latestNote) {
+    // ran and succeeded (a local model, or Anthropic with a key). Clearing them
+    // on a keyless request -- or when the model couldn't be reached -- would
+    // burn the retry and lose the extraction silently: the note would look
+    // processed but no fields would ever be filled.
+    if (qualificationRan && !qualificationError && latestNote) {
       db.prepare('UPDATE notes SET pending_ai_extraction = 0 WHERE account_id = ? AND pending_ai_extraction = 1')
         .run(req.params.id);
     }
 
     console.log(`[contacts] result: ${contacts.length} contact(s) created/updated, ${fieldsUpdated.length} deal field(s)`);
-    res.json({ fields_updated: fieldsUpdated, contacts });
+    res.json({ fields_updated: fieldsUpdated, contacts, qualification_error: qualificationError });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Transcript budget for a full refresh. Every transcript is read as current
+// material, so the budget is shared evenly between them, with a floor so a
+// long archive still gives each call a meaningful window.
+const REFRESH_TRANSCRIPT_BUDGET = 60000;
+
+// POST /api/accounts/:id/refresh-extraction
+// Re-reads the whole account -- every note and every transcript -- rather than
+// just the latest one. For an account whose extraction failed at the time (the
+// model was unreachable, no key was set) and so never picked up what its notes
+// say. Contacts are upserted, and qualification fields only gain what isn't
+// already recorded, so running it on a healthy account is safe.
+router.post('/accounts/:id/refresh-extraction', async (req, res, next) => {
+  try {
+    const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.id);
+    if (!account) return res.status(404).json({ error: 'Account not found' });
+
+    const key = getKey(req);
+    const notes = db.prepare(
+      'SELECT * FROM notes WHERE account_id = ? AND deleted_at IS NULL ORDER BY created_at ASC'
+    ).all(req.params.id);
+    const transcripts = db.prepare(
+      'SELECT * FROM transcripts WHERE account_id = ? ORDER BY created_at ASC'
+    ).all(req.params.id);
+    console.log(`[contacts] refresh-extraction account=${req.params.id} notes=${notes.length} transcripts=${transcripts.length} key=${key ? 'yes' : 'no'}`);
+
+    let contacts = [];
+    for (const n of notes) {
+      contacts = contacts.concat(extractContacts(req.params.id, n.raw_notes, notes));
+    }
+    if (llm.canRun('participants', key)) {
+      for (const t of transcripts) {
+        if (!t.content) continue;
+        contacts = contacts.concat(await extractTranscriptContacts(req.params.id, t.content, key, notes));
+      }
+    }
+
+    let fieldsUpdated = [];
+    let qualificationError = null;
+    const qualificationRan = llm.canRun('qualification', key) && (notes.length + transcripts.length > 0);
+    if (qualificationRan) {
+      const perTranscript = Math.max(
+        DEAL_INTEL_PRIOR_CHARS,
+        Math.floor(REFRESH_TRANSCRIPT_BUDGET / Math.max(transcripts.length, 1))
+      );
+      const blocks = [
+        ...notes.map(n => noteBlock(n, 'LATEST')),
+        ...transcripts.map(t => transcriptBlock(t, 'LATEST', perTranscript))
+      ];
+      const lastNote = notes[notes.length - 1];
+      ({ fieldsUpdated, error: qualificationError } = await runDealIntel(
+        req.params.id, key, blocks, [], lastNote ? lastNote.id : null
+      ));
+      if (!qualificationError) {
+        db.prepare('UPDATE notes SET pending_ai_extraction = 0 WHERE account_id = ? AND pending_ai_extraction = 1')
+          .run(req.params.id);
+      }
+    }
+
+    console.log(`[contacts] refresh result: ${contacts.length} contact(s) created/updated, ${fieldsUpdated.length} deal field(s)${qualificationError ? `, qualification failed: ${qualificationError}` : ''}`);
+    res.json({ fields_updated: fieldsUpdated, contacts, qualification_error: qualificationError });
   } catch (err) {
     next(err);
   }

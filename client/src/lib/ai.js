@@ -462,7 +462,9 @@ export async function runAIWithSnapshot(accountId) {
 //   3. CRM snapshot (stage-aware)                      [client]
 //   4. Deal intelligence merge + contact extraction    [server, key forwarded]
 // Returns a summary used for the "Note saved. X fields updated." toast.
-export async function runFullExtraction(accountId, noteId, transcriptId) {
+// With { full: true } the server pass re-reads every note and transcript on the
+// account instead of just the latest one -- the account page's Refresh button.
+export async function runFullExtraction(accountId, noteId, transcriptId, { full = false } = {}) {
   const [summaryOk, snapshotOk] = await Promise.all([canRunFeature('summary'), canRunFeature('crm_snapshot')]);
   const body = {};
   if (noteId) body.note_id = noteId;
@@ -470,7 +472,7 @@ export async function runFullExtraction(accountId, noteId, transcriptId) {
 
   // Contact extraction (and best-effort deal-intel) runs server-side and does
   // NOT need a key, so always call it. Summary + CRM snapshot need the key.
-  const serverPromise = api.runExtraction(accountId, body)
+  const serverPromise = (full ? api.refreshExtraction(accountId) : api.runExtraction(accountId, body))
     .catch(e => { console.warn('Server extraction failed:', e); return null; });
 
   // Capture the AI-summary outcome so a failure is surfaced to the user instead
@@ -502,6 +504,7 @@ export async function runFullExtraction(accountId, noteId, transcriptId) {
     contacts: serverRes ? (serverRes.contacts || []) : [],
     hasKey: summaryOk,
     summaryError,
+    qualificationError: serverRes ? (serverRes.qualification_error || null) : null,
     stepsClosed: stepChanges.closed,
     stepsAdded: stepChanges.added,
     stepsAssigned: stepChanges.assigned || []
