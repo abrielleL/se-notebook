@@ -79,6 +79,9 @@ router.post('/llm/complete', async (req, res) => {
     });
     res.json(out);
   } catch (e) {
+    // The client shows this in a toast, but leave a trace here too: a summary
+    // that silently stays stale is otherwise impossible to diagnose afterwards.
+    console.warn(`[llm] ${feature} failed (${llm.providerFor(feature)}): ${e.message}`);
     res.status(e.status && e.status < 600 ? e.status : 502).json({ error: e.message });
   }
 });

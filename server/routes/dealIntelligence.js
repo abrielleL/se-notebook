@@ -21,6 +21,11 @@ function stamp(date = new Date()) {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+// Case, punctuation and spacing differences don't make text new.
+function normalizeForCompare(s) {
+  return String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
 // Upsert a deal-intelligence field. On conflict (same account_id + field),
 // append the new content with a date stamp rather than overwrite:
 //   "[Existing content]\n\n[Jun 8, 2026] [New extracted content]"
@@ -32,6 +37,13 @@ function upsertDealIntelligence(accountId, field, value, sourceNoteId = null) {
   const existing = db
     .prepare('SELECT value FROM deal_intelligence WHERE account_id = ? AND field = ?')
     .get(accountId, field);
+
+  // Re-reading the same material (a Refresh after an upload, a retried save)
+  // tends to produce the same text again. Appending it would stack identical
+  // dated paragraphs, so skip anything the field already says word for word.
+  if (existing && existing.value && normalizeForCompare(existing.value).includes(normalizeForCompare(incoming))) {
+    return null;
+  }
 
   let newValue;
   if (existing && existing.value && existing.value.trim()) {
@@ -99,7 +111,9 @@ router.put('/accounts/:id/deal-intelligence/:field', (req, res) => {
   }
 
   if (!String(value).trim()) return res.status(400).json({ error: 'value required' });
-  const entry = upsertDealIntelligence(req.params.id, field, value, req.body.source_note_id);
+  // null means the field already said this; answer with what's stored.
+  const entry = upsertDealIntelligence(req.params.id, field, value, req.body.source_note_id)
+    || db.prepare('SELECT * FROM deal_intelligence WHERE account_id = ? AND field = ?').get(req.params.id, field);
   res.json(entry);
 });
 

@@ -289,13 +289,36 @@ if (process.env.NODE_ENV !== 'production') {
 
 // How much of a transcript the qualification pass sees. The signal is spread
 // across a whole call rather than bunched at the top, so the transcript a run
-// is *about* goes in near-whole; older ones are only context for reading it and
-// get a much shorter window.
+// is *about* goes in whole when the model's context allows (transcriptCharRoom),
+// and never gets less than this floor; older ones are only context for reading
+// it and get a much shorter window.
 const DEAL_INTEL_LATEST_CHARS = 40000;
 const DEAL_INTEL_PRIOR_CHARS = 6000;
 // Older transcripts kept as context. Existing field values already carry what
 // was extracted from the rest, so there is no need to re-read the archive.
 const DEAL_INTEL_PRIOR_TRANSCRIPTS = 3;
+
+// The qualification answer budget (runDealIntel's max_tokens).
+const DEAL_INTEL_MAX_TOKENS = 1500;
+// On Anthropic the context is never the limit; this caps cost per run.
+const DEAL_INTEL_ANTHROPIC_TRANSCRIPT_CHARS = 120000;
+
+// How many transcript characters fit in one qualification call, after the
+// system prompt, the existing field values, the notes and the answer. On the
+// local model this comes from the configured context length (which must match
+// what LM Studio loaded), so a long call is read whole instead of being cut at
+// a fixed size picked for a small context. Uses llm.estimateTokens' ratio so it
+// agrees with callLocal's fit check.
+function transcriptCharRoom(accountId, otherBlocks) {
+  if (llm.providerFor('qualification') !== 'local') return DEAL_INTEL_ANTHROPIC_TRANSCRIPT_CHARS;
+  const { local_context_tokens: ctx } = llm.read();
+  const existing = db.prepare('SELECT value FROM deal_intelligence WHERE account_id = ?')
+    .all(accountId).reduce((n, r) => n + String(r.value || '').length, 0);
+  const fixed = DEAL_INTEL_SYSTEM_PROMPT.length + existing + 800 /* field labels, headings */ +
+    otherBlocks.reduce((n, b) => n + b.length, 0);
+  // 10% headroom: transcripts with names and timestamps tokenize denser.
+  return Math.max(0, Math.floor((ctx - DEAL_INTEL_MAX_TOKENS) * 3.5 * 0.9) - fixed);
+}
 
 function clip(text, max) {
   const t = String(text || '');
@@ -331,7 +354,7 @@ async function runDealIntel(accountId, key, latestBlocks, priorBlocks, sourceNot
   let error = null;
   try {
     const text = await llm.completeText({
-      feature: 'qualification', key, max_tokens: 1500,
+      feature: 'qualification', key, max_tokens: DEAL_INTEL_MAX_TOKENS,
       system: DEAL_INTEL_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userContent }]
     });
@@ -340,8 +363,10 @@ async function runDealIntel(accountId, key, latestBlocks, priorBlocks, sourceNot
     const updates = (parsed && parsed.field_updates) || {};
     for (const field of FIELDS) {
       const val = updates[field];
-      if (val && String(val).trim()) {
-        dealIntel.upsertDealIntelligence(accountId, field, String(val).trim(), sourceNoteId);
+      // Only count a field that actually changed -- a repeat of what's already
+      // recorded is skipped and shouldn't read as an update in the toast.
+      if (val && String(val).trim() &&
+          dealIntel.upsertDealIntelligence(accountId, field, String(val).trim(), sourceNoteId)) {
         fieldsUpdated.push(field);
       }
     }
@@ -421,9 +446,6 @@ router.post('/accounts/:id/run-extraction', async (req, res, next) => {
     if (qualificationRan) {
       const latestBlocks = [];
       if (latestNote) latestBlocks.push(noteBlock(latestNote, 'LATEST'));
-      if (latestTranscript) {
-        latestBlocks.push(transcriptBlock(latestTranscript, 'LATEST', DEAL_INTEL_LATEST_CHARS));
-      }
 
       const priorBlocks = [
         ...notes
@@ -434,6 +456,13 @@ router.post('/accounts/:id/run-extraction', async (req, res, next) => {
           .slice(-DEAL_INTEL_PRIOR_TRANSCRIPTS)
           .map(t => transcriptBlock(t, 'PRIOR', DEAL_INTEL_PRIOR_CHARS))
       ];
+
+      // The transcript this run is about gets whatever room is left once the
+      // notes and older context are in -- the whole call when it fits.
+      if (latestTranscript) {
+        const room = transcriptCharRoom(req.params.id, [...latestBlocks, ...priorBlocks]);
+        latestBlocks.push(transcriptBlock(latestTranscript, 'LATEST', Math.max(DEAL_INTEL_LATEST_CHARS, room)));
+      }
 
       ({ fieldsUpdated, error: qualificationError } = await runDealIntel(
         req.params.id, key, latestBlocks, priorBlocks, latestNote ? latestNote.id : null
@@ -457,10 +486,9 @@ router.post('/accounts/:id/run-extraction', async (req, res, next) => {
   }
 });
 
-// Transcript budget for a full refresh. Every transcript is read as current
-// material, so the budget is shared evenly between them, with a floor so a
-// long archive still gives each call a meaningful window.
-const REFRESH_TRANSCRIPT_BUDGET = 60000;
+// A full refresh reads every transcript as current material, so the room the
+// model's context leaves (transcriptCharRoom) is shared evenly between them,
+// with a floor so a long archive still gives each call a meaningful window.
 
 // POST /api/accounts/:id/refresh-extraction
 // Re-reads the whole account -- every note and every transcript -- rather than
@@ -497,12 +525,13 @@ router.post('/accounts/:id/refresh-extraction', async (req, res, next) => {
     let qualificationError = null;
     const qualificationRan = llm.canRun('qualification', key) && (notes.length + transcripts.length > 0);
     if (qualificationRan) {
+      const noteBlocks = notes.map(n => noteBlock(n, 'LATEST'));
       const perTranscript = Math.max(
         DEAL_INTEL_PRIOR_CHARS,
-        Math.floor(REFRESH_TRANSCRIPT_BUDGET / Math.max(transcripts.length, 1))
+        Math.floor(transcriptCharRoom(req.params.id, noteBlocks) / Math.max(transcripts.length, 1))
       );
       const blocks = [
-        ...notes.map(n => noteBlock(n, 'LATEST')),
+        ...noteBlocks,
         ...transcripts.map(t => transcriptBlock(t, 'LATEST', perTranscript))
       ];
       const lastNote = notes[notes.length - 1];
