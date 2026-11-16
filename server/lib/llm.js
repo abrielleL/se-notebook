@@ -135,22 +135,36 @@ async function callLocal({ system, messages, max_tokens = 2048, config = read(),
     throw e;
   }
 
+  const body = JSON.stringify({
+    model: config.local_model, messages: msgs, max_tokens, temperature: 0.3, stream: false,
+    ...(response_format ? { response_format } : {})
+  });
+  // LM Studio unloads an idle model (its TTL) and reloads it on the next
+  // request. Requests that arrive while that reload is under way are rejected
+  // at once with a 500/503, so several AI steps fired together after an idle
+  // spell would fail. Retry those briefly; the reload takes ~15-30s.
+  const RETRY_UNTIL = Date.now() + 60 * 1000;
   let res;
-  try {
-    res = await fetch(`${config.local_base_url}/chat/completions`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        model: config.local_model, messages: msgs, max_tokens, temperature: 0.3, stream: false,
-        ...(response_format ? { response_format } : {})
-      }),
-      // Local generation on a laptop can take minutes for a long transcript.
-      signal: AbortSignal.timeout(10 * 60 * 1000)
-    });
-  } catch (err) {
-    const e = new Error(`Couldn't reach the local model at ${config.local_base_url}. Is LM Studio's server running? (${err.message})`);
-    e.status = 502;
-    throw e;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      res = await fetch(`${config.local_base_url}/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+        // Local generation on a laptop can take minutes for a long transcript.
+        signal: AbortSignal.timeout(10 * 60 * 1000)
+      });
+    } catch (err) {
+      const e = new Error(`Couldn't reach the local model at ${config.local_base_url}. Is LM Studio's server running? (${err.message})`);
+      e.status = 502;
+      throw e;
+    }
+    if ((res.status === 500 || res.status === 503) && Date.now() < RETRY_UNTIL) {
+      await res.text().catch(() => {});
+      await new Promise(r => setTimeout(r, Math.min(2000 * (attempt + 1), 5000)));
+      continue;
+    }
+    break;
   }
   if (!res.ok) {
     const text = await res.text();
